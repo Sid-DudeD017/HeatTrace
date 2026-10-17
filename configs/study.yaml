@@ -1,0 +1,10 @@
+timestamp:
+  timezone: UTC
+  semantics: interval_start
+
+random_seed: 20261016
+
+paths:
+  raw_manifest: data/manifests/raw_sources.jsonl
+  coverage: data/manifests/coverage.csv
+  aligned_dataset: data/processed/hourly_caiso_v0.parquet

@@ -1,0 +1,21 @@
+study:
+  region: CAISO
+  years: [2022, 2023, 2024, 2025]
+  months: [6, 7, 8, 9]
+  timezone: UTC
+
+price:
+  provider: CAISO
+  product: day_ahead_hourly_lmp
+  node: TH_NP15_GEN-APND
+  units: USD_per_MWh
+
+carbon:
+  provider: EIA
+  balancing_authority: CISO
+  preferred_measure: production_based_gCO2_per_kWh
+
+weather:
+  provider: NOAA
+  stations: []
+  measure: hourly_temperature

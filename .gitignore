@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Local data and generated outputs
+data/raw/
+data/interim/
+data/processed/
+runs/*
+reports/generated/
+*.parquet
+*.zip
+*.tar.gz
+
+# Credentials and local configuration
+.env
+*.pem
+*.key
