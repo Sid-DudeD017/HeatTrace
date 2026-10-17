@@ -14,3 +14,11 @@ The aligned dataset uses one row per UTC interval start and must include:
 | `source_quality` | string | source/QC status |
 
 Provider timestamps and original interval conventions must be retained separately in staging data.
+
+## Frozen processing settings
+
+- Primary timestamp convention: UTC interval start.
+- Study window: June–September, 2022–2025.
+- Random seed: `20261016`.
+- Missing observations remain flagged; unusual prices are not interpolated automatically.
+- The first release may cover fewer than four complete years if the gap is documented in the coverage manifest.

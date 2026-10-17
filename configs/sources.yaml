@@ -17,5 +17,14 @@ carbon:
 
 weather:
   provider: NOAA
-  stations: []
+  stations:
+    - id: USW00023234
+      name: San Francisco International Airport
+      role: northern_coastal
+    - id: USW00023232
+      name: Sacramento Executive Airport
+      role: northern_inland
+    - id: USW00023174
+      name: Los Angeles International Airport
+      role: southern_coastal
   measure: hourly_temperature
