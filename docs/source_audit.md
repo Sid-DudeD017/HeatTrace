@@ -6,11 +6,17 @@ Status: P0 source audit complete on 17 October 2026. Acquisition smoke tests rem
 
 ### NOAA weather
 
-- Dataset: [Global Historical Climatology Network hourly (GHCNh)](https://www.ncei.noaa.gov/products/global-historical-climatology-network-hourly).
+- Dataset: [Global Historical Climatology Network hourly (GHCNh)](https://www.ncei.noaa.gov/products/global-historical-climatology-network-hourly). Official documentation: [NOAA GHCNh Documentation (PDF)](https://www.ncei.noaa.gov/oa/global-historical-climatology-network/hourly/doc/ghcnh_DOCUMENTATION.pdf).
 - Stations: `USW00023234` (San Francisco International), `USW00023232` (Sacramento Executive), and `USW00023174` (Los Angeles International).
-- Variable: hourly air temperature, converted to degrees Celsius.
-- Access: NOAA bulk station/year files in PSV or Parquet; the current GHCNh documentation describes the station list, file layout, variables, and quality flags.
+- Variable: hourly air temperature (`temperature`), converted to degrees Celsius.
+- Quality Code Policy:
+  - GHCNh preserves component source QC flags across ~110 contributing global streams. Per `ghcnh_DOCUMENTATION.pdf`, quality codes are stream-dependent.
+  - Accepted passing codes: `""` (unflagged / passed automated checks), `"1"` (passed manual/automated QC), `"5"` (passed/acceptable in USAF / global surface streams e.g. sources 313, 314, 343), `"A"` (passed/accepted in specialized streams), `"Passed"` / `"passed"`.
+  - Rejected failed codes: `"2"` (suspect / failed temporal or spatial consistency), `"3"`, `"4"`, `"6"`, `"7"`, `"Failed"`, `"failed"`.
+  - Unknown codes: any flag outside these verified sets is rejected with a validation error to prevent silently accepting unverified observations.
+- Access: NOAA bulk station/year files in PSV via NODD AWS S3 open bucket (`noaa-ghcnh-pds`); file layout, variables, quality flags, and report types follow the official NCEI specification.
 - Rationale: three fixed stations provide a simple northern coastal, northern inland, and southern coastal representation of the CAISO footprint.
+
 
 ### CAISO price
 
@@ -24,9 +30,17 @@ Status: P0 source audit complete on 17 October 2026. Acquisition smoke tests rem
 
 - Dataset: [EIA Form EIA-930 / Hourly Electric Grid Monitor](https://www.eia.gov/electricity/930-content/about.html).
 - Geography: balancing authority `CISO`.
-- Fields: demand, net generation, generation by source, interchange, and estimated CO₂ emissions where available.
-- Preferred carbon field: estimated CO₂ intensity in gCO₂/kWh derived from EIA emissions and generation, with the exact derivation recorded in `docs/carbon_method.md` during P2.
-- Note: EIA states that historical submissions are available from January 2019, which covers the 2022–2025 study period. The emissions estimate depends on the accuracy of BA-reported generation and interchange.
+- Fields: demand (`D`), net generation (`NG`), generation by source, interchange (`TI`), and estimated CO₂ emissions and intensity.
+- Preferred carbon field: estimated CO₂ intensity in gCO₂/kWh derived from EIA emissions and generation, with the exact derivation recorded in `docs/carbon_method.md`.
+- Data availability across interfaces:
+  - Demand and Net Generation: available via EIA API v2 endpoint `/electricity/rto/region-data/data` with repeated facet parameters `facets[type][]=D` and `facets[type][]=NG`.
+  - Estimated CO₂ emissions and intensity: verified and ingested natively from official EIA CISO workbook (`data/raw/eia/CISO.xlsx`, SHA-256 `b418ea77...`, 97.6 MB) downloaded from the Hourly Electric Grid Monitor.
+  - Workbook structure:
+    - `Published Hourly Data`: hourly time series covering July 1, 2015 to October 18, 2026.
+    - `Notes`: official column definitions, documentation, and unit specifications (MWh, metric tons, lbs/kWh).
+    - `Known Data Issues`: hourly anomalous issue flags joined on BA + UTC time.
+  - Timestamp semantics: `UTC time` and `Local time` are hour-ending; interval-start UTC is $\text{UTC time} - 1\text{ hour}$.
+- Note: EIA states that historical submissions are available from January 2019, which covers the 2022–2025 study period. Ingestion of both API v2 physical grid data and native Excel workbook carbon data is implemented, with authentic live QC pending key availability and policy resolution regarding flagged records in the frozen QC sample.
 
 ## Accessibility and risk decisions
 

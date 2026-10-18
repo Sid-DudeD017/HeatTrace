@@ -9,6 +9,7 @@ __pycache__/
 data/raw/
 data/interim/
 data/processed/
+data/manifests/
 runs/*
 reports/generated/
 *.parquet
@@ -19,3 +20,6 @@ reports/generated/
 .env
 *.pem
 *.key
+
+# Packaging metadata
+*.egg-info/

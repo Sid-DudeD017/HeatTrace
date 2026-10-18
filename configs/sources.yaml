@@ -28,3 +28,28 @@ weather:
       name: Los Angeles International Airport
       role: southern_coastal
   measure: hourly_temperature
+
+qc:
+  primary_station_id: USW00023234
+  target_timezone: America/Los_Angeles
+  baseline:
+    years: [2022]
+    months: [6, 7, 8, 9]
+    percentile_method: linear_interpolation
+    heatwave_percentile: 98.0
+    tolerance_c: 0.5
+    heatwave_threshold_min_c: 34.0
+    ordinary_day_range_c: [20.0, 24.0]
+    threshold_label: "P1 provisional operational threshold (single baseline year 2022)"
+  days:
+    heatwave:
+      date: "2022-09-05"
+      type: heatwave
+      rationale: "California Labor Day 2022 heatwave event peak; SFO airport recorded daily maximum of 35.6°C (96°F), exceeding the 98th percentile summer temperature threshold (~34.2°C)."
+      expected_max_temperature_c: 35.6
+    ordinary:
+      date: "2022-06-01"
+      type: ordinary
+      rationale: "Typical marine-layer moderated early summer day; SFO airport recorded daily maximum of 21.7°C (71°F), close to the summer median (22.2°C)."
+      expected_max_temperature_c: 21.7
+  fail_on_eia_data_issues: true
