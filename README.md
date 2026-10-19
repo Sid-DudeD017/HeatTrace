@@ -145,15 +145,59 @@ Or use the loader module directly:
 PYTHONPATH=src python -m heattrace.process.loader
 ```
 
+## Phase P3: Event Detection, Controls, and Scaling (Person A)
+
+Phase P3 defines deterministic multi-day heatwaves, establishes event phase labels, and prepares the groundwork for matched controls and historical scaling. Person A implements the final heatwave detection algorithm and validation contract.
+
+### P3 Checklist & Implementation Status (Person A)
+
+> **Phase P3 Person A Status:**
+> - **P3-01 (Multi-Day Heatwave Detection & Phase Labeling):** **Complete (Verified)**. Deterministic detection identifies runs of $\ge 3$ consecutive qualifying days where daily max temperature strictly exceeds the empirical 90th percentile threshold ($25.60^\circ\text{C}$, pooled across June–September 2022–2025 at NOAA station `USW00023234`). Labels 4 distinct multi-day heatwaves (`HW_20220620`, `HW_20220904`, `HW_20220922`, `HW_20240702`) with chronological hourly phases: `onset` (24h pre-event day), `peak` (24h highest temperature day, earliest tie-break), `sustained` (all other event days), and `recovery` (24h post-event day).
+> - **P3-02 (Event, Coverage, & Phase Validation):** **Complete (Verified)**. Validates event catalogue schema, non-overlapping intervals, monotonic timestamps, top-of-hour alignment, duration criteria ($\ge 3$ days), peak temperature exceedance, and phase buffer non-collision (zero overlap across all 4 events). Outputs coverage manifest and SHA-256 provenance manifest.
+> - **Person B / Person C Responsibilities:**
+>   - **P3-03 / P3-04 (Matched Controls):** Assigned to Person B. Unmodified and pending.
+>   - **P3-05 / P3-06 (Data Curation & Regime Shift Metrics):** Assigned to Person C. Unmodified and pending.
+>   - **Gate G3-a:** Pending downstream event/control integration by Person B and Person C.
+
+### Detected Heatwave Catalogue (2022–2025)
+
+| Event ID | Dates (`America/Los_Angeles`) | Days | Hours | Peak Date | Peak Max | Mean Max | Cum Exceedance |
+|---|---|---|---|---|---|---|---|
+| `HW_20220620` | 2022-06-20 to 2022-06-22 | 3 | 72 | 2022-06-21 | 36.7°C | 30.03°C | 13.30°C·days |
+| `HW_20220904` | 2022-09-04 to 2022-09-08 | 5 | 120 | 2022-09-05 | 35.6°C | 33.22°C | 38.10°C·days |
+| `HW_20220922` | 2022-09-22 to 2022-09-24 | 3 | 72 | 2022-09-24 | 28.3°C | 27.40°C | 5.40°C·days |
+| `HW_20240702` | 2024-07-02 to 2024-07-04 | 3 | 72 | 2024-07-02 | 31.1°C | 30.00°C | 13.20°C·days |
+
+Total event hours: 336 hours (14 event days). Total phase-labeled hours: 528 hours (22 distinct days; onset: 96h, sustained: 240h, peak: 96h, recovery: 96h).
+
+### Running P3 Event Detection and Inspection
+
+#### 1. Build Heatwave Catalogue & Phase Labels (Offline, Cache-Only)
+```bash
+PYTHONPATH=src python -m heattrace.cli --build-events
+```
+Produces:
+- `data/events/heatwave_events_v0.parquet`
+- `data/events/heatwave_events_v0.csv`
+- `data/events/hourly_event_labels_v0.parquet`
+- `data/events/hourly_event_labels_v0_sample.csv`
+- `data/manifests/event_coverage.csv`
+- `data/manifests/event_catalogue_manifest.json`
+
+#### 2. Inspect Heatwave Catalogue
+```bash
+PYTHONPATH=src python -m heattrace.cli --inspect-events
+```
+
 ## Repository layout
 
 - `src/heattrace/` — ingestion, processing, forecasting, scheduling, and evaluation code
   - `src/heattrace/ingest/` — NOAA, CAISO, EIA ingestion, manifests, and coverage calculation
-  - `src/heattrace/process/` — canonical alignment, unit normalization, schema validation, and loader
-  - `src/heattrace/cli.py` — P1 and P2 command-line interface
+  - `src/heattrace/process/` — canonical alignment, event detection, phase labeling, quality validation, and loader
+  - `src/heattrace/cli.py` — P1, P2, and P3 command-line interface
 - `configs/` — frozen source and study configuration
-- `data/` — local data only; raw, interim, processed, and manifests are git-ignored
-- `docs/` — contracts, source audit, carbon methodology, and alignment documentation
+- `data/` — local data only; raw, interim, processed, events, and manifests are git-ignored
+- `docs/` — contracts, source audit, carbon methodology, alignment, and heatwave event documentation
 - `tests/` — unit tests, mocked fixtures, and opt-in live tests
 - `reports/` — generated QC and audit reports
 - `runs/` — generated benchmark outputs

@@ -56,3 +56,13 @@ qc:
   # recognizing that EIA-930 Known Data Issues are flagged across modern balancing authority workbooks.
   # Downstream scientific analysis in P2/P5 must retain issue flags and perform sensitivity/exclusion analysis.
   fail_on_eia_data_issues: false
+
+heatwaves:
+  station_id: USW00023234
+  target_timezone: America/Los_Angeles
+  years: [2022, 2023, 2024, 2025]
+  months: [6, 7, 8, 9]
+  percentile: 90.0
+  percentile_method: linear_interpolation
+  min_consecutive_days: 3
+  phases: [onset, peak, sustained, recovery]

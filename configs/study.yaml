@@ -8,3 +8,7 @@ paths:
   raw_manifest: data/manifests/raw_sources.jsonl
   coverage: data/manifests/coverage.csv
   aligned_dataset: data/processed/hourly_caiso_v0.parquet
+  heatwave_events: data/events/heatwave_events_v0.parquet
+  hourly_event_labels: data/events/hourly_event_labels_v0.parquet
+  event_coverage: data/manifests/event_coverage.csv
+  event_manifest: data/manifests/event_catalogue_manifest.json

@@ -138,6 +138,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load, validate, and summarize the canonical aligned dataset for verification",
     )
     parser.add_argument(
+        "--build-events",
+        action="store_true",
+        help="Detect multi-day heatwaves and build canonical event catalogue and hourly phase labels (P3 Person A)",
+    )
+    parser.add_argument(
+        "--inspect-events",
+        action="store_true",
+        help="Inspect and summarize detected heatwave events and phase labels (P3 Person A)",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -989,9 +999,59 @@ def run_load_aligned(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_build_events(args: argparse.Namespace) -> int:
+    """Build, validate, and write P3 heatwave event catalogue and hourly phase labels."""
+    from heattrace.process.events import build_and_export_events
+
+    config_dir = Path(args.config_dir)
+    data_dir = Path(args.data_dir)
+
+    print("\n=================== HeatTrace P3 Heatwave Event Builder ===================")
+    print("Executing Person A P3 multi-day heatwave detection and phase labeling...")
+
+    try:
+        res = build_and_export_events(data_dir=data_dir, config_dir=config_dir)
+        thresh_info = res["threshold_info"]
+        print(f"P90 Threshold:            {thresh_info['threshold_p90_display_c']}°C (exact: {thresh_info['threshold_p90_c']:.6f}°C)")
+        print(f"Sample Size (days):       {thresh_info['sample_size']}")
+        print(f"Events Detected:          {len(res['events_df'])}")
+        print(f"Total Phase Hours:        {len(res['labels_df'])}")
+        print(f"Events Parquet Output:    {res['parquet_events_path']}")
+        print(f"Events CSV Output:        {res['csv_events_path']}")
+        print(f"Hourly Labels Parquet:    {res['parquet_labels_path']}")
+        print(f"Hourly Labels Sample CSV: {res['sample_csv_path']}")
+        print(f"Coverage CSV:             {res['coverage_path']}")
+        print(f"Manifest JSON:            {res['manifest_path']}")
+        print("===========================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD ERROR] Failed to build heatwave events: {e}\n")
+        return 1
+
+
+def run_inspect_events(args: argparse.Namespace) -> int:
+    """Inspect and display summary of detected heatwave events and phases."""
+    from heattrace.process.events import inspect_heatwave_events
+
+    data_dir = Path(args.data_dir)
+    parquet_events = data_dir / "events/heatwave_events_v0.parquet"
+    parquet_labels = data_dir / "events/hourly_event_labels_v0.parquet"
+
+    try:
+        inspect_heatwave_events(parquet_events, parquet_labels)
+        return 0
+    except Exception as e:
+        print(f"\n[INSPECT ERROR] Failed to inspect heatwave events: {e}\n")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_aligned:
+    if args.build_events:
+        code = run_build_events(args)
+    elif args.inspect_events:
+        code = run_inspect_events(args)
+    elif args.build_aligned:
         code = run_build_aligned(args)
     elif args.load_aligned:
         code = run_load_aligned(args)
