@@ -109,14 +109,51 @@ HEATTRACE_LIVE_TESTS=1 pytest -k "test_live"
 Syntax and compilation were verified using `python -m compileall src tests` and `git diff --check`.
 
 
+## Phase P2: Alignment, QC, Provenance, and Onboarding
+
+Phase P2 builds and validates the first canonical aligned dataset (`data/processed/hourly_caiso_v0.parquet`) from the two authentic P1 QC windows (`2024-07-02` extreme heat and `2024-06-07` ordinary summer in `America/Los_Angeles`).
+
+### P2 Checklist & Implementation Status
+
+> **Overall Phase P2 Status:**
+> - **P2-01 (Alignment & Merge):** **Complete (Verified)**. Canonical 48-row UTC hourly index constructed with interval-start semantics, unique sorted timestamps, and exact 24 rows per local date.
+> - **P2-02 (Canonical Carbon Signal):** **Complete (Verified)**. Uses official workbook `CO2 Emissions Intensity for Generated Electricity`, converted via $1\text{ lb/kWh} = 453.59237\text{ g/kWh}$. Retains reported and recalculated values; reconciliation diff passes tolerance ($6.58 \times 10^{-7} \le 10^{-4}\text{ lb/kWh}$).
+> - **P2-03 (QC & Validation):** **Complete (Verified)**. Deterministic schema, timestamp alignment, monotonic ordering, non-negativity, missingness, and EIA issue flags verified.
+> - **P2-04 (Onboarding & Documentation):** **Complete (Verified)**. Documentation in `docs/p2_alignment.md`, `docs/contracts.md`, and `docs/carbon_method.md`.
+> - **P2-TEST (Unit & Integration Tests):** **Complete (Verified)**. Comprehensive tests in `tests/test_p2_alignment.py` passing with zero test mutation of production data.
+> - **Gate G2-a:** **Pending Independent Teammate Verification** (awaiting Person B/Person C execution of loader).
+
+### Running P2 Alignment and Verification
+
+#### 1. Build Aligned Dataset (Offline, Cache-Only)
+```bash
+PYTHONPATH=src python -m heattrace.cli --build-aligned
+```
+This command loads authentic cached P1 files, normalizes units, validates the canonical contract, and produces:
+- `data/processed/hourly_caiso_v0.parquet`
+- `data/processed/hourly_caiso_v0_sample.csv`
+- `data/manifests/aligned_coverage.csv`
+- `data/manifests/aligned_dataset_manifest.json`
+
+#### 2. Run Aligned Dataset Loader
+To load, validate, and inspect the table:
+```bash
+PYTHONPATH=src python -m heattrace.cli --load-aligned
+```
+Or use the loader module directly:
+```bash
+PYTHONPATH=src python -m heattrace.process.loader
+```
+
 ## Repository layout
 
 - `src/heattrace/` — ingestion, processing, forecasting, scheduling, and evaluation code
   - `src/heattrace/ingest/` — NOAA, CAISO, EIA ingestion, manifests, and coverage calculation
-  - `src/heattrace/cli.py` — P1 command-line runner
+  - `src/heattrace/process/` — canonical alignment, unit normalization, schema validation, and loader
+  - `src/heattrace/cli.py` — P1 and P2 command-line interface
 - `configs/` — frozen source and study configuration
 - `data/` — local data only; raw, interim, processed, and manifests are git-ignored
-- `docs/` — contracts, source audit, and methods notes
+- `docs/` — contracts, source audit, carbon methodology, and alignment documentation
 - `tests/` — unit tests, mocked fixtures, and opt-in live tests
 - `reports/` — generated QC and audit reports
 - `runs/` — generated benchmark outputs

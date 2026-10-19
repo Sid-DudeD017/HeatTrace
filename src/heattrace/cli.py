@@ -128,6 +128,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Run P1-QC cross-source validation on 1 heatwave day (2022-09-05) and 1 ordinary day (2022-06-01)",
     )
     parser.add_argument(
+        "--build-aligned",
+        action="store_true",
+        help="Build canonical aligned dataset (P2 v0 table) from cached P1 sources",
+    )
+    parser.add_argument(
+        "--load-aligned",
+        action="store_true",
+        help="Load, validate, and summarize the canonical aligned dataset for verification",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -931,9 +941,61 @@ def run_qc_tests(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_aligned(args: argparse.Namespace) -> int:
+    """Build, validate, and write the P2 canonical aligned dataset from cached P1 sources."""
+    from heattrace.process.alignment import build_aligned_dataset, write_aligned_outputs
+
+    config_dir = Path(args.config_dir)
+    data_dir = Path(args.data_dir)
+    sources_cfg = load_yaml(config_dir / "sources.yaml")
+
+    print("\n=================== HeatTrace P2 Aligned Dataset Builder ===================")
+    print("Building canonical v0 aligned dataset from cached authentic P1 sources...")
+
+    try:
+        df = build_aligned_dataset(
+            sources_cfg=sources_cfg,
+            data_dir=data_dir,
+        )
+        outputs = write_aligned_outputs(
+            df,
+            data_dir=data_dir,
+            config_dir=config_dir,
+        )
+        print(f"Successfully built and validated {len(df)} aligned rows.")
+        print(f"Parquet output:    {outputs['parquet_path']}")
+        print(f"Sample CSV output: {outputs['sample_csv_path']}")
+        print(f"Coverage CSV:      {outputs['coverage_path']}")
+        print(f"Manifest JSON:     {outputs['manifest_path']}")
+        print("============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD ERROR] Failed to build aligned dataset: {e}\n")
+        return 1
+
+
+def run_load_aligned(args: argparse.Namespace) -> int:
+    """Load, validate, and display sample of the canonical aligned dataset."""
+    from heattrace.process.loader import inspect_aligned_dataset
+
+    data_dir = Path(args.data_dir)
+    parquet_path = data_dir / "processed/hourly_caiso_v0.parquet"
+
+    try:
+        inspect_aligned_dataset(parquet_path)
+        return 0
+    except Exception as e:
+        print(f"\n[LOAD ERROR] Failed to load aligned dataset: {e}\n")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.qc:
+    if args.build_aligned:
+        code = run_build_aligned(args)
+    elif args.load_aligned:
+        code = run_load_aligned(args)
+    elif args.qc:
         code = run_qc_tests(args)
     else:
         code = run_smoke_tests(args)
