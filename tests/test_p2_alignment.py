@@ -665,3 +665,57 @@ def test_production_ciso_xlsx_sha256_unaltered():
     p = Path("data/raw/eia/CISO.xlsx")
     assert p.exists()
     assert sha256_file(p) == "b418ea77f536048e11fe0c5786de7544dfa7c774a90083e7f2c0d9facc74ce50"
+
+
+def test_documented_schema_matches_canonical_columns():
+    """Verify that docs/contracts.md table documents exactly CANONICAL_COLUMNS in exact order."""
+    import re
+    contracts_path = Path("docs/contracts.md")
+    assert contracts_path.exists()
+    content = contracts_path.read_text(encoding="utf-8")
+
+    # Match rows of format: | `column_name` | ...
+    table_cols = re.findall(r"^\|\s*`([a-z0-9_]+)`\s*\|", content, re.MULTILINE)
+    assert len(CANONICAL_COLUMNS) == 40
+    assert table_cols == CANONICAL_COLUMNS
+
+
+def test_timestamp_utc_contract_properties():
+    """Verify timestamp_utc contract properties: timezone-aware UTC, top-of-hour, monotonic, without resolution lock."""
+    # Test with microsecond resolution (Parquet default)
+    ts_us = pd.date_range("2024-06-07 07:00", periods=24, freq="h", tz="UTC", unit="us")
+    ts_ns = pd.date_range("2024-07-02 07:00", periods=24, freq="h", tz="UTC", unit="ns")
+    combined_ts = ts_us.append(ts_ns)
+
+    data = {c: [None] * 48 for c in CANONICAL_COLUMNS}
+    data["timestamp_utc"] = combined_ts
+    data["local_date"] = ["2024-06-07"] * 24 + ["2024-07-02"] * 24
+    data["qc_day_type"] = ["ordinary"] * 24 + ["heatwave"] * 24
+    data["temperature_missing"] = [False] * 48
+    data["temperature_c"] = [20.0] * 48
+    data["temperature_obs_count"] = [1] * 48
+    data["temperature_min_c"] = [20.0] * 48
+    data["temperature_max_c"] = [20.0] * 48
+    data["price_missing"] = [False] * 48
+    data["price_usd_per_mwh"] = [35.0] * 48
+    data["demand_missing"] = [False] * 48
+    data["demand_mw"] = [25000.0] * 48
+    data["eia_api_demand_mw"] = [25000.0] * 48
+    data["workbook_demand_mw"] = [25000.0] * 48
+    data["demand_source_difference_mw"] = [0.0] * 48
+    data["net_generation_missing"] = [False] * 48
+    data["net_generation_mw"] = [20000.0] * 48
+    data["eia_api_net_generation_mw"] = [20000.0] * 48
+    data["workbook_net_generation_mw"] = [20000.0] * 48
+    data["net_generation_source_difference_mw"] = [0.0] * 48
+    data["carbon_missing"] = [False] * 48
+    data["carbon_g_per_kwh"] = [200.0] * 48
+    data["carbon_data_issue"] = [False] * 48
+    data["carbon_primary_analysis_eligible"] = [True] * 48
+    data["source_quality"] = ["success"] * 48
+    data["generated_intensity_reconciliation_difference"] = [0.0] * 48
+
+    df = pd.DataFrame(data)[CANONICAL_COLUMNS]
+    res = validate_aligned_dataframe(df, expected_rows=48, expected_dates=["2024-06-07", "2024-07-02"])
+    assert res["row_count"] == 48
+    assert res["duplicate_timestamps"] == 0

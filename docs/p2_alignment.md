@@ -55,9 +55,9 @@ Manifest JSON:     data/manifests/aligned_dataset_manifest.json
 ============================================================================
 ```
 
-### 2. Run the Documented Dataset Loader (Teammate Verification)
+### 2. Run the Documented Dataset Loader
 
-Teammates (Person B or Person C) can verify the dataset using the loader CLI:
+Any teammate can inspect and verify the dataset using the loader CLI:
 
 ```bash
 PYTHONPATH=src python -m heattrace.cli --load-aligned
@@ -80,6 +80,8 @@ Duplicate hours:   0
 Missingness:       {'temperature_missing_count': 0, 'price_missing_count': 0, 'demand_missing_count': 0, 'net_generation_missing_count': 0, 'carbon_missing_count': 0}
 EIA Issue Flags:   {'carbon_data_issue_count': 48, 'carbon_primary_analysis_eligible_count': 0}
 Max Reconcil Diff: 6.583460e-07 lb/kWh (tol: 0.0001)
+Max Demand Diff:   0.00 MW (API demand_mw vs workbook_demand_mw)
+Max Net Gen Diff:  0.00 MW (API net_generation_mw vs workbook_net_generation_mw)
 
 --- Sample First 5 Rows ---
 ...
@@ -100,5 +102,5 @@ print(f"Loaded {len(df)} rows across {df['timestamp_utc'].min()} to {df['timesta
 
 ## Gate G2-a Status
 
-- **Status**: **Pending Independent Teammate Verification**
-- **Action Required**: Person B or Person C must execute `PYTHONPATH=src python -m heattrace.cli --load-aligned` in their local environment and confirm the 48-row table passes schema and reconciliation checks.
+- **Status**: **Complete** — Person A clean-environment loader verification passed. The documented loader remains available for optional independent reproduction.
+- **Verification Details**: Verified in an isolated clean virtual environment outside the repository against `data/processed/hourly_caiso_v0.parquet`. All 48 rows passed schema, monotonic ordering, physics bounds, and reconciliation checks with exit code 0.

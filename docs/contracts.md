@@ -10,7 +10,7 @@ Deterministic column ordering in `data/processed/hourly_caiso_v0.parquet` and `d
 
 | Column | Type | Unit / Meaning | Nullable | Source / Policy |
 |---|---|---|---|---|
-| `timestamp_utc` | `datetime64[ns, UTC]` | Timezone-aware UTC interval start | No | Canonical timeline |
+| `timestamp_utc` | Timezone-aware UTC datetime/timestamp | UTC interval start with hourly semantics | No | Canonical timeline (top-of-hour, monotonic) |
 | `qc_day_type` | `string` | QC window category (`heatwave` or `ordinary`) | No | Evaluation category |
 | `local_date` | `string` | Local calendar date (`YYYY-MM-DD`) in `America/Los_Angeles` | No | QC reference date |
 | `temperature_c` | `float64` | Hourly arithmetic mean temperature (°C) | Yes | NOAA GHCNh SFO (`USW00023234`) |
@@ -20,9 +20,9 @@ Deterministic column ordering in `data/processed/hourly_caiso_v0.parquet` and `d
 | `temperature_missing` | `bool` | Explicit missingness indicator for temperature | No | True if 0 valid observations |
 | `price_usd_per_mwh` | `float64` | CAISO DAM total LMP (USD/MWh) | Yes | CAISO OASIS `TH_NP15_GEN-APND` |
 | `price_missing` | `bool` | Explicit missingness indicator for price | No | True if price is missing/null |
-| `demand_mw` | `float64` | Balancing authority demand (MW-equivalent average) | Yes | EIA-930 CISO (from workbook MWh) |
+| `demand_mw` | `float64` | Balancing authority demand (MW-equivalent average) | Yes | EIA API v2 `/electricity/rto/region-data` (`type=D`) |
 | `demand_missing` | `bool` | Explicit missingness indicator for demand | No | True if demand is null |
-| `net_generation_mw` | `float64` | Net generation (MW-equivalent average) | Yes | EIA-930 CISO (from workbook MWh) |
+| `net_generation_mw` | `float64` | Net generation (MW-equivalent average) | Yes | EIA API v2 `/electricity/rto/region-data` (`type=NG`) |
 | `net_generation_missing` | `bool` | Explicit missingness indicator for net generation | No | True if net generation is null |
 | `carbon_g_per_kwh` | `float64` | Production-based generated carbon intensity (g CO₂/kWh) | Yes | EIA-930 canonical generated proxy |
 | `carbon_missing` | `bool` | Explicit missingness indicator for carbon | No | True if carbon intensity is null |
@@ -37,7 +37,12 @@ Deterministic column ordering in `data/processed/hourly_caiso_v0.parquet` and `d
 | `consumed_intensity_g_per_kwh` | `float64` | Consumed intensity converted to g CO₂/kWh | Yes | $1\text{ lb/kWh} = 453.59237\text{ g/kWh}$ |
 | `positive_generation_mwh` | `float64` | Sum of positive generation (MWh) | Yes | EIA-930 reconciliation denominator |
 | `consumed_electricity_mwh` | `float64` | Electricity consumed (MWh) | Yes | EIA-930 consumed denominator |
-| `eia_api_net_generation_mw` | `float64` | Net generation from EIA API v2 (MW) | Yes | EIA API v2 region-data comparison |
+| `eia_api_demand_mw` | `float64` | Original EIA API demand value used as canonical demand (MW) | Yes | EIA API v2 region-data (`type=D`) |
+| `eia_api_net_generation_mw` | `float64` | Original EIA API net-generation value used as canonical net generation (MW) | Yes | EIA API v2 region-data (`type=NG`) |
+| `workbook_demand_mw` | `float64` | Corresponding official workbook demand value retained for audit (MW) | Yes | EIA-930 CISO workbook |
+| `workbook_net_generation_mw` | `float64` | Corresponding official workbook net-generation value retained for audit (MW) | Yes | EIA-930 CISO workbook |
+| `demand_source_difference_mw` | `float64` | Absolute difference between API and workbook demand (MW) | Yes | Audit comparison ($|\text{API} - \text{workbook}|$) |
+| `net_generation_source_difference_mw` | `float64` | Absolute difference between API and workbook net generation (MW) | Yes | Audit comparison ($|\text{API} - \text{workbook}|$) |
 | `recalculated_generated_intensity_lb_per_kwh` | `float64` | Independently recalculated generated intensity (lb/kWh) | Yes | Recalculated from emissions & generation |
 | `recalculated_generated_intensity_g_per_kwh` | `float64` | Independently recalculated generated intensity (g/kWh) | Yes | Recalculated converted to g/kWh |
 | `generated_intensity_reconciliation_difference` | `float64` | Difference between recalculated and reported intensity | Yes | Tolerance limit: $\le 10^{-4}\text{ lb/kWh}$ |

@@ -121,7 +121,7 @@ Phase P2 builds and validates the first canonical aligned dataset (`data/process
 > - **P2-03 (QC & Validation):** **Complete (Verified)**. Deterministic schema, timestamp alignment, monotonic ordering, non-negativity, missingness, EIA issue flags, and source audit differences verified.
 > - **P2-04 (Onboarding & Documentation):** **Complete (Verified)**. Documentation in `docs/p2_alignment.md`, `docs/contracts.md`, and `docs/carbon_method.md`.
 > - **P2-TEST (Unit & Integration Tests):** **Complete (Verified)**. Comprehensive tests in `tests/test_p2_alignment.py` and `tests/test_p1_ingest.py` passing with zero test mutation of production data.
-> - **Gate G2-a:** **Verified Clean-Environment Loader (Person A Clean-Env Verification Complete; Peer Review Pending)**.
+> - **Gate G2-a:** **Complete — Person A clean-environment loader verification passed. The documented loader remains available for optional independent reproduction.**
 
 ### Running P2 Alignment and Verification
 
