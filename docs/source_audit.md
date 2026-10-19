@@ -40,7 +40,7 @@ Status: P0 source audit complete on 17 October 2026. Acquisition smoke tests rem
     - `Notes`: official column definitions, documentation, and unit specifications (MWh, metric tons, lbs/kWh).
     - `Known Data Issues`: hourly anomalous issue flags joined on BA + UTC time.
   - Timestamp semantics: `UTC time` and `Local time` are hour-ending; interval-start UTC is $\text{UTC time} - 1\text{ hour}$.
-- Note: EIA states that historical submissions are available from January 2019, which covers the 2022–2025 study period. Ingestion of both API v2 physical grid data and native Excel workbook carbon data is implemented, with authentic live QC pending key availability and policy resolution regarding flagged records in the frozen QC sample.
+- Note: EIA states that historical submissions are available from January 2019, which covers the 2022–2025 study period. Ingestion of both API v2 physical grid data and native Excel workbook carbon data is implemented and verified for 2024 percentile-defined extreme-heat (`2024-07-02`) and ordinary (`2024-06-07`) QC days. Native emissions status is `success_with_data_issues` due to Known Data Issues flags present across modern EIA balancing authority submissions, accepted for pipeline QC under an explicit ingestion-only policy. The former 2022 candidates remain documented as superseded candidates replaced due to CAISO's 39-month free API window.
 
 ## Accessibility and risk decisions
 

@@ -605,25 +605,29 @@ def test_cli_dry_run_all(capsys):
     assert "[EIA] Status: dry_run" in captured.out
 
 
-def test_cli_eia_api_fails_without_key_when_explicitly_requested():
+def test_cli_eia_api_fails_without_key_when_explicitly_requested(tmp_path):
     # When user passes --source eia --eia-api without EIA_API_KEY, exit code must be nonzero
     with patch.dict(os.environ, {}, clear=True):
-        args = parse_args(["--source", "eia", "--eia-api"])
+        args = parse_args(["--source", "eia", "--eia-api", "--data-dir", str(tmp_path)])
         code = run_smoke_tests(args)
         assert code != 0
 
 
-def test_cli_all_without_key_non_failing():
+def test_cli_all_without_key_non_failing(tmp_path):
     # All-sources run without key should report blocked_pending_api_key and return 0
     with patch.dict(os.environ, {}, clear=True):
-        args = parse_args(["--source", "eia"])
+        args = parse_args(["--source", "eia", "--data-dir", str(tmp_path)])
         code = run_smoke_tests(args)
         assert code == 0
 
 
-def test_eia_emissions_status_accurate_and_no_guessed_filenames():
+def test_eia_emissions_status_accurate_and_no_guessed_filenames(tmp_path):
     # Dry run should report blocked_pending_emissions_file_discovery
-    res_dry = run_eia_smoke_test(dry_run=True)
+    res_dry = run_eia_smoke_test(
+        dry_run=True,
+        data_dir=tmp_path / "raw/eia",
+        manifest_path=tmp_path / "manifest.jsonl",
+    )
     assert res_dry["emissions_status"] == "blocked_pending_emissions_file_discovery"
     assert res_dry["demand_status"] == "dry_run"
     assert res_dry["net_generation_status"] == "dry_run"
@@ -634,7 +638,11 @@ def test_eia_emissions_status_accurate_and_no_guessed_filenames():
 
     # Unauthenticated run should report blocked_pending_emissions_file_discovery
     with patch.dict(os.environ, {}, clear=True):
-        res_blocked = run_eia_smoke_test(use_api=False)
+        res_blocked = run_eia_smoke_test(
+            use_api=False,
+            data_dir=tmp_path / "raw/eia",
+            manifest_path=tmp_path / "manifest.jsonl",
+        )
         assert res_blocked["status"] == "blocked_pending_api_key"
         assert res_blocked["demand_status"] == "blocked_pending_api_key"
         assert res_blocked["net_generation_status"] == "blocked_pending_api_key"
@@ -1940,7 +1948,12 @@ def test_native_eia_workbook_status_clean_vs_flagged(tmp_path):
     # 1. All-zero flags -> 'success'
     wb_clean = tmp_path / "clean_issues.xlsx"
     _create_mock_ciso_xlsx(wb_clean, hours=24, start_date_utc=start_utc, issue_flag_mode="none")
-    ingest_clean = ingest_eia_workbook(wb_clean, requested_start=start_utc, requested_end=end_utc)
+    ingest_clean = ingest_eia_workbook(
+        wb_clean,
+        requested_start=start_utc,
+        requested_end=end_utc,
+        manifest_path=tmp_path / "manifest.jsonl",
+    )
     assert ingest_clean["status"] == "success"
     assert ingest_clean["native_emissions_status"] == "success"
     assert ingest_clean["carbon_status"] == "success"
@@ -1950,7 +1963,12 @@ def test_native_eia_workbook_status_clean_vs_flagged(tmp_path):
     # 2. Flagged records -> 'success_with_data_issues'
     wb_flagged = tmp_path / "flagged_issues.xlsx"
     _create_mock_ciso_xlsx(wb_flagged, hours=24, start_date_utc=start_utc, issue_flag_mode="all")
-    ingest_flagged = ingest_eia_workbook(wb_flagged, requested_start=start_utc, requested_end=end_utc)
+    ingest_flagged = ingest_eia_workbook(
+        wb_flagged,
+        requested_start=start_utc,
+        requested_end=end_utc,
+        manifest_path=tmp_path / "manifest.jsonl",
+    )
     assert ingest_flagged["status"] == "success_with_data_issues"
     assert ingest_flagged["native_emissions_status"] == "success_with_data_issues"
     assert ingest_flagged["carbon_status"] == "success_with_data_issues"
@@ -2291,22 +2309,24 @@ def test_qc_deterministic_gates(tmp_path):
             pass
 
     # Direct test of gate logic via mocked smoke test responses:
-    def execute_qc(cli_flags, noaa_dm=35.6, caiso_cov=24, caiso_miss=0, caiso_dup=0, eia_api_ok=True, native_stat="success", dup_native=0, omit_intensity=False):
+    def execute_qc(cli_flags, noaa_dm=31.1, caiso_cov=24, caiso_miss=0, caiso_dup=0, eia_api_ok=True, native_stat="success", dup_native=0, omit_intensity=False, custom_sources=None):
         c_dir = tmp_path / "cfg"
         c_dir.mkdir(exist_ok=True)
-        # copy sources.yaml
         import shutil
-        shutil.copy("configs/sources.yaml", c_dir / "sources.yaml")
+        if custom_sources:
+            (c_dir / "sources.yaml").write_text(custom_sources, encoding="utf-8")
+        else:
+            shutil.copy("configs/sources.yaml", c_dir / "sources.yaml")
 
         args = parse_args(["--qc", f"--config-dir={c_dir}", f"--data-dir={tmp_path}"] + cli_flags)
 
         def mock_noaa(*a, **kw):
-            date_str = "2022-09-05" if "2022-09-05" in str(kw.get("day_start")) else "2022-06-01"
-            temp = 35.6 if date_str == "2022-09-05" else 21.7
-            if noaa_dm is not None and noaa_dm != 35.6 and date_str == "2022-09-05":
+            date_str = "2024-07-02" if "2024-07-02" in str(kw.get("day_start")) else "2024-06-07"
+            temp = 31.1 if date_str == "2024-07-02" else 21.7
+            if noaa_dm is not None and noaa_dm != 31.1 and date_str == "2024-07-02":
                 temp = noaa_dm
             return {
-                "status": "success" if temp in (35.6, 21.7) else "failure",
+                "status": "success" if temp in (31.1, 21.7) else "failure",
                 "daily_maxima": [{
                     "local_date": date_str,
                     "daily_max_temperature_c": temp,
@@ -2373,7 +2393,7 @@ def test_qc_deterministic_gates(tmp_path):
             }
 
         # Ensure noaa_psv_cache exists so compute_baseline_summer_percentile is executed
-        noaa_cache_file = tmp_path / "raw/noaa/GHCNh_USW00023234_2022.psv"
+        noaa_cache_file = tmp_path / "raw/noaa/GHCNh_USW00023234_2024.psv"
         noaa_cache_file.parent.mkdir(parents=True, exist_ok=True)
         noaa_cache_file.write_text("header\n", encoding="utf-8")
 
@@ -2381,37 +2401,73 @@ def test_qc_deterministic_gates(tmp_path):
              patch("heattrace.cli.run_caiso_smoke_test", side_effect=mock_caiso), \
              patch("heattrace.cli.run_eia_smoke_test", side_effect=mock_eia), \
              patch("heattrace.cli.compute_baseline_summer_percentile", return_value={
-                 "baseline_years": [2022],
-                 "summer_median_c": 22.2,
+                 "baseline_years": [2024],
+                 "summer_median_c": 20.6,
                  "heatwave_percentile": 98.0,
-                 "heatwave_threshold_c": 34.19,
+                 "heatwave_threshold_c": 30.0,
                  "valid_baseline_days": 122,
              }):
             return run_qc_tests(args)
 
-    # 1. All clean success on both days -> returns 0
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], native_stat="success") == 0
+    # 1. Ingestion-only policy in sources.yaml (fail_on_eia_data_issues: false) accepts success_with_data_issues -> returns 0
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], native_stat="success_with_data_issues") == 0
 
-    # 2. Flagged EIA data under default conservative policy -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], native_stat="success_with_data_issues") == 1
+    # 2. If conservative policy enforced via CLI flag --fail-on-eia-data-issues -> returns 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--fail-on-eia-data-issues"], native_stat="success_with_data_issues") == 1
 
-    # 3. Flagged EIA data permitted with warning acceptance flag -> returns 0
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], native_stat="success_with_data_issues") == 0
+    # 3. Clean success on both days -> returns 0
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], native_stat="success") == 0
 
     # 4. Blocked EIA API -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], eia_api_ok=False) == 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], eia_api_ok=False) == 1
 
     # 5. Incomplete CAISO -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], caiso_cov=20, caiso_miss=4) == 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], caiso_cov=20, caiso_miss=4) == 1
 
-    # 6. Failed/provisional NOAA day -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], noaa_dm=15.0) == 1
+    # 6. Failed NOAA day (below P98 threshold of 30.0°C) -> returns 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], noaa_dm=28.0) == 1
 
     # 7. Missing native carbon metric -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], omit_intensity=True) == 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], omit_intensity=True) == 1
 
     # 8. Duplicate hourly records -> returns 1
-    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx", "--no-fail-on-eia-data-issues"], dup_native=2) == 1
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], dup_native=2) == 1
+
+    # 9. Optional floor test: when heatwave_threshold_min_c=34.0 is configured, 31.1°C fails (31.1 < max(30.0, 34.0))
+    cfg_with_floor = """
+study:
+  region: CAISO
+  years: [2024]
+  months: [6, 7, 8, 9]
+  timezone: UTC
+price:
+  node: TH_NP15_GEN-APND
+carbon:
+  balancing_authority: CISO
+weather:
+  stations:
+    - id: USW00023234
+qc:
+  baseline:
+    years: [2024]
+    months: [6, 7, 8, 9]
+    percentile_method: linear_interpolation
+    heatwave_percentile: 98.0
+    tolerance_c: 0.5
+    heatwave_threshold_min_c: 34.0
+    ordinary_day_range_c: [20.0, 24.0]
+  days:
+    heatwave:
+      date: "2024-07-02"
+      type: heatwave
+      expected_max_temperature_c: 31.1
+    ordinary:
+      date: "2024-06-07"
+      type: ordinary
+      expected_max_temperature_c: 21.7
+  fail_on_eia_data_issues: false
+"""
+    assert execute_qc(["--eia-emissions-workbook=dummy.xlsx"], custom_sources=cfg_with_floor) == 1
 
 
 # =========================================================================
@@ -2506,8 +2562,8 @@ def test_coverage_csv_authentic_workbook_counts(tmp_path):
 
     csv_file = tmp_path / "authentic_qc_coverage.csv"
     qc_days = [
-        ("ordinary", "2022-06-01", datetime(2022, 6, 1, 7, 0, tzinfo=timezone.utc), datetime(2022, 6, 2, 7, 0, tzinfo=timezone.utc)),
-        ("heatwave", "2022-09-05", datetime(2022, 9, 5, 7, 0, tzinfo=timezone.utc), datetime(2022, 9, 6, 7, 0, tzinfo=timezone.utc)),
+        ("ordinary", "2024-06-07", datetime(2024, 6, 7, 7, 0, tzinfo=timezone.utc), datetime(2024, 6, 8, 7, 0, tzinfo=timezone.utc)),
+        ("heatwave", "2024-07-02", datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc), datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)),
     ]
 
     coverage_rows = []
@@ -2560,3 +2616,126 @@ def test_coverage_csv_authentic_workbook_counts(tmp_path):
         assert r["data_issues_matched_count"] == "24"
         assert r["data_issues_flagged_count"] == "24"
         assert r["data_issues_unflagged_count"] == "0"
+
+
+def test_smoke_eia_native_data_issues_reporting_fixes(tmp_path):
+    """Test non-QC EIA smoke-test path:
+    1. native status 'success_with_data_issues' must count as successful workbook ingestion and NOT generate a contradictory blocked_pending_emissions_file_discovery row.
+    2. Native EIA smoke-report coverage rows must serialize data_issues_matched_count, data_issues_flagged_count, and data_issues_unflagged_count.
+    3. Non-EIA rows leave those fields blank.
+    4. No row simultaneously reports successful workbook ingestion and claims workbook discovery is blocked.
+    """
+    from heattrace.cli import run_smoke_tests, parse_args
+    import csv
+
+    # Set up config and dummy directories
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "study.yaml").write_text("timestamp:\n  timezone: UTC\n", encoding="utf-8")
+    (config_dir / "sources.yaml").write_text(
+        "study:\n  region: CAISO\ncarbon:\n  balancing_authority: CISO\n"
+        "weather:\n  stations:\n    - id: USW00023234\nprice:\n  node: TH_NP15_GEN-APND\n",
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = data_dir / "manifests/raw_sources.jsonl"
+    coverage_path = data_dir / "manifests/coverage.csv"
+
+    # Mock run_eia_smoke_test returning success_with_data_issues
+    mock_cov = {
+        "requested_start": "2022-06-01T00:00:00+00:00",
+        "requested_end": "2022-06-02T00:00:00+00:00",
+        "observed_start": "2022-06-01T00:00:00+00:00",
+        "observed_end": "2022-06-01T23:00:00+00:00",
+        "row_count": 24,
+        "unique_timestamps": 24,
+        "covered_hourly_bins": 24,
+        "expected_hours": 24,
+        "missing_hours": 0,
+        "duplicate_timestamps": 0,
+    }
+    mock_eia_result = {
+        "status": "success",
+        "demand_status": "success",
+        "net_generation_status": "success",
+        "native_emissions_status": "success_with_data_issues",
+        "carbon_status": "success_with_data_issues",
+        "coverage": {
+            "demand": mock_cov,
+            "net_generation": mock_cov,
+            "emissions_generated": mock_cov,
+            "emissions_consumed": mock_cov,
+            "intensity_generated": mock_cov,
+            "intensity_consumed": mock_cov,
+        },
+        "workbook_result": {
+            "data_issues_matched_count": 24,
+            "data_issues_flagged_count": 24,
+            "data_issues_unflagged_count": 0,
+        },
+        "data_issues_matched_count": 24,
+        "data_issues_flagged_count": 24,
+        "data_issues_unflagged_count": 0,
+    }
+
+    args = parse_args([
+        "--source=eia",
+        f"--config-dir={config_dir}",
+        f"--data-dir={data_dir}",
+    ])
+
+    with patch("heattrace.cli.run_eia_smoke_test", return_value=mock_eia_result):
+        exit_code = run_smoke_tests(args)
+
+    assert exit_code == 0
+    assert coverage_path.exists()
+
+    with coverage_path.open("r", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+
+    datasets = [r["dataset"] for r in rows]
+    # 1. No contradictory blocker row
+    assert "EIA-930-emissions-native" not in datasets
+    assert not any("blocked_pending_emissions_file_discovery" in r["status"] for r in rows)
+
+    # 2. Issue count fields survived serialization for native metrics
+    native_rows = [r for r in rows if r["dataset"].startswith("EIA-930-emissions-") or r["dataset"].startswith("EIA-930-intensity-")]
+    assert len(native_rows) == 4
+    for r in native_rows:
+        assert r["status"] == "success_with_data_issues"
+        assert r["data_issues_matched_count"] == "24"
+        assert r["data_issues_flagged_count"] == "24"
+        assert r["data_issues_unflagged_count"] == "0"
+
+    # 3. Non-native / non-EIA rows leave those fields blank
+    api_rows = [r for r in rows if r["dataset"] in ("EIA-930-demand", "EIA-930-net-generation")]
+    assert len(api_rows) == 2
+    for r in api_rows:
+        assert r["data_issues_matched_count"] == ""
+        assert r["data_issues_flagged_count"] == ""
+        assert r["data_issues_unflagged_count"] == ""
+
+
+def test_production_manifests_remain_unmodified_by_tests(tmp_path):
+    """Regression test ensuring that test runs do not create or modify production manifests."""
+    prod_manifest = Path("data/manifests/raw_sources.jsonl")
+    prod_coverage = Path("data/manifests/coverage.csv")
+
+    manifest_mtime = prod_manifest.stat().st_mtime if prod_manifest.exists() else None
+    coverage_mtime = prod_coverage.stat().st_mtime if prod_coverage.exists() else None
+
+    # Run smoke test with explicit tmp_path
+    args = parse_args(["--dry-run", "--data-dir", str(tmp_path)])
+    code = run_smoke_tests(args)
+    assert code == 0
+
+    if manifest_mtime is not None:
+        assert prod_manifest.stat().st_mtime == manifest_mtime
+    else:
+        assert not prod_manifest.exists()
+
+    if coverage_mtime is not None:
+        assert prod_coverage.stat().st_mtime == coverage_mtime
+    else:
+        assert not prod_coverage.exists()

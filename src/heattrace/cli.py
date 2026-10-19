@@ -23,32 +23,38 @@ from heattrace.ingest.eia import get_eia_api_key, run_eia_smoke_test, validate_e
 
 
 def compute_baseline_summer_percentile(
-    psv_path: str | Path,
+    psv_path: str | Path | list[str | Path],
     station_id: str,
     *,
-    baseline_years: list[int] = [2022],
+    baseline_years: list[int] = [2024],
     summer_months: list[int] = [6, 7, 8, 9],
     target_timezone: str = "America/Los_Angeles",
     percentile_val: float = 98.0,
 ) -> dict[str, Any]:
     """Compute baseline summer daily maximum statistics and percentile threshold from authentic cached NOAA data."""
-    path = Path(psv_path)
-    if not path.exists():
-        raise FileNotFoundError(f"Baseline NOAA PSV not found: {path}")
+    if isinstance(psv_path, (str, Path)):
+        paths = [Path(psv_path)]
+    else:
+        paths = [Path(p) for p in psv_path]
+
+    for p in paths:
+        if not p.exists():
+            raise FileNotFoundError(f"Baseline NOAA PSV not found: {p}")
 
     from zoneinfo import ZoneInfo
     tz = ZoneInfo(target_timezone)
 
-    # Parse all rows in baseline years and summer months
-    all_rows = parse_ghcnh_psv(path)
+    # Parse all rows across all baseline year files
     summer_rows: list[dict[str, Any]] = []
-    for r in all_rows:
-        ts = r["timestamp_utc"].astimezone(tz)
-        if ts.year in baseline_years and ts.month in summer_months:
-            summer_rows.append(r)
+    for p in paths:
+        rows = parse_ghcnh_psv(p)
+        for r in rows:
+            ts = r["timestamp_utc"].astimezone(tz)
+            if ts.year in baseline_years and ts.month in summer_months:
+                summer_rows.append(r)
 
     if not summer_rows:
-        raise ValueError(f"No summer rows found for station {station_id} in {path}")
+        raise ValueError(f"No summer rows found for station {station_id} in {paths}")
 
     # Extract daily maxima using authoritative quality and local-day policy
     daily_maxima = extract_daily_maxima(summer_rows, target_timezone=target_timezone)
@@ -269,8 +275,12 @@ def run_smoke_tests(args: argparse.Namespace) -> int:
             )
             results["eia"] = res
             status = res["status"]
-            cov_dict = res.get("coverage", {})
-            has_native_success = res.get("native_emissions_status") == "success"
+            cov_dict = res.get("coverage") or {}
+            has_native_success = res.get("native_emissions_status") in ("success", "success_with_data_issues")
+            wb_res = res.get("workbook_result") or {}
+            matched_cnt = wb_res.get("data_issues_matched_count") if wb_res else res.get("data_issues_matched_count")
+            flagged_cnt = wb_res.get("data_issues_flagged_count") if wb_res else res.get("data_issues_flagged_count")
+            unflagged_cnt = wb_res.get("data_issues_unflagged_count") if wb_res else res.get("data_issues_unflagged_count")
 
             # Always emit individual metric coverage rows if available
             for metric, cov in cov_dict.items():
@@ -292,6 +302,9 @@ def run_smoke_tests(args: argparse.Namespace) -> int:
                         "notes": f"BA {ba} staging emissions",
                     })
                 elif metric in ("emissions_generated", "emissions_consumed", "intensity_generated", "intensity_consumed"):
+                    row_notes = f"BA {ba} native workbook {metric}"
+                    if matched_cnt is not None and flagged_cnt is not None:
+                        row_notes += f" (data issues flagged: {flagged_cnt}/{matched_cnt})"
                     coverage_rows.append({
                         "source": "EIA",
                         "dataset": f"EIA-930-{metric.replace('_', '-')}",
@@ -306,7 +319,10 @@ def run_smoke_tests(args: argparse.Namespace) -> int:
                         "expected_hours": cov["expected_hours"],
                         "missing_hours": cov["missing_hours"],
                         "duplicate_timestamps": cov["duplicate_timestamps"],
-                        "notes": f"BA {ba} native workbook {metric}",
+                        "notes": row_notes,
+                        "data_issues_matched_count": matched_cnt if matched_cnt is not None else "",
+                        "data_issues_flagged_count": flagged_cnt if flagged_cnt is not None else "",
+                        "data_issues_unflagged_count": unflagged_cnt if unflagged_cnt is not None else "",
                     })
                 elif metric in ("demand", "net_generation"):
                     metric_stat = res.get(f"{metric}_status", status)
@@ -485,15 +501,23 @@ def run_qc_tests(args: argparse.Namespace) -> int:
         "threshold_label": "P1 provisional operational threshold (single baseline year 2022)",
     })
 
-    # Validate baseline summer statistics from cached NOAA data if available
+    # Validate baseline summer statistics from cached NOAA data according to qc.baseline.years
     baseline_stats: dict[str, Any] | None = None
-    noaa_psv_cache = data_dir / f"raw/noaa/GHCNh_{station_id}_{sources_cfg['study']['years'][0]}.psv"
-    if noaa_psv_cache.exists():
+    baseline_years_list = baseline_cfg.get("years", [2024])
+    baseline_paths: list[Path] = [
+        data_dir / f"raw/noaa/GHCNh_{station_id}_{yr}.psv" for yr in baseline_years_list
+    ]
+
+    missing_baseline_files = [p for p in baseline_paths if not p.exists()]
+    if missing_baseline_files:
+        if not args.dry_run:
+            print(f"Notice: Baseline NOAA PSV file(s) missing: {missing_baseline_files}. Will attempt acquisition during QC.")
+    else:
         try:
             baseline_stats = compute_baseline_summer_percentile(
-                noaa_psv_cache,
+                baseline_paths,
                 station_id,
-                baseline_years=baseline_cfg.get("years", [2022]),
+                baseline_years=baseline_years_list,
                 summer_months=baseline_cfg.get("months", [6, 7, 8, 9]),
                 target_timezone=target_tz,
                 percentile_val=baseline_cfg.get("heatwave_percentile", 98.0),
@@ -506,7 +530,9 @@ def run_qc_tests(args: argparse.Namespace) -> int:
 
     print("\n=================== HeatTrace P1-QC Quality Control Runner ===================")
     print(f"Primary Station: {station_id} | Node: {node} | BA: {ba} | Timezone: {target_tz}")
-    print("Evaluating 2 explicit days: Heatwave (2022-09-05) and Ordinary Summer Day (2022-06-01)")
+    hw_date_str = days_cfg.get("heatwave", {}).get("date", "unknown")
+    ord_date_str = days_cfg.get("ordinary", {}).get("date", "unknown")
+    print(f"Evaluating 2 explicit days: Heatwave ({hw_date_str}) and Ordinary Summer Day ({ord_date_str})")
     if baseline_stats:
         print(
             f"Baseline Summer ({baseline_stats['baseline_years']}, N={baseline_stats['valid_baseline_days']} days): "
@@ -561,8 +587,11 @@ def run_qc_tests(args: argparse.Namespace) -> int:
                 ord_range = baseline_cfg.get("ordinary_day_range_c", [20.0, 24.0])
 
                 if day_label == "heatwave":
-                    hw_min = baseline_cfg.get("heatwave_threshold_min_c", 34.0)
-                    effective_threshold = max(hw_thresh, hw_min)
+                    hw_min = baseline_cfg.get("heatwave_threshold_min_c")
+                    if hw_min is not None:
+                        effective_threshold = max(hw_thresh, float(hw_min))
+                    else:
+                        effective_threshold = hw_thresh
                     meets_threshold = daily_max_c >= effective_threshold
                     matches_expected = exp_c is None or abs(daily_max_c - exp_c) <= tol
                     if meets_threshold and matches_expected:

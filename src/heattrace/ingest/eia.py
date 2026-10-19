@@ -22,6 +22,7 @@ USER_AGENT = "HeatTrace-Research/0.1 (+https://github.com/siddharthbhakta/HeatTr
 EIA_REGION_DATA_URL = "https://api.eia.gov/v2/electricity/rto/region-data/data"
 EIA_FUEL_TYPE_DATA_URL = "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data"
 EIA_GRID_MONITOR_DASHBOARD_URL = "https://www.eia.gov/electricity/gridmonitor/"
+DEFAULT_EIA_API_TIMEOUT_SECONDS = 120.0
 
 
 def get_eia_api_key() -> str | None:
@@ -1137,6 +1138,7 @@ def run_eia_smoke_test(
     data_dir: str | Path = "data/raw/eia",
     manifest_path: str | Path = "data/manifests/raw_sources.jsonl",
     dry_run: bool = False,
+    api_timeout: float = DEFAULT_EIA_API_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Run EIA smoke test acquisition."""
     if start_date is None:
@@ -1276,7 +1278,7 @@ def run_eia_smoke_test(
 
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         try:
-            with urllib.request.urlopen(req, timeout=30.0) as resp:
+            with urllib.request.urlopen(req, timeout=api_timeout) as resp:
                 content = resp.read()
         except Exception as e:
             safe_msg = redact_api_key(str(e), api_key)
