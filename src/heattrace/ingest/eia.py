@@ -50,9 +50,10 @@ def build_eia_query_params(
 ) -> list[tuple[str, str]]:
     """Build generic query parameters for EIA API v2 region-data.
     
-    Translates half-open [requested_start, requested_end) into EIA's inclusive date bounds:
-    - start is requested_start (e.g. 2022-06-01T00)
-    - end is requested_end minus 1 hour (e.g. 2022-06-01T23)
+    Translates canonical interval-start half-open [requested_start, requested_end)
+    into EIA's inclusive hour-ending date bounds:
+    - start is requested_start + 1 hour (e.g. 2024-07-02T08 for canonical interval 2024-07-02T07)
+    - end is requested_end (e.g. 2024-07-03T07 for canonical interval ending 2024-07-03T07)
     
     Explicitly requests both demand (D) and net generation (NG) using repeated
     facets[type][] parameters.
@@ -75,8 +76,11 @@ def build_eia_query_params(
     if end_utc.minute != 0 or end_utc.second != 0 or end_utc.microsecond != 0:
         raise ValueError(f"requested_end must be aligned to a full hour, got {end_utc}")
 
-    # Inclusive end period in EIA API v2
-    inclusive_end = end_utc - timedelta(hours=1)
+    # Hour-ending start and end periods for EIA API v2
+    # For canonical interval [start_utc, end_utc), the first hour ending is start_utc + 1 hour,
+    # and the last hour ending is end_utc.
+    inclusive_start = start_utc + timedelta(hours=1)
+    inclusive_end = end_utc
 
     # Use a deterministic list of (key, value) pairs sorted by key, then value
     params: list[tuple[str, str]] = [
@@ -86,7 +90,7 @@ def build_eia_query_params(
         ("facets[type][]", "D"),
         ("facets[type][]", "NG"),
         ("frequency", "hourly"),
-        ("start", start_utc.strftime("%Y-%m-%dT%H")),
+        ("start", inclusive_start.strftime("%Y-%m-%dT%H")),
     ]
     if api_key:
         params.append(("api_key", api_key))
@@ -338,20 +342,27 @@ def parse_and_validate_eia_json(
         period_str = str(r["period"]).strip()
         try:
             if "T" in period_str and len(period_str) == 13:
-                # Format: 2022-06-01T00
-                dt = datetime.strptime(period_str, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+                # Format: 2024-07-02T08 (hour-ending UTC period)
+                he_dt = datetime.strptime(period_str, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
             else:
-                dt = datetime.fromisoformat(period_str)
-                if dt.tzinfo is None:
+                dt_raw = datetime.fromisoformat(period_str)
+                if dt_raw.tzinfo is None:
                     # EIA standard timestamps without offset represent UTC
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    he_dt = dt_raw.replace(tzinfo=timezone.utc)
                 else:
-                    dt = dt.astimezone(timezone.utc)
+                    he_dt = dt_raw.astimezone(timezone.utc)
         except Exception as e:
             raise ValueError(f"Record {i}: malformed period timestamp '{period_str}': {e}") from e
 
+        # Official EIA-930 reporting convention: hourly periods represent hour-ending UTC.
+        # Canonical interval start is hour_ending_utc - 1 hour.
+        dt = he_dt - timedelta(hours=1)
+
         if dt < start_utc or dt >= end_utc:
-            raise ValueError(f"Record {i}: timestamp {dt} is outside requested interval [{start_utc}, {end_utc})")
+            raise ValueError(
+                f"Record {i}: converted interval-start timestamp {dt} (hour-ending {he_dt}) "
+                f"is outside requested interval [{start_utc}, {end_utc})"
+            )
 
         # Parse numeric value (handles strings, ints, floats)
         num_val = parse_numeric_value(r["value"], i)
@@ -359,6 +370,8 @@ def parse_and_validate_eia_json(
         metric_type = str(r["type"]).strip().upper()
         row_dict = {
             "balancing_authority": respondent,
+            "hour_ending_utc": he_dt,
+            "period": period_str,
             "timestamp_utc": dt,
             "type": metric_type,
             "type_name": r.get("type-name", ""),
@@ -1167,7 +1180,9 @@ def run_eia_smoke_test(
         "end_date": end_utc.isoformat(),
         "mode": "api" if use_api else "bulk_or_api",
         "provider": "EIA",
+        "query_end_hour_ending": end_utc.strftime("%Y-%m-%dT%H"),
         "query_params": query_params_unauthenticated,
+        "query_start_hour_ending": (start_utc + timedelta(hours=1)).strftime("%Y-%m-%dT%H"),
         "route": "electricity/rto/region-data",
         "start_date": start_utc.isoformat(),
         "url": url_for_dry_run,

@@ -14,6 +14,18 @@ The v0 dataset covers exactly 48 hourly intervals representing two authentic loc
 
 Total rows: **48**. Unique timestamps: **48**. Duplicate timestamps: **0**.
 
+## Methodology Decisions and Source Alignment
+
+- **Canonical Timestamp**: Timezone-aware UTC interval start (`timestamp_utc`), sorted ascending.
+- **Provider Timestamp Treatment**:
+  - **NOAA GHCNh**: Instantaneous/interval observations mapped into UTC hourly bins $[T, T+1\text{h})$. Arithmetic mean temperature calculated for accepted observations under the frozen quality policy.
+  - **CAISO OASIS DAM LMP**: `INTERVALSTARTTIME_GMT` provides canonical UTC interval starts directly.
+  - **EIA-930 API v2**: Reports in hour-ending notation (`period`). Mapped to canonical interval start via $\text{timestamp\_utc} = \text{hour\_ending\_utc} - 1\text{ hour}$.
+  - **EIA-930 Workbook**: Reports in hour-ending notation (`UTC time`). Mapped to canonical interval start via $\text{UTC time} - 1\text{ hour}$.
+- **Canonical Demand and Net Generation**: Sourced directly from corrected EIA API v2 (`demand_mw` and `net_generation_mw`). Workbook demand and net generation are preserved separately as audit fields (`workbook_demand_mw`, `workbook_net_generation_mw`) along with explicit absolute difference metrics.
+- **Production-Based Carbon Intensity**: Sourced from official EIA workbook `CO2 Emissions Intensity for Generated Electricity`, converted to $\text{g CO}_2/\text{kWh}$ using the exact physical factor $453.59237$.
+- **EIA Known Data Issues**: Retained explicitly. Flagged rows carry `carbon_data_issue = True`, `carbon_primary_analysis_eligible = False`, and `source_quality = "success_with_data_issues"`.
+
 ## Primary Artifacts Produced
 
 - `data/processed/hourly_caiso_v0.parquet`: Canonical aligned dataset.

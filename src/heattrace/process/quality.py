@@ -37,7 +37,12 @@ CANONICAL_COLUMNS: list[str] = [
     "consumed_intensity_g_per_kwh",
     "positive_generation_mwh",
     "consumed_electricity_mwh",
+    "eia_api_demand_mw",
     "eia_api_net_generation_mw",
+    "workbook_demand_mw",
+    "workbook_net_generation_mw",
+    "demand_source_difference_mw",
+    "net_generation_source_difference_mw",
     "recalculated_generated_intensity_lb_per_kwh",
     "recalculated_generated_intensity_g_per_kwh",
     "generated_intensity_reconciliation_difference",
@@ -114,9 +119,29 @@ def validate_aligned_dataframe(
         if cnt != 24:
             raise ValueError(f"Local date {d} has {cnt} rows, expected exactly 24")
 
+    from zoneinfo import ZoneInfo
+    la_tz = ZoneInfo("America/Los_Angeles")
+
     # 6. Physical and domain value ranges
     # Temperature: terrestrial bounds [-60, +65] C
     for idx, row in df.iterrows():
+        ts_val = row["timestamp_utc"]
+        loc_d = row["local_date"]
+        # Verify local_date matches timestamp_utc in America/Los_Angeles
+        ts_la = ts_val.astimezone(la_tz) if hasattr(ts_val, "astimezone") else pd.Timestamp(ts_val).astimezone(la_tz)
+        expected_local_d = ts_la.strftime("%Y-%m-%d")
+        if loc_d != expected_local_d:
+            raise ValueError(
+                f"Row {idx}: local_date '{loc_d}' does not match timestamp_utc in America/Los_Angeles '{expected_local_d}'"
+            )
+
+        # Verify qc_day_type consistency
+        q_type = row["qc_day_type"]
+        if loc_d == "2024-07-02" and q_type != "heatwave":
+            raise ValueError(f"Row {idx}: expected qc_day_type 'heatwave' for 2024-07-02, got '{q_type}'")
+        if loc_d == "2024-06-07" and q_type != "ordinary":
+            raise ValueError(f"Row {idx}: expected qc_day_type 'ordinary' for 2024-06-07, got '{q_type}'")
+
         t_miss = row["temperature_missing"]
         t_val = row["temperature_c"]
         if t_miss:
@@ -160,9 +185,12 @@ def validate_aligned_dataframe(
                     f"Row {idx}: price {p_val} USD/MWh outside reasonable market bounds"
                 )
 
-        # Demand: non-negative
+        # Demand: non-negative, must equal API demand
         d_miss = row["demand_missing"]
         d_val = row["demand_mw"]
+        api_d = row["eia_api_demand_mw"]
+        wb_d = row["workbook_demand_mw"]
+        d_diff = row["demand_source_difference_mw"]
         if d_miss:
             if pd.notna(d_val):
                 raise ValueError(
@@ -177,10 +205,23 @@ def validate_aligned_dataframe(
                 raise ValueError(
                     f"Row {idx}: demand {d_val} MW is negative"
                 )
+            # Must equal eia_api_demand_mw
+            if pd.isna(api_d) or abs(d_val - api_d) > 1e-6:
+                raise ValueError(
+                    f"Row {idx}: canonical demand_mw ({d_val}) does not match eia_api_demand_mw ({api_d})"
+                )
+            if pd.notna(wb_d) and pd.notna(d_diff):
+                if abs(abs(d_val - wb_d) - d_diff) > 1e-4:
+                    raise ValueError(
+                        f"Row {idx}: demand_source_difference_mw ({d_diff}) mismatch with |demand_mw - workbook_demand_mw|"
+                    )
 
-        # Net generation: finite number (may be negative if pump-storage/charging exceeds generation)
+        # Net generation: finite number, must equal API net generation
         ng_miss = row["net_generation_missing"]
         ng_val = row["net_generation_mw"]
+        api_ng = row["eia_api_net_generation_mw"]
+        wb_ng = row["workbook_net_generation_mw"]
+        ng_diff = row["net_generation_source_difference_mw"]
         if ng_miss:
             if pd.notna(ng_val):
                 raise ValueError(
@@ -195,6 +236,16 @@ def validate_aligned_dataframe(
                 raise ValueError(
                     f"Row {idx}: net_generation {ng_val} MW outside plausible bounds"
                 )
+            # Must equal eia_api_net_generation_mw
+            if pd.isna(api_ng) or abs(ng_val - api_ng) > 1e-6:
+                raise ValueError(
+                    f"Row {idx}: canonical net_generation_mw ({ng_val}) does not match eia_api_net_generation_mw ({api_ng})"
+                )
+            if pd.notna(wb_ng) and pd.notna(ng_diff):
+                if abs(abs(ng_val - wb_ng) - ng_diff) > 1e-4:
+                    raise ValueError(
+                        f"Row {idx}: net_generation_source_difference_mw ({ng_diff}) mismatch with |net_generation_mw - workbook_net_generation_mw|"
+                    )
 
         # Carbon intensity: non-negative, finite
         c_miss = row["carbon_missing"]
@@ -263,6 +314,12 @@ def validate_aligned_dataframe(
     max_reconcil_diff = float(
         df["generated_intensity_reconciliation_difference"].abs().max()
     )
+    max_demand_diff = float(
+        df["demand_source_difference_mw"].dropna().max()
+    ) if df["demand_source_difference_mw"].notna().any() else 0.0
+    max_net_gen_diff = float(
+        df["net_generation_source_difference_mw"].dropna().max()
+    ) if df["net_generation_source_difference_mw"].notna().any() else 0.0
 
     return {
         "row_count": n_rows,
@@ -274,4 +331,6 @@ def validate_aligned_dataframe(
         "eia_issues": eia_issues,
         "max_reconciliation_diff_lb_per_kwh": max_reconcil_diff,
         "reconciliation_tolerance_lb_per_kwh": reconciliation_tolerance,
+        "max_demand_difference_mw": max_demand_diff,
+        "max_net_generation_difference_mw": max_net_gen_diff,
     }

@@ -198,37 +198,46 @@ def load_caiso_dam_lmp_by_interval(
 
 def load_eia_api_data_by_interval(
     json_paths: list[str | Path],
+    intervals: list[dict[str, Any]],
     expected_ba: str = "CISO",
 ) -> dict[datetime, dict[str, Any]]:
-    """Parse cached EIA API JSON files and map demand/net-generation by UTC interval start."""
+    """Parse cached EIA API JSON files using parse_and_validate_eia_json and map by canonical UTC interval start."""
     api_by_ts: dict[datetime, dict[str, Any]] = {}
 
-    for p in json_paths:
-        path = Path(p)
-        if not path.exists():
-            raise FileNotFoundError(f"EIA JSON file not found: {path}")
+    dates = sorted(list({inv["local_date"] for inv in intervals}))
+    for d in dates:
+        day_invs = [inv for inv in intervals if inv["local_date"] == d]
+        day_start = day_invs[0]["timestamp_utc"]
+        day_end = day_invs[-1]["interval_end_utc"]
 
-        data = json.loads(path.read_text(encoding="utf-8"))
-        records = data.get("response", {}).get("data", [])
-        for r in records:
-            if r.get("respondent") != expected_ba:
-                continue
-            period_str = str(r.get("period", "")).strip()
-            # EIA period format: 2024-07-02T07
-            dt = datetime.strptime(period_str, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
-            m_type = str(r.get("type", "")).strip().upper()
-            val = float(r.get("value")) if r.get("value") is not None else None
+        # Find matching json file for date
+        matching_files = [p for p in json_paths if day_start.strftime("%Y%m%d") in str(p)]
+        if not matching_files:
+            raise FileNotFoundError(f"No EIA JSON file found for date {d} ({day_start.strftime('%Y%m%d')})")
 
-            if dt not in api_by_ts:
-                api_by_ts[dt] = {
-                    "eia_api_demand_mw": None,
-                    "eia_api_net_generation_mw": None,
-                }
+        p = Path(matching_files[0])
+        if not p.exists():
+            raise FileNotFoundError(f"EIA JSON file not found: {p}")
 
-            if m_type in ("D", "DEMAND"):
-                api_by_ts[dt]["eia_api_demand_mw"] = val
-            elif m_type in ("NG", "NET GENERATION", "NET_GENERATION"):
-                api_by_ts[dt]["eia_api_net_generation_mw"] = val
+        content = p.read_bytes()
+        parsed = parse_and_validate_eia_json(
+            content,
+            expected_ba=expected_ba,
+            requested_start=day_start,
+            requested_end=day_end,
+        )
+
+        d_by_ts = {r["timestamp_utc"]: r["value_mw"] for r in parsed["demand_rows"]}
+        ng_by_ts = {r["timestamp_utc"]: r["value_mw"] for r in parsed["net_gen_rows"]}
+
+        for inv in day_invs:
+            ts = inv["timestamp_utc"]
+            if ts not in d_by_ts or ts not in ng_by_ts:
+                raise ValueError(f"Missing API demand or net generation for canonical interval {ts.isoformat()}")
+            api_by_ts[ts] = {
+                "eia_api_demand_mw": d_by_ts[ts],
+                "eia_api_net_generation_mw": ng_by_ts[ts],
+            }
 
     return api_by_ts
 
@@ -302,12 +311,12 @@ def build_aligned_dataset(
     ]
     caiso_data = load_caiso_dam_lmp_by_interval(caiso_zips, expected_node=node)
 
-    # 4. EIA API data (demand & net generation)
+    # 4. EIA API data (demand & net generation) using parse_and_validate_eia_json
     eia_jsons = [
         d_dir / f"raw/eia/eia930_region_{ba}_20240702.json",
         d_dir / f"raw/eia/eia930_region_{ba}_20240607.json",
     ]
-    eia_api_data = load_eia_api_data_by_interval(eia_jsons, expected_ba=ba)
+    eia_api_data = load_eia_api_data_by_interval(eia_jsons, intervals=intervals, expected_ba=ba)
 
     # 5. EIA Workbook data
     eia_workbook = d_dir / f"raw/eia/{ba}.xlsx"
@@ -346,16 +355,27 @@ def build_aligned_dataset(
         if wb is None:
             raise ValueError(f"Missing EIA workbook entry for interval {ts.isoformat()}")
 
-        # Demand and Net Generation: Use workbook demand and net generation (MW-equivalent average over 1 hour)
-        demand_val = wb.get("demand_mwh")
-        demand_missing = demand_val is None or pd.isna(demand_val)
-        demand_mw = float(demand_val) if not demand_missing else None
+        # Canonical Demand and Net Generation come from EIA API v2
+        api_demand = ea.get("eia_api_demand_mw")
+        demand_missing = api_demand is None or pd.isna(api_demand)
+        demand_mw = float(api_demand) if not demand_missing else None
 
-        net_gen_val = wb.get("net_generation_mwh")
-        net_gen_missing = net_gen_val is None or pd.isna(net_gen_val)
-        net_gen_mw = float(net_gen_val) if not net_gen_missing else None
+        api_net_gen = ea.get("eia_api_net_generation_mw")
+        net_gen_missing = api_net_gen is None or pd.isna(api_net_gen)
+        net_gen_mw = float(api_net_gen) if not net_gen_missing else None
 
-        # Canonical Carbon Intensity
+        # Workbook comparison values
+        wb_demand = float(wb["demand_mwh"]) if wb.get("demand_mwh") is not None else None
+        wb_net_gen = float(wb["net_generation_mwh"]) if wb.get("net_generation_mwh") is not None else None
+
+        demand_diff = (
+            abs(demand_mw - wb_demand) if demand_mw is not None and wb_demand is not None else None
+        )
+        net_gen_diff = (
+            abs(net_gen_mw - wb_net_gen) if net_gen_mw is not None and wb_net_gen is not None else None
+        )
+
+        # Canonical Carbon Intensity from workbook generated intensity
         # generated_intensity_lb_per_kwh * 453.59237
         gen_int_lb = wb.get("co2_intensity_generated_lb_per_kwh")
         con_int_lb = wb.get("co2_intensity_consumed_lb_per_kwh")
@@ -429,7 +449,12 @@ def build_aligned_dataset(
             ),
             "positive_generation_mwh": pos_gen_mwh,
             "consumed_electricity_mwh": con_elec_mwh,
-            "eia_api_net_generation_mw": ea.get("eia_api_net_generation_mw"),
+            "eia_api_demand_mw": api_demand,
+            "eia_api_net_generation_mw": api_net_gen,
+            "workbook_demand_mw": wb_demand,
+            "workbook_net_generation_mw": wb_net_gen,
+            "demand_source_difference_mw": demand_diff,
+            "net_generation_source_difference_mw": net_gen_diff,
             "recalculated_generated_intensity_lb_per_kwh": recalc_lb,
             "recalculated_generated_intensity_g_per_kwh": recalc_g,
             "generated_intensity_reconciliation_difference": reconcil_diff,
@@ -530,7 +555,7 @@ def write_aligned_coverage_csv(
             "notes": f"Node {node} DAM hourly LMP",
         })
 
-        # 3. EIA Demand
+        # 3. EIA Demand (API)
         d_miss = int(sub_df["demand_missing"].sum())
         rows.append({
             "qc_day_type": day_label,
@@ -544,10 +569,10 @@ def write_aligned_coverage_csv(
             "covered_hourly_bins": 24 - d_miss,
             "missing_hours": d_miss,
             "duplicate_timestamps": 0,
-            "notes": f"BA {ba} demand_mw (MWh/h)",
+            "notes": f"BA {ba} demand_mw (EIA API v2 /region-data)",
         })
 
-        # 4. EIA Net Generation
+        # 4. EIA Net Generation (API)
         ng_miss = int(sub_df["net_generation_missing"].sum())
         rows.append({
             "qc_day_type": day_label,
@@ -561,10 +586,10 @@ def write_aligned_coverage_csv(
             "covered_hourly_bins": 24 - ng_miss,
             "missing_hours": ng_miss,
             "duplicate_timestamps": 0,
-            "notes": f"BA {ba} net_generation_mw (MWh/h)",
+            "notes": f"BA {ba} net_generation_mw (EIA API v2 /region-data)",
         })
 
-        # 5. EIA Carbon Intensity
+        # 5. EIA Carbon Intensity (Workbook)
         c_miss = int(sub_df["carbon_missing"].sum())
         c_issue = int(sub_df["carbon_data_issue"].sum())
         c_stat = "success_with_data_issues" if c_issue > 0 else "success"
@@ -580,7 +605,7 @@ def write_aligned_coverage_csv(
             "covered_hourly_bins": 24 - c_miss,
             "missing_hours": c_miss,
             "duplicate_timestamps": 0,
-            "notes": f"BA {ba} generated carbon intensity (data issues flagged: {c_issue}/24)",
+            "notes": f"BA {ba} generated carbon intensity (EIA workbook {ba}.xlsx, data issues flagged: {c_issue}/24)",
         })
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
@@ -640,12 +665,20 @@ def write_aligned_manifest_json(
             "caiso_node": sources_cfg["price"]["node"],
             "caiso_product": sources_cfg["price"]["product"],
             "balancing_authority": sources_cfg["carbon"]["balancing_authority"],
+            "canonical_demand_source": "EIA API v2 /region-data (type=D)",
+            "canonical_net_generation_source": "EIA API v2 /region-data (type=NG)",
             "carbon_metric": "CO2 Emissions Intensity for Generated Electricity",
             "carbon_conversion": "generated_intensity_lb_per_kwh * 453.59237",
             "reconciliation_tolerance_lb_per_kwh": reconciliation_tolerance,
             "max_observed_reconciliation_difference": float(
                 df["generated_intensity_reconciliation_difference"].abs().max()
             ),
+            "max_demand_source_difference_mw": float(
+                df["demand_source_difference_mw"].dropna().max()
+            ) if df["demand_source_difference_mw"].notna().any() else 0.0,
+            "max_net_generation_source_difference_mw": float(
+                df["net_generation_source_difference_mw"].dropna().max()
+            ) if df["net_generation_source_difference_mw"].notna().any() else 0.0,
             "eia_data_issue_policy": (
                 "Preserve all EIA rows. Flagged rows have carbon_data_issue=True, "
                 "carbon_primary_analysis_eligible=False, source_quality='success_with_data_issues'. "

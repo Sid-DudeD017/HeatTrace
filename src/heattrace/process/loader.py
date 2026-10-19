@@ -47,6 +47,8 @@ def inspect_aligned_dataset(
     print(f"Missingness:       {summary['missingness']}")
     print(f"EIA Issue Flags:   {summary['eia_issues']}")
     print(f"Max Reconcil Diff: {summary['max_reconciliation_diff_lb_per_kwh']:.6e} lb/kWh (tol: {summary['reconciliation_tolerance_lb_per_kwh']})")
+    print(f"Max Demand Diff:   {summary['max_demand_difference_mw']:.2f} MW (API demand_mw vs workbook_demand_mw)")
+    print(f"Max Net Gen Diff:  {summary['max_net_generation_difference_mw']:.2f} MW (API net_generation_mw vs workbook_net_generation_mw)")
 
     print(f"\n--- Sample First {sample_rows} Rows ---")
     display_cols = [
@@ -56,6 +58,8 @@ def inspect_aligned_dataset(
         "price_usd_per_mwh",
         "demand_mw",
         "net_generation_mw",
+        "workbook_demand_mw",
+        "workbook_net_generation_mw",
         "carbon_g_per_kwh",
         "carbon_data_issue",
         "source_quality",

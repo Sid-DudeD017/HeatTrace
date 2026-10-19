@@ -116,12 +116,12 @@ Phase P2 builds and validates the first canonical aligned dataset (`data/process
 ### P2 Checklist & Implementation Status
 
 > **Overall Phase P2 Status:**
-> - **P2-01 (Alignment & Merge):** **Complete (Verified)**. Canonical 48-row UTC hourly index constructed with interval-start semantics, unique sorted timestamps, and exact 24 rows per local date.
-> - **P2-02 (Canonical Carbon Signal):** **Complete (Verified)**. Uses official workbook `CO2 Emissions Intensity for Generated Electricity`, converted via $1\text{ lb/kWh} = 453.59237\text{ g/kWh}$. Retains reported and recalculated values; reconciliation diff passes tolerance ($6.58 \times 10^{-7} \le 10^{-4}\text{ lb/kWh}$).
-> - **P2-03 (QC & Validation):** **Complete (Verified)**. Deterministic schema, timestamp alignment, monotonic ordering, non-negativity, missingness, and EIA issue flags verified.
+> - **P2-01 (Alignment & Merge):** **Complete (Verified)**. Canonical 48-row UTC hourly index constructed with interval-start semantics, unique sorted timestamps, and exact 24 rows per local date. EIA API v2 periods correctly treated as hour-ending and mapped to interval start ($\text{period} - 1\text{h}$).
+> - **P2-02 (Canonical Carbon Signal):** **Complete (Verified)**. Canonical demand and net generation sourced from corrected EIA API v2; canonical carbon intensity uses official workbook `CO2 Emissions Intensity for Generated Electricity`, converted via $1\text{ lb/kWh} = 453.59237\text{ g/kWh}$. Retains reported and recalculated values; reconciliation diff passes tolerance ($6.58 \times 10^{-7} \le 10^{-4}\text{ lb/kWh}$).
+> - **P2-03 (QC & Validation):** **Complete (Verified)**. Deterministic schema, timestamp alignment, monotonic ordering, non-negativity, missingness, EIA issue flags, and source audit differences verified.
 > - **P2-04 (Onboarding & Documentation):** **Complete (Verified)**. Documentation in `docs/p2_alignment.md`, `docs/contracts.md`, and `docs/carbon_method.md`.
-> - **P2-TEST (Unit & Integration Tests):** **Complete (Verified)**. Comprehensive tests in `tests/test_p2_alignment.py` passing with zero test mutation of production data.
-> - **Gate G2-a:** **Pending Independent Teammate Verification** (awaiting Person B/Person C execution of loader).
+> - **P2-TEST (Unit & Integration Tests):** **Complete (Verified)**. Comprehensive tests in `tests/test_p2_alignment.py` and `tests/test_p1_ingest.py` passing with zero test mutation of production data.
+> - **Gate G2-a:** **Verified Clean-Environment Loader (Person A Clean-Env Verification Complete; Peer Review Pending)**.
 
 ### Running P2 Alignment and Verification
 

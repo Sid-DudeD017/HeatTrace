@@ -114,11 +114,12 @@ def _create_mock_eia_json(
     end_utc: datetime,
     ba: str = "CISO",
 ) -> None:
-    """Create a minimal valid synthetic EIA API region-data JSON file."""
+    """Create a minimal valid synthetic EIA API region-data JSON file with hour-ending periods."""
     records = []
     curr = start_utc
     while curr < end_utc:
-        p_str = curr.strftime("%Y-%m-%dT%H")
+        he_dt = curr + timedelta(hours=1)
+        p_str = he_dt.strftime("%Y-%m-%dT%H")
         records.append({
             "period": p_str,
             "respondent": ba,
@@ -391,12 +392,15 @@ def test_eia_data_issue_propagation_and_eligibility(tmp_path: Path):
 
 def test_schema_validation_failures(tmp_path: Path):
     """Test deterministic validation failures on shifted timestamps, duplicates, missing columns, or bad counts."""
-    # Start with valid dummy DataFrame
-    ts = pd.date_range("2024-07-02 07:00", periods=48, freq="h", tz="UTC")
+    # Start with valid dummy DataFrame: 24h for 2024-06-07 followed by 24h for 2024-07-02
+    ts_0607 = pd.date_range("2024-06-07 07:00", periods=24, freq="h", tz="UTC")
+    ts_0702 = pd.date_range("2024-07-02 07:00", periods=24, freq="h", tz="UTC")
+    ts = ts_0607.append(ts_0702)
+
     data = {c: [None] * 48 for c in CANONICAL_COLUMNS}
     data["timestamp_utc"] = ts
-    data["local_date"] = ["2024-07-02"] * 24 + ["2024-06-07"] * 24
-    data["qc_day_type"] = ["heatwave"] * 24 + ["ordinary"] * 24
+    data["local_date"] = ["2024-06-07"] * 24 + ["2024-07-02"] * 24
+    data["qc_day_type"] = ["ordinary"] * 24 + ["heatwave"] * 24
     data["temperature_missing"] = [False] * 48
     data["temperature_c"] = [20.0] * 48
     data["temperature_obs_count"] = [1] * 48
@@ -406,8 +410,14 @@ def test_schema_validation_failures(tmp_path: Path):
     data["price_usd_per_mwh"] = [35.0] * 48
     data["demand_missing"] = [False] * 48
     data["demand_mw"] = [25000.0] * 48
+    data["eia_api_demand_mw"] = [25000.0] * 48
+    data["workbook_demand_mw"] = [25000.0] * 48
+    data["demand_source_difference_mw"] = [0.0] * 48
     data["net_generation_missing"] = [False] * 48
     data["net_generation_mw"] = [20000.0] * 48
+    data["eia_api_net_generation_mw"] = [20000.0] * 48
+    data["workbook_net_generation_mw"] = [20000.0] * 48
+    data["net_generation_source_difference_mw"] = [0.0] * 48
     data["carbon_missing"] = [False] * 48
     data["carbon_g_per_kwh"] = [200.0] * 48
     data["carbon_data_issue"] = [False] * 48
@@ -418,7 +428,7 @@ def test_schema_validation_failures(tmp_path: Path):
     df_valid = pd.DataFrame(data)[CANONICAL_COLUMNS]
     # Passes validation
     validate_aligned_dataframe(
-        df_valid, expected_rows=48, expected_dates=["2024-07-02", "2024-06-07"]
+        df_valid, expected_rows=48, expected_dates=["2024-06-07", "2024-07-02"]
     )
 
     # 1. Failure on wrong row count
@@ -481,3 +491,177 @@ def test_test_isolation_guarantee():
 
     expected_sha = "b418ea77f536048e11fe0c5786de7544dfa7c774a90083e7f2c0d9facc74ce50"
     assert sha256_file(ciso_wb) == expected_sha
+
+
+def test_eia_api_period_maps_to_interval_start():
+    """1. EIA API period 2024-07-02T08 maps to canonical interval-start 2024-07-02T07:00:00Z."""
+    from heattrace.ingest.eia import parse_and_validate_eia_json
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 2, 8, 0, tzinfo=timezone.utc)
+    raw_payload = json.dumps({
+        "response": {
+            "data": [
+                {"period": "2024-07-02T08", "respondent": "CISO", "type": "D", "value": "25000"},
+                {"period": "2024-07-02T08", "respondent": "CISO", "type": "NG", "value": "21000"},
+            ]
+        }
+    })
+    res = parse_and_validate_eia_json(raw_payload, expected_ba="CISO", requested_start=start_utc, requested_end=end_utc)
+    assert len(res["demand_rows"]) == 1
+    row = res["demand_rows"][0]
+    assert row["timestamp_utc"] == start_utc
+    assert row["hour_ending_utc"] == end_utc
+    assert row["timestamp_utc"].isoformat() == "2024-07-02T07:00:00+00:00"
+
+
+def test_eia_query_params_start_end_hour_ending():
+    """2. build_eia_query_params produces start = requested_start + 1h and end = requested_end."""
+    from heattrace.ingest.eia import build_eia_query_params
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)
+    params = dict(build_eia_query_params("CISO", start_utc, end_utc))
+    assert params["start"] == "2024-07-02T08"
+    assert params["end"] == "2024-07-03T07"
+
+
+def test_eia_24_periods_map_to_24_interval_starts():
+    """3. 24 EIA API hourly periods map to 24 contiguous interval starts."""
+    from heattrace.ingest.eia import parse_and_validate_eia_json
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)
+    records = []
+    for h in range(1, 25):
+        p_str = (start_utc + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
+        records.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "25000"})
+        records.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "21000"})
+
+    raw_payload = json.dumps({"response": {"data": records}})
+    res = parse_and_validate_eia_json(raw_payload, expected_ba="CISO", requested_start=start_utc, requested_end=end_utc)
+    d_rows = res["demand_rows"]
+    assert len(d_rows) == 24
+    for i in range(24):
+        exp_start = start_utc + timedelta(hours=i)
+        assert d_rows[i]["timestamp_utc"] == exp_start
+
+
+def test_eia_shifted_by_one_hour_fails_validation():
+    """4. Old payload shifted by one hour fails validation."""
+    from heattrace.ingest.eia import parse_and_validate_eia_json
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)
+    # Old uncorrected payload had periods 2024-07-02T07 to 2024-07-03T06
+    records = []
+    for h in range(24):
+        p_str = (start_utc + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
+        records.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "25000"})
+        records.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "21000"})
+
+    raw_payload = json.dumps({"response": {"data": records}})
+    with pytest.raises(ValueError, match="outside requested interval|missing 1 hours"):
+        parse_and_validate_eia_json(raw_payload, expected_ba="CISO", requested_start=start_utc, requested_end=end_utc)
+
+
+def test_duplicate_eia_period_rejected():
+    """5. Duplicate EIA API period rejected."""
+    from heattrace.ingest.eia import parse_and_validate_eia_json
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)
+    records = []
+    for h in range(1, 25):
+        p_str = (start_utc + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
+        records.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "25000"})
+        records.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "21000"})
+    records.append({"period": "2024-07-02T08", "respondent": "CISO", "type": "D", "value": "25000"})
+
+    raw_payload = json.dumps({"response": {"data": records}})
+    with pytest.raises(ValueError, match="duplicate record detected"):
+        parse_and_validate_eia_json(raw_payload, expected_ba="CISO", requested_start=start_utc, requested_end=end_utc)
+
+
+def test_missing_single_eia_period_rejected():
+    """6. Missing single EIA API period rejected."""
+    from heattrace.ingest.eia import parse_and_validate_eia_json
+
+    start_utc = datetime(2024, 7, 2, 7, 0, tzinfo=timezone.utc)
+    end_utc = datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc)
+    records = []
+    for h in range(1, 24):  # Only 23 periods
+        p_str = (start_utc + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
+        records.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "25000"})
+        records.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "21000"})
+
+    raw_payload = json.dumps({"response": {"data": records}})
+    with pytest.raises(ValueError, match="missing 1 hours"):
+        parse_and_validate_eia_json(raw_payload, expected_ba="CISO", requested_start=start_utc, requested_end=end_utc)
+
+
+def test_canonical_demand_comes_from_api_not_workbook(tmp_path: Path):
+    """7. Canonical demand_mw and net_generation_mw come from API values."""
+    d_dir = tmp_path / "data"
+    d_dir.mkdir(parents=True)
+    _create_mock_noaa_psv(d_dir / "raw/noaa/GHCNh_USW00023234_2024.psv")
+
+    s1, e1, _ = get_local_day_utc_bounds("2024-07-02", "America/Los_Angeles")
+    s2, e2, _ = get_local_day_utc_bounds("2024-06-07", "America/Los_Angeles")
+    _create_mock_caiso_zip(d_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240702_20240703.zip", s1, e1)
+    _create_mock_caiso_zip(d_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240607_20240608.zip", s2, e2)
+
+    # API has distinct demand 19999 and net gen 17777
+    (d_dir / "raw/eia").mkdir(parents=True, exist_ok=True)
+    records1 = []
+    curr = s1
+    while curr < e1:
+        p_str = (curr + timedelta(hours=1)).strftime("%Y-%m-%dT%H")
+        records1.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "19999", "value-units": "megawatthours"})
+        records1.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "17777", "value-units": "megawatthours"})
+        curr += timedelta(hours=1)
+    (d_dir / "raw/eia/eia930_region_CISO_20240702.json").write_text(json.dumps({"response": {"data": records1}}), encoding="utf-8")
+
+    records2 = []
+    curr = s2
+    while curr < e2:
+        p_str = (curr + timedelta(hours=1)).strftime("%Y-%m-%dT%H")
+        records2.append({"period": p_str, "respondent": "CISO", "type": "D", "value": "19999", "value-units": "megawatthours"})
+        records2.append({"period": p_str, "respondent": "CISO", "type": "NG", "value": "17777", "value-units": "megawatthours"})
+        curr += timedelta(hours=1)
+    (d_dir / "raw/eia/eia930_region_CISO_20240607.json").write_text(json.dumps({"response": {"data": records2}}), encoding="utf-8")
+
+    # Workbook has different demand: 25000+
+    total_hours = int((e1 - s2).total_seconds() / 3600)
+    _create_mock_ciso_xlsx(d_dir / "raw/eia/CISO.xlsx", hours=total_hours, start_date_utc=s2)
+
+    sources_cfg = {
+        "study": {"timezone": "UTC"},
+        "weather": {"stations": [{"id": "USW00023234"}]},
+        "price": {"node": "TH_NP15_GEN-APND", "product": "day_ahead_hourly_lmp"},
+        "carbon": {"balancing_authority": "CISO"},
+        "qc": {
+            "primary_station_id": "USW00023234",
+            "target_timezone": "America/Los_Angeles",
+            "days": {
+                "heatwave": {"date": "2024-07-02"},
+                "ordinary": {"date": "2024-06-07"},
+            },
+        },
+    }
+
+    df = build_aligned_dataset(sources_cfg=sources_cfg, data_dir=d_dir)
+    assert (df["demand_mw"] == df["eia_api_demand_mw"]).all()
+    assert (df["net_generation_mw"] == df["eia_api_net_generation_mw"]).all()
+    assert (df["demand_mw"] == 19999.0).all()
+    assert (df["net_generation_mw"] == 17777.0).all()
+    assert (df["workbook_demand_mw"] != df["demand_mw"]).all()
+    assert (df["demand_source_difference_mw"] == (df["eia_api_demand_mw"] - df["workbook_demand_mw"]).abs()).all()
+
+
+def test_production_ciso_xlsx_sha256_unaltered():
+    """Verify production CISO.xlsx hash is unaltered."""
+    from heattrace.ingest.provenance import sha256_file
+    p = Path("data/raw/eia/CISO.xlsx")
+    assert p.exists()
+    assert sha256_file(p) == "b418ea77f536048e11fe0c5786de7544dfa7c774a90083e7f2c0d9facc74ce50"

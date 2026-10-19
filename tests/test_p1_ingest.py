@@ -422,8 +422,8 @@ def test_build_eia_query_params_inclusive_bounds():
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     params = build_eia_query_params("CISO", start, end)
     param_dict = dict(params)
-    assert param_dict["start"] == "2022-06-01T00"
-    assert param_dict["end"] == "2022-06-01T23"
+    assert param_dict["start"] == "2022-06-01T01"
+    assert param_dict["end"] == "2022-06-02T00"
     assert param_dict["facets[respondent][]"] == "CISO"
     assert ("facets[type][]", "D") in params
     assert ("facets[type][]", "NG") in params
@@ -440,8 +440,8 @@ def test_build_eia_region_url_structure():
     assert "facets[type][]=D" in urllib.parse.unquote(url)
     assert "facets[type][]=NG" in urllib.parse.unquote(url)
     assert "facets[respondent][]=CISO" in urllib.parse.unquote(url)
-    assert "start=2022-06-01T00" in url
-    assert "end=2022-06-01T23" in url
+    assert "start=2022-06-01T01" in url
+    assert "end=2022-06-02T00" in url
     assert "api_key" not in url
 
 
@@ -451,24 +451,24 @@ def test_build_eia_query_params_month_and_year_boundaries():
     end = datetime(2023, 1, 1, 0, 0, tzinfo=timezone.utc)
     params = build_eia_query_params("CISO", start, end)
     param_dict = dict(params)
-    assert param_dict["start"] == "2022-12-31T00"
-    assert param_dict["end"] == "2022-12-31T23"
+    assert param_dict["start"] == "2022-12-31T01"
+    assert param_dict["end"] == "2023-01-01T00"
 
     # Multi-hour boundary
     start2 = datetime(2022, 6, 30, 22, 0, tzinfo=timezone.utc)
     end2 = datetime(2022, 7, 1, 1, 0, tzinfo=timezone.utc)
     params2 = build_eia_query_params("CISO", start2, end2)
     param_dict2 = dict(params2)
-    assert param_dict2["start"] == "2022-06-30T22"
-    assert param_dict2["end"] == "2022-07-01T00"
+    assert param_dict2["start"] == "2022-06-30T23"
+    assert param_dict2["end"] == "2022-07-01T01"
 
 
 def test_parse_and_validate_eia_json_complete_24h():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     records = []
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         records.append({"period": period, "respondent": "CISO", "type": "D", "value": f"{20000 + h}"})
         records.append({"period": period, "respondent": "CISO", "type": "NG", "value": f"{18000 + h}"})
 
@@ -482,7 +482,10 @@ def test_eia_validation_missing_demand_or_ng():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     # Only demand, missing NG entirely
-    records = [{"period": f"2022-06-01T{h:02d}", "respondent": "CISO", "type": "D", "value": "20000"} for h in range(24)]
+    records = [
+        {"period": (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H"), "respondent": "CISO", "type": "D", "value": "20000"}
+        for h in range(1, 25)
+    ]
     payload = {"response": {"data": records}}
     with pytest.raises(ValueError, match="Incomplete Net Generation"):
         parse_and_validate_eia_json(json.dumps(payload), expected_ba="CISO", requested_start=start, requested_end=end)
@@ -493,8 +496,8 @@ def test_eia_validation_missing_single_hour():
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     records = []
     # Hour 5 missing from demand
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         if h != 5:
             records.append({"period": period, "respondent": "CISO", "type": "D", "value": "20000"})
         records.append({"period": period, "respondent": "CISO", "type": "NG", "value": "18000"})
@@ -508,12 +511,12 @@ def test_eia_validation_duplicate_hour():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     records = []
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         records.append({"period": period, "respondent": "CISO", "type": "D", "value": "20000"})
         records.append({"period": period, "respondent": "CISO", "type": "NG", "value": "18000"})
-    # Duplicate hour 0 for demand
-    records.append({"period": "2022-06-01T00", "respondent": "CISO", "type": "D", "value": "20500"})
+    # Duplicate first hour for demand
+    records.append({"period": "2022-06-01T01", "respondent": "CISO", "type": "D", "value": "20500"})
 
     payload = {"response": {"data": records}}
     with pytest.raises(ValueError, match="duplicate record detected"):
@@ -524,7 +527,7 @@ def test_eia_validation_unknown_type():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 1, 1, 0, tzinfo=timezone.utc)
     records = [
-        {"period": "2022-06-01T00", "respondent": "CISO", "type": "UNKNOWN_TYPE", "value": "100"}
+        {"period": "2022-06-01T01", "respondent": "CISO", "type": "UNKNOWN_TYPE", "value": "100"}
     ]
     payload = {"response": {"data": records}}
     with pytest.raises(ValueError, match="unknown metric type"):
@@ -535,8 +538,8 @@ def test_eia_validation_ignores_df_and_ti_when_complete():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     records = []
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         records.append({"period": period, "respondent": "CISO", "type": "D", "value": "20000"})
         records.append({"period": period, "respondent": "CISO", "type": "NG", "value": "18000"})
         records.append({"period": period, "respondent": "CISO", "type": "DF", "value": "20100"})
@@ -553,8 +556,8 @@ def test_eia_validation_fails_when_only_df_and_ti_present():
     start = datetime(2022, 6, 1, 0, 0, tzinfo=timezone.utc)
     end = datetime(2022, 6, 2, 0, 0, tzinfo=timezone.utc)
     records = []
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         records.append({"period": period, "respondent": "CISO", "type": "DF", "value": "20100"})
         records.append({"period": period, "respondent": "CISO", "type": "TI", "value": "1500"})
 
@@ -963,8 +966,8 @@ def test_eia_api_caching_and_corrupt_cache_recovery(tmp_path, monkeypatch, capsy
 
     # Generate a valid EIA payload
     records = []
-    for h in range(24):
-        period = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         records.append({"period": period, "respondent": "CISO", "type": "D", "value": "24000"})
         records.append({"period": period, "respondent": "CISO", "type": "NG", "value": "21000"})
     valid_payload = json.dumps({"response": {"data": records}}).encode("utf-8")
@@ -1005,11 +1008,10 @@ def test_eia_api_caching_and_corrupt_cache_recovery(tmp_path, monkeypatch, capsy
     # 3. Cache identity safety: mismatched requested interval rejects cache and triggers re-download
     end_mismatch = datetime(2022, 6, 3, 0, 0, tzinfo=timezone.utc)
     records_48h = []
-    for day in range(1, 3):
-        for h in range(24):
-            period = f"2022-06-{day:02d}T{h:02d}"
-            records_48h.append({"period": period, "respondent": "CISO", "type": "D", "value": "24000"})
-            records_48h.append({"period": period, "respondent": "CISO", "type": "NG", "value": "21000"})
+    for h in range(1, 49):
+        period = (start + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
+        records_48h.append({"period": period, "respondent": "CISO", "type": "D", "value": "24000"})
+        records_48h.append({"period": period, "respondent": "CISO", "type": "NG", "value": "21000"})
     mock_resp_48h = MagicMock()
     mock_resp_48h.read.return_value = json.dumps({"response": {"data": records_48h}}).encode("utf-8")
     mock_resp_48h.__enter__.return_value = mock_resp_48h
@@ -1453,7 +1455,8 @@ def test_qc_eia_cache_only_without_key(tmp_path, monkeypatch):
     data_records = []
     curr = start_utc
     while curr < end_utc:
-        period_str = curr.strftime("%Y-%m-%dT%H")
+        he_dt = curr + timedelta(hours=1)
+        period_str = he_dt.strftime("%Y-%m-%dT%H")
         data_records.append({"period": period_str, "respondent": "CISO", "type": "D", "value": "28000"})
         data_records.append({"period": period_str, "respondent": "CISO", "type": "NG", "value": "26000"})
         curr += timedelta(hours=1)
@@ -2131,8 +2134,8 @@ def test_eia_smoke_api_success_with_workbook_success(tmp_path, monkeypatch):
 
     # Mock EIA API response with 24 demand and 24 net-gen records
     data_records = []
-    for h in range(24):
-        period_str = f"2022-06-01T{h:02d}"
+    for h in range(1, 25):
+        period_str = (start_utc + timedelta(hours=h)).strftime("%Y-%m-%dT%H")
         data_records.append({"period": period_str, "respondent": "CISO", "type": "D", "value": "25000"})
         data_records.append({"period": period_str, "respondent": "CISO", "type": "NG", "value": "22000"})
     fake_api_json = json.dumps({"response": {"data": data_records}}).encode("utf-8")

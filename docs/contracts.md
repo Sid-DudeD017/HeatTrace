@@ -60,7 +60,10 @@ Deterministic column ordering in `data/processed/hourly_caiso_v0.parquet` and `d
    - Negative prices are valid wholesale market signals and must never be converted to null or clipped to zero.
 
 3. **EIA-930**:
-   - API v2 hourly periods (`2024-07-02T07`) map directly to canonical interval start UTC.
+   - API v2 hourly periods (`period`) use the EIA-930 hour-ending convention (e.g., period `2024-07-02T08` corresponds to the interval ending at 08:00 UTC).
+   - Interval-start mapping: canonical interval-start is computed as $\text{timestamp\_utc} = \text{hour\_ending\_utc} - 1\text{ hour}$ (e.g., `2024-07-02T08` $\rightarrow$ `2024-07-02T07:00:00Z`).
+   - Query semantics: for requested canonical interval $[T_\text{start}, T_\text{end})$, EIA API query bounds are $\text{start} = T_\text{start} + 1\text{h}$ through $\text{end} = T_\text{end}$ inclusive.
+   - Canonical demand and net generation: `demand_mw` and `net_generation_mw` are sourced from the corrected EIA API v2 query. Workbook values are retained as `workbook_demand_mw` and `workbook_net_generation_mw` alongside explicit difference audit fields.
    - Workbook `UTC time` is hour-ending; interval start is mapped as $\text{UTC time} - 1\text{ hour}$, consistent with official EIA documentation.
    - Known Data Issues: rows flagged with `Data issue = 1` are retained with `carbon_data_issue = True`, `carbon_primary_analysis_eligible = False`, and `source_quality = "success_with_data_issues"`. They must never be discarded or silently treated as clean.
 
