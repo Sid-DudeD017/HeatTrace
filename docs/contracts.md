@@ -147,3 +147,88 @@ Target artifact: `data/events/hourly_event_labels_v0.parquet` and `data/events/h
 3. `sustained`: All hours of the remaining qualifying event days not designated as peak.
 4. `recovery`: All hours of the complete local day immediately following the heatwave end date ($T_\text{end} + 1\text{ day}$).
 5. **Phase buffer collision policy**: Onset and recovery buffers must not overlap across distinct events. If a buffer collision is detected, execution raises an explicit error.
+
+---
+
+## Mock Workload Job Contract (P3-03)
+
+Target artifact: `data/workloads/workload_trace_v0.parquet` and `data/workloads/workload_trace_v0.csv`.
+
+### Workload Job Schema
+
+| Column | Type | Unit / Meaning | Nullable | Description / Policy |
+|---|---|---|---|---|
+| `workload_trace_id` | `string` | Unique workload trace identifier | No | Trace namespace (`trace_standard_120h_v0`) |
+| `job_id` | `string` | Unique synthetic job identifier | No | Formatted `job_0001` |
+| `arrival_offset_hours` | `int64` | Relative hour offset of job arrival ($0\dots W-1$) | No | Offset from window start |
+| `deadline_offset_hours` | `int64` | Relative hour offset of job deadline | No | Deadline $> \text{arrival}$ and $\le W$ |
+| `processing_requirement` | `int64` | Total processing duration required (hours) | No | Integer hours $\ge 1$ |
+| `energy_kwh` | `float64` | Total energy requirement (kWh) | No | Strict positive energy demand |
+| `maximum_parallelism` | `int64` | Peak concurrent resource units | No | Power scaling constraint ($\in \{1, 2, 4\}$) |
+| `priority` | `int64` | Scheduling priority level ($1\dots 5$) | No | 1=low, 5=critical |
+| `preemptible` | `bool` | Preemption permission | No | Whether execution can be paused across hours |
+| `seed` | `int64` | Pseudo-random seed used | No | Frozen seed `20261016` |
+| `generator_version` | `string` | Workload generator version | No | Version string (`1.0`) |
+
+---
+
+## Non-Heatwave Control Window Contract (P3-05)
+
+Target artifact: `data/events/control_catalogue_v0.parquet` and `data/events/control_catalogue_v0.csv`.
+
+### Control Window Schema
+
+| Column | Type | Unit / Meaning | Nullable | Description / Policy |
+|---|---|---|---|---|
+| `control_id` | `string` | Unique control window identifier | No | Deterministic ID based on start date (`CTRL_YYYYMMDD`) |
+| `matched_event_id` | `string` | Matched heatwave event identifier | No | Reference to `event_id` (`HW_20240702`) |
+| `matching_method` | `string` | Methodology algorithm | No | `ordinary_summer_anchor_distance` |
+| `anchor_date` | `string` | Anchor calendar date (`YYYY-MM-DD`) | No | Verified ordinary day `2024-06-07` |
+| `local_start_date` | `string` | Local calendar start date (`YYYY-MM-DD`) | No | First date of 120h window (`2024-06-05`) |
+| `local_end_exclusive` | `string` | Local exclusive end date (`YYYY-MM-DD`) | No | Post-window date (`2024-06-10`) |
+| `start_timestamp_utc` | Timezone-aware UTC datetime | UTC start timestamp | No | Interval start `2024-06-05T07:00:00Z` |
+| `end_timestamp_utc` | Timezone-aware UTC datetime | UTC exclusive end timestamp | No | Interval end `2024-06-10T07:00:00Z` |
+| `duration_days` | `int64` | Total window days | No | 5 calendar days |
+| `duration_hours` | `int64` | Total window hours | No | 120 hours |
+| `is_eligible` | `bool` | Eligibility indicator | No | True if passed all exclusion criteria |
+| `rejection_reasons` | `string` | JSON list of rejection reasons | No | Empty list `[]` for accepted window |
+| `source_coverage_status` | `string` | Multi-source coverage status | No | `verified_complete` |
+| `mean_max_temperature_c` | `float64` | Mean daily max temperature (°C) | No | Non-heatwave summer average ($21.84^\circ\text{C}$) |
+| `target_temperature_distance_c` | `float64` | Absolute distance from anchor temp | No | Quality metric ($0.14^\circ\text{C}$) |
+| `matching_score` | `float64` | Composite penalty score | No | Deterministic ranking score ($1.40$) |
+| `configuration_version` | `string` | Configuration version | No | Version string (`1.0`) |
+
+---
+
+## Aligned 2024 Event/Control Benchmark Contract (G3-a)
+
+Target artifact: `data/benchmarks/benchmark_2024_event_control_v0.parquet` and `data/benchmarks/benchmark_2024_event_control_v0_sample.csv`.
+
+### Benchmark Schema
+
+| Column | Type | Unit / Meaning | Nullable | Description / Policy |
+|---|---|---|---|---|
+| `timestamp_utc` | Timezone-aware UTC datetime | UTC interval start | No | Canonical top-of-hour interval start |
+| `local_timestamp` | `string` | Local timestamp (`YYYY-MM-DDTHH:MM:SS`) | No | Wall-clock time in `America/Los_Angeles` |
+| `local_date` | `string` | Local calendar date (`YYYY-MM-DD`) | No | Calendar date in `America/Los_Angeles` |
+| `hour_local` | `int64` | Local hour of day ($0\dots 23$) | No | Hour of day |
+| `window_type` | `string` | Window category (`event` or `control`) | No | Evaluation window category |
+| `window_id` | `string` | Window identifier | No | `HW_20240702` or `CTRL_20240605` |
+| `phase_label` | `string` | Assigned phase / role | No | `onset`, `peak`, `sustained`, `recovery`, `control`, `control_anchor` |
+| `temperature_c` | `float64` | Hourly mean temperature (°C) | No | NOAA GHCNh SFO (`USW00023234`) |
+| `temperature_obs_count` | `int64` | Count of NOAA observations | No | Number of accepted METAR/SPECI readings |
+| `temperature_missing` | `bool` | Missingness flag | No | Must be False |
+| `price_usd_per_mwh` | `float64` | CAISO DAM total LMP (USD/MWh) | No | CAISO OASIS `TH_NP15_GEN-APND` |
+| `price_missing` | `bool` | Price missingness flag | No | Must be False |
+| `demand_mw` | `float64` | Balancing authority demand (MW) | No | EIA API v2 `/electricity/rto/region-data` |
+| `demand_missing` | `bool` | Demand missingness flag | No | Must be False |
+| `net_generation_mw` | `float64` | Net generation (MW) | No | EIA API v2 `/electricity/rto/region-data` |
+| `net_generation_missing` | `bool` | Net gen missingness flag | No | Must be False |
+| `carbon_g_per_kwh` | `float64` | Production-based carbon intensity (g/kWh) | No | EIA-930 official generated intensity |
+| `carbon_missing` | `bool` | Carbon missingness flag | No | Must be False |
+| `carbon_data_issue` | `bool` | EIA Known Data Issue flag | No | Retained from EIA workbook |
+| `carbon_primary_analysis_eligible` | `bool` | Sensitivity analysis eligibility | No | False if data issue flagged |
+| `source_quality` | `string` | Combined record quality status | No | `success_with_data_issues` |
+| `source_station_id` | `string` | Weather station identifier | No | `USW00023234` |
+| `source_caiso_node` | `string` | CAISO pricing node | No | `TH_NP15_GEN-APND` |
+| `source_balancing_authority` | `string` | Balancing authority | No | `CISO` |

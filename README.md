@@ -145,48 +145,43 @@ Or use the loader module directly:
 PYTHONPATH=src python -m heattrace.process.loader
 ```
 
-## Phase P3: Event Detection, Controls, and Scaling (Person A)
+## Phase P3: Heatwaves, Workloads, Controls, and 2024 Benchmark
 
-Phase P3 defines deterministic multi-day heatwaves, establishes event phase labels, and prepares the groundwork for matched controls and historical scaling. Person A implements the final heatwave detection algorithm and validation contract.
+Phase P3 defines deterministic multi-day heatwaves, establishes event phase labels, constructs synthetic workload traces, formalizes scheduling interfaces, matches non-heatwave controls, and validates the complete 2024 event/control benchmark.
 
-### P3 Checklist & Implementation Status (Person A)
+### P3 Checklist & Implementation Status
 
-> **Phase P3 Person A Status:**
-> - **P3-01 (Multi-Day Heatwave Detection & Phase Labeling):** **Complete (Verified)**. Deterministic detection identifies runs of $\ge 3$ consecutive qualifying days where daily max temperature strictly exceeds the empirical 90th percentile threshold ($25.60^\circ\text{C}$, pooled across June–September 2022–2025 at NOAA station `USW00023234`). Labels 4 distinct multi-day heatwaves (`HW_20220620`, `HW_20220904`, `HW_20220922`, `HW_20240702`) with chronological hourly phases: `onset` (24h pre-event day), `peak` (24h highest temperature day, earliest tie-break), `sustained` (all other event days), and `recovery` (24h post-event day).
-> - **P3-02 (Event, Coverage, & Phase Validation):** **Complete (Verified)**. Validates event catalogue schema, non-overlapping intervals, monotonic timestamps, top-of-hour alignment, duration criteria ($\ge 3$ days), peak temperature exceedance, and phase buffer non-collision (zero overlap across all 4 events). Outputs coverage manifest and SHA-256 provenance manifest.
-> - **Person B / Person C Responsibilities:**
->   - **P3-03 / P3-04 (Matched Controls):** Assigned to Person B. Unmodified and pending.
->   - **P3-05 / P3-06 (Data Curation & Regime Shift Metrics):** Assigned to Person C. Unmodified and pending.
->   - **Gate G3-a:** Pending downstream event/control integration by Person B and Person C.
+> **Overall Phase P3 Status:**
+> - **P3-01 (Multi-Day Heatwave Detection & Phase Labeling):** **Complete (Verified)**. Deterministic detection identifies runs of $\ge 3$ consecutive qualifying days where daily max temperature strictly exceeds the empirical 90th percentile threshold ($25.60^\circ\text{C}$, pooled across June–September 2022–2025 at NOAA station `USW00023234`). Labels 4 distinct multi-day heatwaves (`HW_20220620`, `HW_20220904`, `HW_20220922`, `HW_20240702`) with chronological hourly phases: `onset` (24h pre-event day), `peak` (24h highest temperature day, earliest tie-break), `sustained` (all other event days), and `recovery` (24h post-event day). Total event hours: 336; total phase hours: 528.
+> - **P3-02 (Event, Coverage, & Phase Validation):** **Complete (Verified)**. Enforces strict UTC timezone-awareness, top-of-hour alignment, event ID formatting, monotonic ordering, non-overlap, duration constraints ($\ge 3$ days), peak selection tie-breaking, phase buffer non-collision (zero overlap across all 4 events), and year-by-year coverage reporting (honestly tracking the 3 missing dates in 2025).
+> - **P3-03 (Deterministic Workload Generator & Mock Jobs):** **Complete (Verified)**. Generates relative-offset synthetic workloads using frozen seed `20261016`. Each job specifies arrival offset, deadline offset, processing hours, energy kWh, maximum parallelism, priority, and preemption flags without leaking absolute timestamps, allowing identical trace reuse across event and control windows.
+> - **P3-04 (Policy & Forecasting Interfaces):** **Complete (Verified)**. Formalizes typed Python protocols (`ForecastProvider`, `SchedulingPolicy`) and data structures (`ForecastResult`, `ScheduleResult`, `SchedulingConstraints`) with labeled test stubs (`FixturePersistenceForecastProvider`, `FixtureEarliestDeadlineFirstPolicy`). Real optimization models remain deferred to P4.
+> - **P3-05 (Deterministic Non-Heatwave Control Matching):** **Complete (Verified)**. Implements sliding window matching over June–September 2024. Excludes heatwave/buffer overlaps, missing observations, and 3-day exceedance runs. Matches `HW_20240702` (120h) to `CTRL_20240605` (`2024-06-05` to `2024-06-09`, 120h) centered on verified ordinary summer anchor `2024-06-07` (mean daily max $21.84^\circ\text{C}$ vs anchor $21.70^\circ\text{C}$, temp distance $0.14^\circ\text{C}$).
+> - **P3-06 (Event/Control Coverage, Audit, & Chronological Splits):** **Complete (Verified)**. Audits all 4 events, 1 matched benchmark pair, and documents unmatched reasons for 2022 events (CAISO OASIS free API rolling 39-month historical limit) and 2025 (zero qualifying events).
+> - **Gate G3-a:** **Complete (Verified)**. Aligned 2024 event/control benchmark table (`data/benchmarks/benchmark_2024_event_control_v0.parquet`) constructed with exactly 240 rows (120 event + 120 control) with 100% complete coverage across weather, price, demand, net generation, and carbon intensity. Provenance and manifest recorded. Clean loader verified.
 
-### Detected Heatwave Catalogue (2022–2025)
+### Running P3 Pipelines, Workloads, and Benchmark Inspection
 
-| Event ID | Dates (`America/Los_Angeles`) | Days | Hours | Peak Date | Peak Max | Mean Max | Cum Exceedance |
-|---|---|---|---|---|---|---|---|
-| `HW_20220620` | 2022-06-20 to 2022-06-22 | 3 | 72 | 2022-06-21 | 36.7°C | 30.03°C | 13.30°C·days |
-| `HW_20220904` | 2022-09-04 to 2022-09-08 | 5 | 120 | 2022-09-05 | 35.6°C | 33.22°C | 38.10°C·days |
-| `HW_20220922` | 2022-09-22 to 2022-09-24 | 3 | 72 | 2022-09-24 | 28.3°C | 27.40°C | 5.40°C·days |
-| `HW_20240702` | 2024-07-02 to 2024-07-04 | 3 | 72 | 2024-07-02 | 31.1°C | 30.00°C | 13.20°C·days |
-
-Total event hours: 336 hours (14 event days). Total phase-labeled hours: 528 hours (22 distinct days; onset: 96h, sustained: 240h, peak: 96h, recovery: 96h).
-
-### Running P3 Event Detection and Inspection
-
-#### 1. Build Heatwave Catalogue & Phase Labels (Offline, Cache-Only)
+#### 1. Build Full P3 Suite (Events, Controls, Workloads, Benchmark)
 ```bash
-PYTHONPATH=src python -m heattrace.cli --build-events
+PYTHONPATH=src python -m heattrace.cli --build-p3
 ```
 Produces:
 - `data/events/heatwave_events_v0.parquet`
-- `data/events/heatwave_events_v0.csv`
 - `data/events/hourly_event_labels_v0.parquet`
-- `data/events/hourly_event_labels_v0_sample.csv`
-- `data/manifests/event_coverage.csv`
-- `data/manifests/event_catalogue_manifest.json`
+- `data/events/control_catalogue_v0.parquet`
+- `data/workloads/workload_trace_v0.parquet`
+- `data/benchmarks/benchmark_2024_event_control_v0.parquet`
+- `data/manifests/p3_comprehensive_audit.json`
 
-#### 2. Inspect Heatwave Catalogue
+#### 2. Run Comprehensive Audit
 ```bash
-PYTHONPATH=src python -m heattrace.cli --inspect-events
+PYTHONPATH=src python -m heattrace.cli --audit-p3
+```
+
+#### 3. Inspect Aligned Benchmark
+```bash
+PYTHONPATH=src python -m heattrace.cli --load-p3-benchmark
 ```
 
 ## Repository layout

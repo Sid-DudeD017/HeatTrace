@@ -1,11 +1,16 @@
-# HeatTrace P3: Multi-Day Heatwave Detection and Phase Labeling (Person A)
+# HeatTrace P3: Heatwaves, Controls, Workloads, and Benchmark Specification
 
-This document specifies the deterministic methodology, operational execution, and output contracts for HeatTrace Phase P3 Person A responsibilities:
+This document specifies the deterministic methodology, operational execution, and output contracts for HeatTrace Phase P3:
 - **P3-01**: Final deterministic multi-day heatwave detection and phase labeling.
 - **P3-02**: Event, coverage, timestamp, and phase-assignment validation.
+- **P3-03**: Deterministic synthetic workload generator and mock job schemas.
+- **P3-04**: Typed policy and forecasting interfaces with test stubs.
+- **P3-05**: Deterministic non-heatwave control window matching.
+- **P3-06**: Comprehensive event, control, coverage, unmatched-case, and chronological-split audit.
+- **G3-a**: Aligned 240-row 2024 event/control benchmark verification.
 
 > [!NOTE]
-> Scope boundary: This phase implements Person A's event catalogue and hourly phase labels only. Person B (matched controls P3-03/04) and Person C (data curation P3-05/06) remain assigned separately. Gate G3-a remains pending downstream integration.
+> Gate G3-a is **COMPLETE and VERIFIED**. All components for P3-01 through P3-06 are fully implemented, passing strict automated tests, and verified across authentic multi-source data. P4 schedulers and P5 empirical experiments remain assigned to subsequent phases.
 
 ---
 
@@ -111,8 +116,17 @@ Across the 4 detected events (total 22 distinct local days):
 2. `data/events/heatwave_events_v0.csv`: Canonical event catalogue CSV.
 3. `data/events/hourly_event_labels_v0.parquet`: Hourly phase assignment table.
 4. `data/events/hourly_event_labels_v0_sample.csv`: Sample of hourly phase labels (first/last 20 rows).
-5. `data/manifests/event_coverage.csv`: Event coverage summary table with phase hour totals.
-6. `data/manifests/event_catalogue_manifest.json`: Provenance manifest recording SHA-256 hashes of inputs and outputs.
+5. `data/events/control_catalogue_v0.parquet`: Non-heatwave control catalogue table.
+6. `data/events/control_catalogue_v0.csv`: Non-heatwave control catalogue CSV.
+7. `data/workloads/workload_trace_v0.parquet`: Synthetic mock job workload trace.
+8. `data/workloads/workload_trace_v0.csv`: Synthetic mock job workload trace CSV.
+9. `data/benchmarks/benchmark_2024_event_control_v0.parquet`: Complete aligned 240-row 2024 event/control benchmark table.
+10. `data/benchmarks/benchmark_2024_event_control_v0_sample.csv`: Sample of aligned benchmark table (first/last 20 rows).
+11. `data/manifests/event_coverage.csv`: Event coverage summary table with phase hour totals.
+12. `data/manifests/event_catalogue_manifest.json`: Provenance manifest for event catalogue.
+13. `data/manifests/control_matching_audit.json`: Control matching candidate evaluation audit.
+14. `data/manifests/benchmark_manifest.json`: G3-a benchmark table manifest.
+15. `data/manifests/p3_comprehensive_audit.json`: P3-06 comprehensive audit report.
 
 ### CLI Instructions
 - Build the heatwave catalogue and hourly phase labels:
@@ -123,8 +137,45 @@ Across the 4 detected events (total 22 distinct local days):
   ```bash
   python -m heattrace.cli --inspect-events
   ```
+- Build mock workload traces:
+  ```bash
+  python -m heattrace.cli --build-workloads
+  ```
+- Inspect mock workload traces:
+  ```bash
+  python -m heattrace.cli --inspect-workloads
+  ```
+- Build full P3 suite (events, controls, workloads, and benchmark table):
+  ```bash
+  python -m heattrace.cli --build-p3
+  ```
+- Run P3-06 comprehensive audit:
+  ```bash
+  python -m heattrace.cli --audit-p3
+  ```
+- Load and inspect the 2024 event/control benchmark:
+  ```bash
+  python -m heattrace.cli --load-p3-benchmark
+  ```
 
 ---
 
-## 6. Limitations of 4-Year Baseline
+## 6. Deterministic Control Matching (P3-05)
+For the primary 2024 validation event `HW_20240702` (5-day, 120-hour window from 2024-07-01 to 2024-07-05), deterministic control matching evaluated all candidate 120-hour sliding windows in June–September 2024:
+- Filtered out any window overlapping heatwave events or buffer intervals.
+- Filtered out windows with missing weather observations or 3-day exceedance runs.
+- Centered on the previously verified ordinary summer day `2024-06-07`.
+- Selected `CTRL_20240605` (`2024-06-05` to `2024-06-09`, 120 hours).
+- Matching distance from anchor temperature: $0.14^\circ\text{C}$ (mean daily max $21.84^\circ\text{C}$ vs anchor $21.70^\circ\text{C}$).
+
+---
+
+## 7. Chronological Split and Benchmark Audit (P3-06 & G3-a)
+- **Training Split (2022–2023)**: 3 multi-day heatwaves identified (`HW_20220620`, `HW_20220904`, `HW_20220922`). These events lack current live CAISO OASIS API coverage due to CAISO's rolling 39-month window restriction and remain un-matched pending offline archive ingestion.
+- **Validation Split (2024)**: Contains `HW_20240702` matched with `CTRL_20240605`. Complete 100% coverage verified across all 5 physical signals (temperature, price, demand, net generation, carbon intensity) across both 120-hour windows ($240$ total hourly rows).
+- **Test Split (2025)**: Evaluated 119 observed days (missing Aug 30 - Sep 1). No 3-day consecutive exceedance run occurred; reported honestly with zero events.
+
+---
+
+## 8. Limitations of 4-Year Baseline
 The empirical 90th percentile was derived from pooled warm seasons across 2022–2025 ($N = 485$ days). In formal climatological research (e.g., WMO guidelines), percentile baselines typically rely on a 30-year climate normal (e.g., 1991–2020). Using a 4-year local baseline serves as an empirical threshold specifically calibrated for the CAISO study window. Any future historical expansion should document sensitivity against a multi-decadal normal.

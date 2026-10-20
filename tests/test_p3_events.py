@@ -379,6 +379,10 @@ def test_p3_hourly_validation_detects_wrong_local_date():
 
 def test_p3_contract_table_schema_exact_match():
     """Verify docs/contracts.md documents exact column names and ordering for P3 tables."""
+    from heattrace.workload import WORKLOAD_JOB_COLUMNS
+    from heattrace.process.controls import CONTROL_CATALOGUE_COLUMNS
+    from heattrace.process.benchmark import BENCHMARK_COLUMNS
+
     contracts_path = Path("docs/contracts.md")
     assert contracts_path.exists()
     content = contracts_path.read_text(encoding="utf-8")
@@ -402,6 +406,36 @@ def test_p3_contract_table_schema_exact_match():
         if m:
             lbl_cols.append(m.group(1))
     assert lbl_cols == HOURLY_EVENT_LABEL_COLUMNS
+
+    # 3. Workload Job Schema
+    wl_match = re.search(r"### Workload Job Schema.*?(?=\n---|\Z)", content, re.DOTALL)
+    assert wl_match is not None, "Workload Job Schema table not found"
+    wl_cols = []
+    for line in wl_match.group(0).splitlines():
+        m = re.match(r"^\|\s*`([a-z0-9_]+)`\s*\|", line.strip())
+        if m:
+            wl_cols.append(m.group(1))
+    assert wl_cols == WORKLOAD_JOB_COLUMNS
+
+    # 4. Control Window Schema
+    ctrl_match = re.search(r"### Control Window Schema.*?(?=\n---|\Z)", content, re.DOTALL)
+    assert ctrl_match is not None, "Control Window Schema table not found"
+    ctrl_cols = []
+    for line in ctrl_match.group(0).splitlines():
+        m = re.match(r"^\|\s*`([a-z0-9_]+)`\s*\|", line.strip())
+        if m:
+            ctrl_cols.append(m.group(1))
+    assert ctrl_cols == CONTROL_CATALOGUE_COLUMNS
+
+    # 5. Benchmark Schema
+    bench_match = re.search(r"### Benchmark Schema.*?(?=\n---|\Z)", content, re.DOTALL)
+    assert bench_match is not None, "Benchmark Schema table not found"
+    bench_cols = []
+    for line in bench_match.group(0).splitlines():
+        m = re.match(r"^\|\s*`([a-z0-9_]+)`\s*\|", line.strip())
+        if m:
+            bench_cols.append(m.group(1))
+    assert bench_cols == BENCHMARK_COLUMNS
 
 
 # =========================================================================

@@ -148,6 +148,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Inspect and summarize detected heatwave events and phase labels (P3 Person A)",
     )
     parser.add_argument(
+        "--build-workloads",
+        action="store_true",
+        help="Generate deterministic mock workload trace (P3-03)",
+    )
+    parser.add_argument(
+        "--inspect-workloads",
+        action="store_true",
+        help="Inspect deterministic mock workload trace (P3-03)",
+    )
+    parser.add_argument(
+        "--build-p3",
+        action="store_true",
+        help="Build full P3 event catalogue, controls, workloads, and 2024 benchmark (G3-a)",
+    )
+    parser.add_argument(
+        "--audit-p3",
+        action="store_true",
+        help="Run P3-06 audit on events, controls, benchmarks, and chronological splits",
+    )
+    parser.add_argument(
+        "--load-p3-benchmark",
+        action="store_true",
+        help="Load, validate, and inspect the 240-row 2024 event/control benchmark table (G3-a)",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1045,9 +1070,111 @@ def run_inspect_events(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_build_workloads(args: argparse.Namespace) -> int:
+    """Generate deterministic workload trace."""
+    from heattrace.workload import build_and_export_workloads
+
+    data_dir = Path(args.data_dir)
+    config_dir = Path(args.config_dir)
+    try:
+        res = build_and_export_workloads(data_dir=data_dir, config_dir=config_dir)
+        print(f"Generated {len(res['df'])} workload jobs.")
+        print(f"Workload Parquet: {res['parquet_path']}")
+        print(f"Workload CSV:     {res['csv_path']}")
+        return 0
+    except Exception as e:
+        print(f"\n[WORKLOAD ERROR] Failed to build workloads: {e}\n")
+        return 1
+
+
+def run_inspect_workloads(args: argparse.Namespace) -> int:
+    """Inspect workload trace."""
+    from heattrace.workload import inspect_workload_trace
+
+    data_dir = Path(args.data_dir)
+    parquet_path = data_dir / "workloads/workload_trace_v0.parquet"
+    try:
+        inspect_workload_trace(parquet_path)
+        return 0
+    except Exception as e:
+        print(f"\n[WORKLOAD ERROR] Failed to inspect workloads: {e}\n")
+        return 1
+
+
+def run_build_p3(args: argparse.Namespace) -> int:
+    """Build full P3 event catalogue, controls, workloads, and 2024 benchmark."""
+    from heattrace.process.events import build_and_export_events
+    from heattrace.process.controls import build_and_export_controls
+    from heattrace.workload import build_and_export_workloads
+    from heattrace.process.benchmark import build_and_export_p3_benchmark
+
+    data_dir = Path(args.data_dir)
+    config_dir = Path(args.config_dir)
+
+    print("\n======================= HeatTrace P3 Full Suite Builder =======================")
+    try:
+        print("[1/4] Building heatwave events...")
+        build_and_export_events(data_dir=data_dir, config_dir=config_dir)
+
+        print("[2/4] Building deterministic controls...")
+        build_and_export_controls(data_dir=data_dir, config_dir=config_dir)
+
+        print("[3/4] Building synthetic workloads...")
+        build_and_export_workloads(data_dir=data_dir, config_dir=config_dir)
+
+        print("[4/4] Building 2024 event/control benchmark table...")
+        b_res = build_and_export_p3_benchmark(data_dir=data_dir, config_dir=config_dir)
+
+        print(f"Success! Benchmark generated: {b_res['parquet_path']} ({len(b_res['df_benchmark'])} rows)")
+        print("===============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD P3 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_audit_p3(args: argparse.Namespace) -> int:
+    """Execute and display P3-06 comprehensive audit."""
+    from heattrace.process.audit import run_p3_audit, print_p3_audit_report
+
+    data_dir = Path(args.data_dir)
+    config_dir = Path(args.config_dir)
+    try:
+        audit_res = run_p3_audit(data_dir=data_dir, config_dir=config_dir)
+        print_p3_audit_report(audit_res)
+        return 0
+    except Exception as e:
+        print(f"\n[AUDIT P3 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_load_p3_benchmark(args: argparse.Namespace) -> int:
+    """Load and inspect 2024 event/control benchmark dataset."""
+    from heattrace.process.benchmark import inspect_benchmark_dataset
+
+    data_dir = Path(args.data_dir)
+    parquet_path = data_dir / "benchmarks/benchmark_2024_event_control_v0.parquet"
+    try:
+        inspect_benchmark_dataset(parquet_path)
+        return 0
+    except Exception as e:
+        print(f"\n[LOAD BENCHMARK ERROR] Failed: {e}\n")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_events:
+    if args.build_p3:
+        code = run_build_p3(args)
+    elif args.audit_p3:
+        code = run_audit_p3(args)
+    elif args.load_p3_benchmark:
+        code = run_load_p3_benchmark(args)
+    elif args.build_workloads:
+        code = run_build_workloads(args)
+    elif args.inspect_workloads:
+        code = run_inspect_workloads(args)
+    elif args.build_events:
         code = run_build_events(args)
     elif args.inspect_events:
         code = run_inspect_events(args)
