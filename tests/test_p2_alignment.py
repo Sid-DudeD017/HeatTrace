@@ -674,8 +674,18 @@ def test_documented_schema_matches_canonical_columns():
     assert contracts_path.exists()
     content = contracts_path.read_text(encoding="utf-8")
 
+    # Match rows specifically in the Canonical Schema and Column Specification table
+    # Extract text between '### Canonical Schema and Column Specification' and '## Provider Alignment Rules'
+    section_match = re.search(
+        r"### Canonical Schema and Column Specification.*?(?=## Provider Alignment Rules)",
+        content,
+        re.DOTALL,
+    )
+    assert section_match is not None, "Canonical Schema section not found in docs/contracts.md"
+    section_text = section_match.group(0)
+
     # Match rows of format: | `column_name` | ...
-    table_cols = re.findall(r"^\|\s*`([a-z0-9_]+)`\s*\|", content, re.MULTILINE)
+    table_cols = re.findall(r"^\|\s*`([a-z0-9_]+)`\s*\|", section_text, re.MULTILINE)
     assert len(CANONICAL_COLUMNS) == 40
     assert table_cols == CANONICAL_COLUMNS
 

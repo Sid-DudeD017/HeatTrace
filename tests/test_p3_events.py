@@ -1,4 +1,4 @@
-"""Tests for HeatTrace Phase P3 Person A: Heatwave event detection, phase labeling, and validation."""
+"""Tests for HeatTrace Phase P3: Heatwave event detection, phase labeling, contracts, and validation."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 import hashlib
 import json
+import re
 import pytest
 import pandas as pd
 
@@ -17,6 +18,7 @@ from heattrace.process.events import (
     build_hourly_phase_labels,
     compute_heatwave_percentile_threshold,
     detect_heatwave_events,
+    load_heatwave_config,
     write_event_coverage_csv,
     write_event_manifest_json,
 )
@@ -27,6 +29,7 @@ from heattrace.process.event_validation import (
     validate_heatwave_events,
     validate_hourly_event_labels,
 )
+from heattrace.process.quality import CANONICAL_COLUMNS
 
 
 def _make_daily_record(
@@ -46,6 +49,58 @@ def _make_daily_record(
         "duplicate_observation_count": 0,
         "conflict_observation_count": 0,
         "timestamps_utc": [],
+    }
+
+
+def _make_mock_event(
+    event_id: str = "HW_20240701",
+    local_start_date: str = "2024-07-01",
+    local_end_date: str = "2024-07-03",
+    duration_days: int = 3,
+    station_id: str = "USW00023234",
+    tz_str: str = "America/Los_Angeles",
+    start_utc: datetime | None = None,
+    end_utc: datetime | None = None,
+    peak_date: str = "2024-07-02",
+    peak_temp: float = 31.0,
+    threshold_c: float = 25.6,
+    percentile: float = 90.0,
+    percentile_method: str = "linear_interpolation",
+) -> dict[str, Any]:
+    tz = ZoneInfo(tz_str)
+    d_start = date.fromisoformat(local_start_date)
+    d_end = date.fromisoformat(local_end_date)
+    if start_utc is None:
+        start_utc = datetime(d_start.year, d_start.month, d_start.day, 0, 0, tzinfo=tz).astimezone(timezone.utc)
+    if end_utc is None:
+        next_d = d_end + timedelta(days=1)
+        end_utc = datetime(next_d.year, next_d.month, next_d.day, 0, 0, tzinfo=tz).astimezone(timezone.utc)
+    dur_hours = int(round((end_utc - start_utc).total_seconds() / 3600.0))
+
+    return {
+        "event_id": event_id,
+        "station_id": station_id,
+        "timezone": tz_str,
+        "threshold_percentile": percentile,
+        "threshold_temperature_c": threshold_c,
+        "percentile_method": percentile_method,
+        "local_start_date": local_start_date,
+        "local_end_date": local_end_date,
+        "event_start_utc": start_utc,
+        "event_end_utc": end_utc,
+        "qualifying_day_count": duration_days,
+        "duration_days": duration_days,
+        "duration_hours": dur_hours,
+        "peak_local_date": peak_date,
+        "peak_temperature_c": peak_temp,
+        "mean_max_temperature_c": 30.0,
+        "cumulative_exceedance_c_days": 13.0,
+        "missing_days_inside_event": 0,
+        "valid_observation_count": 72,
+        "duplicate_observation_count": 0,
+        "conflict_observation_count": 0,
+        "source_quality": "verified",
+        "source_file_references": "NOAA GHCNh USW00023234",
     }
 
 
@@ -92,7 +147,6 @@ def test_p3_detection_two_consecutive_days_fails_to_create_event():
 def test_p3_detection_missing_day_breaks_consecuteness():
     """Requirement: Missing day breaks consecuteness and cannot bridge events."""
     threshold = 25.0
-    # Day 2024-07-03 is missing (gap between 07-02 and 07-04)
     daily_records = [
         _make_daily_record("2024-07-01", 26.0),
         _make_daily_record("2024-07-02", 27.0),
@@ -101,7 +155,6 @@ def test_p3_detection_missing_day_breaks_consecuteness():
         _make_daily_record("2024-07-05", 29.0),
     ]
     df_events, runs = detect_heatwave_events(daily_records, threshold_p90_c=threshold)
-    # Neither run reaches 3 days (first is 2 days, second is 2 days)
     assert len(df_events) == 0
     assert len(runs) == 0
 
@@ -148,13 +201,12 @@ def test_p3_detection_strict_exceedance_boundary():
     """Requirement: Temperature exactly equal to P90 does NOT qualify (strictly greater than)."""
     threshold = 25.6
     daily_records = [
-        _make_daily_record("2024-07-01", 25.6),  # Exactly equal to threshold -> not qualifying
-        _make_daily_record("2024-07-02", 25.60001),  # Exceeds
-        _make_daily_record("2024-07-03", 26.0),  # Exceeds
-        _make_daily_record("2024-07-04", 25.6),  # Exactly equal -> not qualifying
+        _make_daily_record("2024-07-01", 25.6),
+        _make_daily_record("2024-07-02", 25.60001),
+        _make_daily_record("2024-07-03", 26.0),
+        _make_daily_record("2024-07-04", 25.6),
     ]
     df_events, _ = detect_heatwave_events(daily_records, threshold_p90_c=threshold)
-    # Only 2 consecutive qualifying days (07-02 and 07-03)
     assert len(df_events) == 0
 
 
@@ -162,9 +214,9 @@ def test_p3_detection_peak_tie_breaking():
     """Requirement: Tied daily maxima within an event resolve to the earliest date."""
     threshold = 25.0
     daily_records = [
-        _make_daily_record("2024-07-01", 30.0),  # Peak candidate 1 (earlier)
+        _make_daily_record("2024-07-01", 30.0),
         _make_daily_record("2024-07-02", 28.0),
-        _make_daily_record("2024-07-03", 30.0),  # Peak candidate 2 (later)
+        _make_daily_record("2024-07-03", 30.0),
         _make_daily_record("2024-07-04", 27.0),
     ]
     df_events, _ = detect_heatwave_events(daily_records, threshold_p90_c=threshold)
@@ -181,14 +233,17 @@ def test_p3_phase_labeling_durations_and_coverage():
     """Requirement: For a 3-day event, onset=24h, peak=24h, sustained=48h, recovery=24h (total 120h)."""
     threshold = 25.0
     daily_records = [
+        _make_daily_record("2024-07-01", 24.0),
         _make_daily_record("2024-07-02", 30.0),  # peak
         _make_daily_record("2024-07-03", 28.0),
         _make_daily_record("2024-07-04", 27.0),
+        _make_daily_record("2024-07-05", 23.0),
     ]
     df_events, _ = detect_heatwave_events(daily_records, threshold_p90_c=threshold)
-    df_labels = build_hourly_phase_labels(df_events)
+    daily_by_date = {d["local_date"]: d for d in daily_records}
+    df_labels = build_hourly_phase_labels(df_events, daily_records_by_date=daily_by_date, threshold_p90_c=threshold)
 
-    assert len(df_labels) == 120  # 5 days * 24 hours
+    assert len(df_labels) == 120
     assert set(df_labels["event_phase"]) == {"onset", "peak", "sustained", "recovery"}
 
     counts = df_labels["event_phase"].value_counts().to_dict()
@@ -197,28 +252,23 @@ def test_p3_phase_labeling_durations_and_coverage():
     assert counts["sustained"] == 48
     assert counts["recovery"] == 24
 
-    # Onset date must be 2024-07-01
     onset_dates = df_labels[df_labels["event_phase"] == "onset"]["local_date"].unique()
     assert list(onset_dates) == ["2024-07-01"]
 
-    # Recovery date must be 2024-07-05
     recovery_dates = df_labels[df_labels["event_phase"] == "recovery"]["local_date"].unique()
     assert list(recovery_dates) == ["2024-07-05"]
 
 
 def test_p3_dst_duration_conversion():
     """Requirement: Local day to UTC bounds handles 23-hour and 25-hour DST transitions accurately."""
-    # Spring forward in America/Los_Angeles: 2024-03-10 (23 hours)
     start_utc, end_utc, hours = get_local_day_utc_bounds("2024-03-10", "America/Los_Angeles")
     assert hours == 23.0
     assert (end_utc - start_utc).total_seconds() == 23 * 3600
 
-    # Fall back in America/Los_Angeles: 2024-11-03 (25 hours)
     start_utc, end_utc, hours = get_local_day_utc_bounds("2024-11-03", "America/Los_Angeles")
     assert hours == 25.0
     assert (end_utc - start_utc).total_seconds() == 25 * 3600
 
-    # Standard summer day: 24 hours
     start_utc, end_utc, hours = get_local_day_utc_bounds("2024-07-02", "America/Los_Angeles")
     assert hours == 24.0
     assert (end_utc - start_utc).total_seconds() == 24 * 3600
@@ -226,40 +276,8 @@ def test_p3_dst_duration_conversion():
 
 def test_p3_phase_buffer_collision_detection():
     """Requirement: Fail explicitly if onset or recovery buffers collide between events."""
-    # Two events separated by only 1 day: Event 1 ends 2024-07-03, Event 2 starts 2024-07-05.
-    # Event 1 recovery is 2024-07-04; Event 2 onset is ALSO 2024-07-04! Collision!
-    ev1 = {
-        "event_id": "HW_20240701",
-        "station_id": "USW00023234",
-        "timezone": "America/Los_Angeles",
-        "local_start_date": "2024-07-01",
-        "local_end_date": "2024-07-03",
-        "duration_days": 3,
-        "event_start_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),
-        "event_end_utc": datetime(2024, 7, 4, 7, 0, tzinfo=timezone.utc),
-        "duration_hours": 72,
-        "peak_local_date": "2024-07-02",
-        "peak_temperature_c": 31.0,
-        "mean_max_temperature_c": 30.0,
-        "cumulative_exceedance_c_days": 13.0,
-        "threshold_p90_c": 25.6,
-    }
-    ev2 = {
-        "event_id": "HW_20240705",
-        "station_id": "USW00023234",
-        "timezone": "America/Los_Angeles",
-        "local_start_date": "2024-07-05",
-        "local_end_date": "2024-07-07",
-        "duration_days": 3,
-        "event_start_utc": datetime(2024, 7, 5, 7, 0, tzinfo=timezone.utc),
-        "event_end_utc": datetime(2024, 7, 8, 7, 0, tzinfo=timezone.utc),
-        "duration_hours": 72,
-        "peak_local_date": "2024-07-06",
-        "peak_temperature_c": 32.0,
-        "mean_max_temperature_c": 30.5,
-        "cumulative_exceedance_c_days": 14.0,
-        "threshold_p90_c": 25.6,
-    }
+    ev1 = _make_mock_event("HW_20240701", "2024-07-01", "2024-07-03", duration_days=3)
+    ev2 = _make_mock_event("HW_20240705", "2024-07-05", "2024-07-07", duration_days=3)
     df_colliding = pd.DataFrame([ev1, ev2], columns=EVENT_CATALOGUE_COLUMNS)
     with pytest.raises(ValueError, match="Phase buffer collision"):
         build_hourly_phase_labels(df_colliding)
@@ -271,22 +289,7 @@ def test_p3_phase_buffer_collision_detection():
 
 def test_p3_event_validation_detects_short_duration():
     """Event validator must reject events shorter than min_consecutive_days."""
-    ev = {
-        "event_id": "HW_20240701",
-        "station_id": "USW00023234",
-        "timezone": "America/Los_Angeles",
-        "local_start_date": "2024-07-01",
-        "local_end_date": "2024-07-02",
-        "duration_days": 2,  # Invalid: < 3
-        "event_start_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),
-        "event_end_utc": datetime(2024, 7, 3, 7, 0, tzinfo=timezone.utc),
-        "duration_hours": 48,
-        "peak_local_date": "2024-07-02",
-        "peak_temperature_c": 31.0,
-        "mean_max_temperature_c": 30.0,
-        "cumulative_exceedance_c_days": 8.0,
-        "threshold_p90_c": 25.6,
-    }
+    ev = _make_mock_event("HW_20240701", "2024-07-01", "2024-07-02", duration_days=2)
     df = pd.DataFrame([ev], columns=EVENT_CATALOGUE_COLUMNS)
     with pytest.raises(ValueError, match="duration_days 2 < min_consecutive_days"):
         validate_heatwave_events(df, min_consecutive_days=3)
@@ -294,47 +297,36 @@ def test_p3_event_validation_detects_short_duration():
 
 def test_p3_event_validation_detects_duplicate_event_id():
     """Event validator must reject duplicate event_id."""
-    ev = {
-        "event_id": "HW_20240701",
-        "station_id": "USW00023234",
-        "timezone": "America/Los_Angeles",
-        "local_start_date": "2024-07-01",
-        "local_end_date": "2024-07-03",
-        "duration_days": 3,
-        "event_start_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),
-        "event_end_utc": datetime(2024, 7, 4, 7, 0, tzinfo=timezone.utc),
-        "duration_hours": 72,
-        "peak_local_date": "2024-07-02",
-        "peak_temperature_c": 31.0,
-        "mean_max_temperature_c": 30.0,
-        "cumulative_exceedance_c_days": 13.0,
-        "threshold_p90_c": 25.6,
-    }
+    ev = _make_mock_event("HW_20240701", "2024-07-01", "2024-07-03", duration_days=3)
     df = pd.DataFrame([ev, ev], columns=EVENT_CATALOGUE_COLUMNS)
     with pytest.raises(ValueError, match="Duplicate event_id values found"):
         validate_heatwave_events(df)
 
 
-def test_p3_event_validation_detects_naive_timestamp():
-    """Event validator must reject naive datetimes."""
-    ev = {
-        "event_id": "HW_20240701",
-        "station_id": "USW00023234",
-        "timezone": "America/Los_Angeles",
-        "local_start_date": "2024-07-01",
-        "local_end_date": "2024-07-03",
-        "duration_days": 3,
-        "event_start_utc": datetime(2024, 7, 1, 7, 0),  # Naive!
-        "event_end_utc": datetime(2024, 7, 4, 7, 0, tzinfo=timezone.utc),
-        "duration_hours": 72,
-        "peak_local_date": "2024-07-02",
-        "peak_temperature_c": 31.0,
-        "mean_max_temperature_c": 30.0,
-        "cumulative_exceedance_c_days": 13.0,
-        "threshold_p90_c": 25.6,
-    }
+def test_p3_event_validation_detects_invalid_event_id_format():
+    """Event validator must reject invalid event_id formats."""
+    ev = _make_mock_event("HEATWAVE_1", "2024-07-01", "2024-07-03", duration_days=3)
     df = pd.DataFrame([ev], columns=EVENT_CATALOGUE_COLUMNS)
-    with pytest.raises(ValueError, match="must be timezone-aware UTC datetime"):
+    with pytest.raises(ValueError, match="invalid event_id format"):
+        validate_heatwave_events(df)
+
+
+def test_p3_event_validation_detects_inconsistent_event_id_and_date():
+    """Event validator must reject event_id date inconsistent with local_start_date."""
+    ev = _make_mock_event("HW_20240705", "2024-07-01", "2024-07-03", duration_days=3)
+    df = pd.DataFrame([ev], columns=EVENT_CATALOGUE_COLUMNS)
+    with pytest.raises(ValueError, match="does not match local_start_date"):
+        validate_heatwave_events(df)
+
+
+def test_p3_event_validation_detects_non_utc_timezone():
+    """Event validator must reject timezone-aware datetimes that are not UTC."""
+    tz_la = ZoneInfo("America/Los_Angeles")
+    start_la = datetime(2024, 7, 1, 0, 0, tzinfo=tz_la)
+    end_la = datetime(2024, 7, 4, 0, 0, tzinfo=tz_la)
+    ev = _make_mock_event("HW_20240701", "2024-07-01", "2024-07-03", duration_days=3, start_utc=start_la, end_utc=end_la)
+    df = pd.DataFrame([ev], columns=EVENT_CATALOGUE_COLUMNS)
+    with pytest.raises(ValueError, match="timezone must be UTC"):
         validate_heatwave_events(df)
 
 
@@ -342,23 +334,74 @@ def test_p3_hourly_validation_detects_duplicate_timestamp():
     """Hourly validator must reject duplicate timestamps."""
     row1 = {
         "timestamp_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),
+        "local_timestamp": "2024-07-01T00:00:00",
         "local_date": "2024-07-01",
         "hour_local": 0,
         "event_id": "HW_20240702",
         "event_phase": "onset",
         "station_id": "USW00023234",
+        "daily_max_temperature_c": 24.0,
+        "threshold_temperature_c": 25.6,
+        "exceeds_threshold": False,
+        "temperature_missing": False,
+        "source_quality": "verified",
     }
-    row2 = {
-        "timestamp_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),  # Duplicate timestamp
-        "local_date": "2024-07-01",
-        "hour_local": 0,
-        "event_id": "HW_20240702",
-        "event_phase": "onset",
-        "station_id": "USW00023234",
-    }
+    row2 = dict(row1)
     df = pd.DataFrame([row1, row2], columns=HOURLY_EVENT_LABEL_COLUMNS)
     with pytest.raises(ValueError, match="Duplicate timestamp_utc found"):
         validate_hourly_event_labels(df)
+
+
+def test_p3_hourly_validation_detects_wrong_local_date():
+    """Hourly validator must reject mismatch between timestamp_utc and local_date."""
+    row = {
+        "timestamp_utc": datetime(2024, 7, 1, 7, 0, tzinfo=timezone.utc),  # 2024-07-01 00:00:00 in LA
+        "local_timestamp": "2024-07-01T00:00:00",
+        "local_date": "2024-07-02",  # Mismatch!
+        "hour_local": 0,
+        "event_id": "HW_20240702",
+        "event_phase": "onset",
+        "station_id": "USW00023234",
+        "daily_max_temperature_c": 24.0,
+        "threshold_temperature_c": 25.6,
+        "exceeds_threshold": False,
+        "temperature_missing": False,
+        "source_quality": "verified",
+    }
+    df = pd.DataFrame([row], columns=HOURLY_EVENT_LABEL_COLUMNS)
+    with pytest.raises(ValueError, match="local_date '2024-07-02' != expected '2024-07-01'"):
+        validate_hourly_event_labels(df)
+
+
+# =========================================================================
+# Contract Document Schema Tests
+# =========================================================================
+
+def test_p3_contract_table_schema_exact_match():
+    """Verify docs/contracts.md documents exact column names and ordering for P3 tables."""
+    contracts_path = Path("docs/contracts.md")
+    assert contracts_path.exists()
+    content = contracts_path.read_text(encoding="utf-8")
+
+    # 1. Event Catalogue Schema
+    ev_match = re.search(r"### Event Catalogue Schema.*?(?=\n---|\Z)", content, re.DOTALL)
+    assert ev_match is not None, "Event Catalogue Schema table not found"
+    ev_cols = []
+    for line in ev_match.group(0).splitlines():
+        m = re.match(r"^\|\s*`([a-z0-9_]+)`\s*\|", line.strip())
+        if m:
+            ev_cols.append(m.group(1))
+    assert ev_cols == EVENT_CATALOGUE_COLUMNS
+
+    # 2. Hourly Event Labels Schema
+    lbl_match = re.search(r"### Hourly Event Labels Schema.*?(?=### Phase Assignment Rules|\Z)", content, re.DOTALL)
+    assert lbl_match is not None, "Hourly Event Labels Schema table not found"
+    lbl_cols = []
+    for line in lbl_match.group(0).splitlines():
+        m = re.match(r"^\|\s*`([a-z0-9_]+)`\s*\|", line.strip())
+        if m:
+            lbl_cols.append(m.group(1))
+    assert lbl_cols == HOURLY_EVENT_LABEL_COLUMNS
 
 
 # =========================================================================
@@ -368,8 +411,9 @@ def test_p3_hourly_validation_detects_duplicate_timestamp():
 def test_p3_authentic_dataset_event_detection_and_catalog():
     """Verify authentic 2022-2025 NOAA GHCNh files produce exact expected heatwaves."""
     base_dir = Path(__file__).resolve().parents[1]
-    years = [2022, 2023, 2024, 2025]
-    station_id = "USW00023234"
+    hw_cfg = load_heatwave_config(config_dir=base_dir / "configs")
+    years = hw_cfg["years"]
+    station_id = hw_cfg["station_id"]
     files = [base_dir / f"data/raw/noaa/GHCNh_{station_id}_{y}.psv" for y in years]
 
     for f in files:
@@ -379,29 +423,32 @@ def test_p3_authentic_dataset_event_detection_and_catalog():
         files,
         station_id=station_id,
         years=years,
-        months=[6, 7, 8, 9],
-        target_timezone="America/Los_Angeles",
-        percentile=90.0,
+        months=hw_cfg["months"],
+        target_timezone=hw_cfg["target_timezone"],
+        percentile=hw_cfg["percentile"],
+        percentile_method=hw_cfg["percentile_method"],
     )
 
     assert thresh_info["sample_size"] == 485
     assert thresh_info["threshold_p90_display_c"] == 25.6
     assert abs(thresh_info["threshold_p90_c"] - 25.6) < 1e-5
 
+    daily_by_date = {d["local_date"]: d for d in thresh_info["daily_maxima"]}
+
     df_events, runs = detect_heatwave_events(
         thresh_info["daily_maxima"],
         thresh_info["threshold_p90_c"],
         station_id=station_id,
-        target_timezone="America/Los_Angeles",
-        min_consecutive_days=3,
+        target_timezone=hw_cfg["target_timezone"],
+        percentile=hw_cfg["percentile"],
+        percentile_method=hw_cfg["percentile_method"],
+        min_consecutive_days=hw_cfg["min_consecutive_days"],
     )
 
-    # Exactly 4 events detected
     assert len(df_events) == 4
     event_ids = df_events["event_id"].tolist()
     assert event_ids == ["HW_20220620", "HW_20220904", "HW_20220922", "HW_20240702"]
 
-    # Verify September 2022 heatwave is captured
     sept2022 = df_events[df_events["event_id"] == "HW_20220904"].iloc[0]
     assert sept2022["local_start_date"] == "2022-09-04"
     assert sept2022["local_end_date"] == "2022-09-08"
@@ -410,8 +457,12 @@ def test_p3_authentic_dataset_event_detection_and_catalog():
     assert sept2022["peak_local_date"] == "2022-09-05"
     assert sept2022["peak_temperature_c"] == 35.6
 
-    # Verify hourly phase labels
-    df_labels = build_hourly_phase_labels(df_events, target_timezone="America/Los_Angeles")
+    df_labels = build_hourly_phase_labels(
+        df_events,
+        daily_records_by_date=daily_by_date,
+        threshold_p90_c=thresh_info["threshold_p90_c"],
+        target_timezone=hw_cfg["target_timezone"],
+    )
     assert len(df_labels) == 528
     assert int(df_events["duration_hours"].sum()) == 336
 
@@ -436,13 +487,14 @@ def test_p3_manifest_and_sha256_integrity():
     assert meta["pipeline_step"] == "P3-01/P3-02"
     assert meta["station_id"] == "USW00023234"
     assert meta["target_timezone"] == "America/Los_Angeles"
-    assert meta["sample_size_days"] == 485
+    assert meta["total_expected_days"] == 488
+    assert meta["total_valid_days"] == 485
+    assert meta["total_missing_days"] == 3
     assert meta["threshold_p90_display_c"] == 25.6
     assert meta["events_count"] == 4
     assert meta["total_event_hours"] == 336
     assert meta["total_phase_labeled_hours"] == 528
 
-    # Verify SHA256 of output files in manifest match disk bytes
     for key, info in meta["output_files"].items():
         p = base_dir / info["path"]
         actual_sha = hashlib.sha256(p.read_bytes()).hexdigest()

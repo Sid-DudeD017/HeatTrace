@@ -96,17 +96,26 @@ Target artifact: `data/events/heatwave_events_v0.parquet` and `data/events/heatw
 | `event_id` | `string` | Unique heatwave identifier (`HW_YYYYMMDD`) | No | Deterministic ID based on local calendar start date |
 | `station_id` | `string` | NOAA primary weather station identifier | No | SFO Airport (`USW00023234`) |
 | `timezone` | `string` | Target local reference timezone | No | `America/Los_Angeles` |
+| `threshold_percentile` | `float64` | Percentile cutoff | No | Frozen at 90.0 |
+| `threshold_temperature_c` | `float64` | Full-precision P90 threshold used (°C) | No | Empirical pooled June–Sept 2022–2025 P90 ($25.60^\circ\text{C}$) |
+| `percentile_method` | `string` | Percentile ranking method | No | `linear_interpolation` |
 | `local_start_date` | `string` | Local calendar start date (`YYYY-MM-DD`) | No | First qualifying day of the event |
 | `local_end_date` | `string` | Local calendar end date (`YYYY-MM-DD`) | No | Final qualifying day of the event |
-| `duration_days` | `int64` | Duration in consecutive calendar days | No | Must be $\ge 3$ consecutive days |
 | `event_start_utc` | Timezone-aware UTC datetime | UTC start timestamp (inclusive) | No | Top-of-hour interval start of local start day midnight |
 | `event_end_utc` | Timezone-aware UTC datetime | UTC end timestamp (exclusive) | No | Top-of-hour interval start of post-event midnight |
+| `qualifying_day_count` | `int64` | Number of qualifying days | No | Equal to `duration_days` |
+| `duration_days` | `int64` | Duration in consecutive calendar days | No | Must be $\ge 3$ consecutive days |
 | `duration_hours` | `int64` | Total event duration in hours | No | Exact hourly span between `event_start_utc` and `event_end_utc` |
 | `peak_local_date` | `string` | Local date of maximum temperature | No | Qualifying day with highest daily max (earliest tie-break) |
 | `peak_temperature_c` | `float64` | Peak daily maximum temperature (°C) | No | Highest daily maximum recorded during event |
 | `mean_max_temperature_c` | `float64` | Mean daily maximum temperature (°C) | No | Arithmetic mean of daily maxima over event days |
 | `cumulative_exceedance_c_days` | `float64` | Cumulative temperature exceedance (°C·days) | No | $\sum (\text{daily\_max}_t - P_{90})$ |
-| `threshold_p90_c` | `float64` | Full-precision P90 threshold used (°C) | No | Empirical pooled June–Sept 2022–2025 P90 ($25.6^\circ\text{C}$) |
+| `missing_days_inside_event` | `int64` | Count of missing days inside run | No | Must be 0 |
+| `valid_observation_count` | `int64` | Total valid NOAA observations | No | Sum over event days |
+| `duplicate_observation_count` | `int64` | Total duplicate observations resolved | No | Sum over event days |
+| `conflict_observation_count` | `int64` | Total conflicting observations resolved | No | Sum over event days |
+| `source_quality` | `string` | Data quality status | No | `verified` |
+| `source_file_references` | `string` | Input file references | No | Provenance string |
 
 ---
 
@@ -119,11 +128,17 @@ Target artifact: `data/events/hourly_event_labels_v0.parquet` and `data/events/h
 | Column | Type | Unit / Meaning | Nullable | Description / Policy |
 |---|---|---|---|---|
 | `timestamp_utc` | Timezone-aware UTC datetime | UTC interval start | No | Canonical top-of-hour interval start |
+| `local_timestamp` | `string` | Local timestamp (`YYYY-MM-DDTHH:MM:SS`) | No | Local wall-clock time in `America/Los_Angeles` |
 | `local_date` | `string` | Local calendar date (`YYYY-MM-DD`) | No | Date in `America/Los_Angeles` |
 | `hour_local` | `int64` | Local hour of day ($0\dots 23$) | No | Hour in `America/Los_Angeles` |
 | `event_id` | `string` | Heatwave event identifier | No | References `event_id` in event catalogue |
 | `event_phase` | `string` | Assigned event phase | No | Exactly one of: `onset`, `peak`, `sustained`, `recovery` |
 | `station_id` | `string` | NOAA station identifier | No | SFO Airport (`USW00023234`) |
+| `daily_max_temperature_c` | `float64` | Daily maximum temperature (°C) | Yes | Daily maximum for the local date |
+| `threshold_temperature_c` | `float64` | Applied threshold (°C) | No | $25.60^\circ\text{C}$ |
+| `exceeds_threshold` | `bool` | Exceedance flag | No | True if daily max > threshold |
+| `temperature_missing` | `bool` | Missing temperature flag | No | True if observation missing |
+| `source_quality` | `string` | Quality status | No | `verified` or `missing` |
 
 ### Phase Assignment Rules
 
