@@ -10,6 +10,8 @@ data/raw/
 data/interim/
 data/processed/
 data/events/
+data/workloads/
+data/benchmarks/
 data/manifests/
 runs/*
 reports/generated/
