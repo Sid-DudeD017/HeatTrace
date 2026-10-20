@@ -4,6 +4,11 @@ timestamp:
 
 random_seed: 20261016
 
+chronological_splits:
+  training_years: [2022, 2023]
+  validation_years: [2024]
+  test_years: [2025]
+
 paths:
   raw_manifest: data/manifests/raw_sources.jsonl
   coverage: data/manifests/coverage.csv

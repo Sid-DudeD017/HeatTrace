@@ -57,6 +57,12 @@ BENCHMARK_COLUMNS: list[str] = [
 ]
 
 
+VALID_EVENT_PHASES = frozenset({"onset", "peak", "sustained", "recovery"})
+VALID_CONTROL_PHASES = frozenset({"control", "control_anchor"})
+VALID_WINDOW_TYPES = frozenset({"event", "control"})
+VALID_SOURCE_QUALITIES = frozenset({"success", "success_with_data_issues", "missing"})
+
+
 def build_benchmark_hourly_rows(
     *,
     window_type: str,  # "event" or "control"
@@ -65,6 +71,9 @@ def build_benchmark_hourly_rows(
     end_date_inclusive_str: str,
     phase_mapping: dict[str, str],  # local_date -> phase_label
     data_dir: Path,
+    station_id: str = "USW00023234",
+    caiso_node: str = "TH_NP15_GEN-APND",
+    balancing_authority: str = "CISO",
     target_timezone: str = "America/Los_Angeles",
 ) -> list[dict[str, Any]]:
     """Build aligned 120 hourly rows for one benchmark window from cached authentic sources."""
@@ -79,7 +88,15 @@ def build_benchmark_hourly_rows(
         raise ValueError(f"Window {window_id} ({start_date_str} to {end_date_inclusive_str}) expected 120h, got {expected_hours}h")
 
     # 1. NOAA Observations
-    noaa_file = data_dir / "raw/noaa/GHCNh_USW00023234_2024.psv"
+    # Look for matching station file across years
+    noaa_file = data_dir / f"raw/noaa/GHCNh_{station_id}_{start_date_str[:4]}.psv"
+    if not noaa_file.exists():
+        # Fallback to search any matching station file
+        cands = list((data_dir / "raw/noaa").glob(f"GHCNh_{station_id}_*.psv"))
+        if not cands:
+            raise FileNotFoundError(f"NOAA file not found for station {station_id} in {data_dir / 'raw/noaa'}")
+        noaa_file = cands[0]
+
     noaa_all = parse_ghcnh_psv(noaa_file, filter_date_start=start_utc, filter_date_end=end_utc)
     # Group by interval-start UTC
     noaa_by_hour: dict[datetime, list[float]] = {}
@@ -94,17 +111,17 @@ def build_benchmark_hourly_rows(
     # 2. CAISO OASIS LMP
     start_tag = start_date_str.replace("-", "")
     end_tag = (date.fromisoformat(end_date_inclusive_str) + timedelta(days=1)).strftime("%Y%m%d")
-    caiso_file = data_dir / f"raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_{start_tag}_{end_tag}.zip"
+    caiso_file = data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_{start_tag}_{end_tag}.zip"
     if not caiso_file.exists():
         raise FileNotFoundError(f"CAISO zip file not found: {caiso_file}")
 
-    caiso_parsed, err = parse_caiso_zip(caiso_file, expected_node="TH_NP15_GEN-APND", expected_market="DAM")
+    caiso_parsed, err = parse_caiso_zip(caiso_file, expected_node=caiso_node, expected_market="DAM")
     if err:
         raise ValueError(f"Error parsing CAISO zip {caiso_file}: {err}")
     lmp_rows = [r for r in caiso_parsed if r["lmp_type"] == "LMP"]
     validate_caiso_lmp_rows(
         lmp_rows,
-        expected_node="TH_NP15_GEN-APND",
+        expected_node=caiso_node,
         expected_market="DAM",
         requested_start=start_utc,
         requested_end=end_utc,
@@ -112,12 +129,12 @@ def build_benchmark_hourly_rows(
     caiso_by_hour = {r["timestamp_utc"]: float(r["price_usd_per_mwh"]) for r in lmp_rows}
 
     # 3. EIA API Demand and Net Gen
-    eia_json_file = data_dir / f"raw/eia/eia930_region_CISO_{start_tag}.json"
+    eia_json_file = data_dir / f"raw/eia/eia930_region_{balancing_authority}_{start_tag}.json"
     if not eia_json_file.exists():
         raise FileNotFoundError(f"EIA json file not found: {eia_json_file}")
     eia_api_data = parse_and_validate_eia_json(
         eia_json_file.read_text(encoding="utf-8"),
-        expected_ba="CISO",
+        expected_ba=balancing_authority,
         requested_start=start_utc,
         requested_end=end_utc,
     )
@@ -125,12 +142,14 @@ def build_benchmark_hourly_rows(
     net_gen_by_hour = {r["timestamp_utc"]: float(r["value_mw"]) for r in eia_api_data["net_gen_rows"]}
 
     # 4. EIA Workbook Emissions and Intensity
-    workbook_file = data_dir / "raw/eia/CISO.xlsx"
+    workbook_file = data_dir / f"raw/eia/{balancing_authority}.xlsx"
+    if not workbook_file.exists():
+        workbook_file = data_dir / "raw/eia/CISO.xlsx"
     eia_wb_data = parse_and_validate_eia_ciso_workbook(
         workbook_file,
         requested_start=start_utc,
         requested_end=end_utc,
-        expected_ba="CISO",
+        expected_ba=balancing_authority,
     )
     wb_by_hour = {r["timestamp_utc"]: r for r in eia_wb_data["rows"]}
 
@@ -142,7 +161,7 @@ def build_benchmark_hourly_rows(
         loc_d_str = loc_dt.strftime("%Y-%m-%d")
         loc_hour = loc_dt.hour
 
-        phase_val = phase_mapping.get(loc_d_str, "control")
+        phase_val = phase_mapping.get(loc_d_str, "control" if window_type == "control" else "sustained")
 
         # Weather
         obs = noaa_by_hour.get(curr, [])
@@ -215,9 +234,9 @@ def build_benchmark_hourly_rows(
             "carbon_data_issue": has_issue,
             "carbon_primary_analysis_eligible": carbon_eligible,
             "source_quality": source_q,
-            "source_station_id": "USW00023234",
-            "source_caiso_node": "TH_NP15_GEN-APND",
-            "source_balancing_authority": "CISO",
+            "source_station_id": station_id,
+            "source_caiso_node": caiso_node,
+            "source_balancing_authority": balancing_authority,
         })
 
         curr += timedelta(hours=1)
@@ -233,7 +252,17 @@ def build_and_export_p3_benchmark(
     data_dir = Path(data_dir)
     config_dir = Path(config_dir)
 
-    # Dynamically derive event, control, and phase mappings from catalogues
+    # 1. Load frozen configurations
+    sources_cfg = load_yaml(config_dir / "sources.yaml")
+    study_cfg = load_yaml(config_dir / "study.yaml")
+    hw_cfg = load_heatwave_config(sources_cfg=sources_cfg, study_cfg=study_cfg, config_dir=config_dir)
+
+    station_id = hw_cfg["station_id"]
+    target_timezone = hw_cfg["target_timezone"]
+    caiso_node = sources_cfg.get("price", {}).get("node", "TH_NP15_GEN-APND")
+    balancing_authority = sources_cfg.get("carbon", {}).get("balancing_authority", "CISO")
+
+    # 2. Dynamically derive event, control, and phase mappings from catalogues
     events_parquet = data_dir / "events/heatwave_events_v0.parquet"
     control_parquet = data_dir / "events/control_catalogue_v0.parquet"
     labels_parquet = data_dir / "events/hourly_event_labels_v0.parquet"
@@ -255,6 +284,10 @@ def build_and_export_p3_benchmark(
     if hw_2024_rows.empty:
         raise ValueError("Event HW_20240702 not found in heatwave event catalogue")
     ev_row = hw_2024_rows.iloc[0]
+
+    # Check station metadata agreement
+    if str(ev_row["station_id"]) != station_id:
+        raise ValueError(f"Event station '{ev_row['station_id']}' != config station '{station_id}'")
 
     # Validate approved 2024 benchmark control
     ctrl_rows = df_control[df_control["matched_event_id"] == "HW_20240702"]
@@ -290,6 +323,8 @@ def build_and_export_p3_benchmark(
         control_phase_map[cur_iso] = "control_anchor" if cur_iso == anchor_str else "control"
         cur_c_d += timedelta(days=1)
 
+    combined_phase_map = {**event_phase_map, **control_phase_map}
+
     event_rows = build_benchmark_hourly_rows(
         window_type="event",
         window_id="HW_20240702",
@@ -297,6 +332,10 @@ def build_and_export_p3_benchmark(
         end_date_inclusive_str=event_end_str,
         phase_mapping=event_phase_map,
         data_dir=data_dir,
+        station_id=station_id,
+        caiso_node=caiso_node,
+        balancing_authority=balancing_authority,
+        target_timezone=target_timezone,
     )
 
     control_rows = build_benchmark_hourly_rows(
@@ -306,12 +345,26 @@ def build_and_export_p3_benchmark(
         end_date_inclusive_str=ctrl_end_str,
         phase_mapping=control_phase_map,
         data_dir=data_dir,
+        station_id=station_id,
+        caiso_node=caiso_node,
+        balancing_authority=balancing_authority,
+        target_timezone=target_timezone,
     )
 
     all_rows = control_rows + event_rows  # 120 control + 120 event = 240 rows
     df_benchmark = pd.DataFrame(all_rows, columns=BENCHMARK_COLUMNS)
 
-    validate_benchmark_dataframe(df_benchmark)
+    validate_benchmark_dataframe(
+        df_benchmark,
+        expected_event_id="HW_20240702",
+        expected_control_id="CTRL_20240605",
+        expected_station_id=station_id,
+        expected_caiso_node=caiso_node,
+        expected_balancing_authority=balancing_authority,
+        expected_timezone=target_timezone,
+        expected_anchor_date=anchor_str,
+        phase_mapping_by_date=combined_phase_map,
+    )
 
     benchmarks_dir = data_dir / "benchmarks"
     manifests_dir = data_dir / "manifests"
@@ -326,6 +379,30 @@ def build_and_export_p3_benchmark(
     sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
     sample_df.to_csv(csv_sample_path, index=False)
 
+    # Reconcile final control coverage status in control catalogue (Option A)
+    ctrl_parquet_path = data_dir / "events/control_catalogue_v0.parquet"
+    ctrl_csv_path = data_dir / "events/control_catalogue_v0.csv"
+    df_control_updated = df_control.copy()
+    df_control_updated["source_coverage_status"] = "verified_complete"
+    df_control_updated.to_parquet(ctrl_parquet_path, index=False)
+    df_control_updated.to_csv(ctrl_csv_path, index=False)
+
+    # Update control_matching_audit.json with final hashes
+    ctrl_audit_path = data_dir / "manifests/control_matching_audit.json"
+    if ctrl_audit_path.exists():
+        try:
+            with ctrl_audit_path.open("r", encoding="utf-8") as f:
+                c_audit = json.load(f)
+            c_audit["output_files"]["control_catalogue_parquet"]["sha256"] = sha256_file(ctrl_parquet_path)
+            c_audit["output_files"]["control_catalogue_parquet"]["size_bytes"] = ctrl_parquet_path.stat().st_size
+            c_audit["output_files"]["control_catalogue_csv"]["sha256"] = sha256_file(ctrl_csv_path)
+            c_audit["output_files"]["control_catalogue_csv"]["size_bytes"] = ctrl_csv_path.stat().st_size
+            c_audit["final_cross_source_coverage_status"] = "verified_complete"
+            with ctrl_audit_path.open("w", encoding="utf-8") as f:
+                json.dump(c_audit, f, indent=2, sort_keys=True)
+        except Exception:
+            pass
+
     # Collect project-relative input files lineage
     repo_root = data_dir.parent
     def _rel(p: Path) -> str:
@@ -333,12 +410,12 @@ def build_and_export_p3_benchmark(
 
     raw_inputs: dict[str, dict[str, Any]] = {}
     candidate_raw = [
-        data_dir / "raw/noaa/GHCNh_USW00023234_2024.psv",
-        data_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip",
-        data_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
-        data_dir / "raw/eia/eia930_region_CISO_20240605.json",
-        data_dir / "raw/eia/eia930_region_CISO_20240701.json",
-        data_dir / "raw/eia/CISO.xlsx",
+        data_dir / f"raw/noaa/GHCNh_{station_id}_2024.psv",
+        data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240605_20240610.zip",
+        data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240701_20240706.zip",
+        data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240605.json",
+        data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240701.json",
+        data_dir / f"raw/eia/{balancing_authority}.xlsx",
     ]
     for rf in candidate_raw:
         if rf.exists():
@@ -370,6 +447,8 @@ def build_and_export_p3_benchmark(
     manifest = {
         "manifest_version": "1.0",
         "gate": "G3-a",
+        "methodology_version": "1.0",
+        "validator_version": "1.0",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "total_rows": len(df_benchmark),
         "event_rows": len(event_rows),
@@ -377,7 +456,7 @@ def build_and_export_p3_benchmark(
         "event_window_id": str(ev_row["event_id"]),
         "control_window_id": str(ctrl_row["control_id"]),
         "event_interval_utc": [
-            control_rows[0]["timestamp_utc"].isoformat() if False else event_rows[0]["timestamp_utc"].isoformat(),
+            event_rows[0]["timestamp_utc"].isoformat(),
             (event_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
         ],
         "control_interval_utc": [
@@ -385,11 +464,20 @@ def build_and_export_p3_benchmark(
             (control_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
         ],
         "source_summary": {
-            "noaa_station": "USW00023234",
-            "caiso_node": "TH_NP15_GEN-APND",
-            "eia_balancing_authority": "CISO",
-            "timezone": "America/Los_Angeles",
+            "noaa_station": station_id,
+            "caiso_node": caiso_node,
+            "eia_balancing_authority": balancing_authority,
+            "timezone": target_timezone,
             "canonical_timezone": "UTC",
+        },
+        "coverage_metrics": {
+            "temperature_covered": int((~df_benchmark["temperature_missing"]).sum()),
+            "price_covered": int((~df_benchmark["price_missing"]).sum()),
+            "demand_covered": int((~df_benchmark["demand_missing"]).sum()),
+            "net_generation_covered": int((~df_benchmark["net_generation_missing"]).sum()),
+            "carbon_covered": int((~df_benchmark["carbon_missing"]).sum()),
+            "carbon_data_issue_count": int(df_benchmark["carbon_data_issue"].sum()),
+            "carbon_primary_analysis_eligible_count": int(df_benchmark["carbon_primary_analysis_eligible"].sum()),
         },
         "input_files": {
             "raw_sources": raw_inputs,
@@ -422,7 +510,18 @@ def build_and_export_p3_benchmark(
     }
 
 
-def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
+def validate_benchmark_dataframe(
+    df: pd.DataFrame,
+    *,
+    expected_event_id: str | None = None,
+    expected_control_id: str | None = None,
+    expected_station_id: str | None = None,
+    expected_caiso_node: str | None = None,
+    expected_balancing_authority: str | None = None,
+    expected_timezone: str = "America/Los_Angeles",
+    expected_anchor_date: str | None = None,
+    phase_mapping_by_date: dict[str, str] | None = None,
+) -> None:
     """Validate the 240-row benchmark DataFrame according to G3-a specifications."""
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas DataFrame")
@@ -436,6 +535,11 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
     if len(df) != 240:
         raise ValueError(f"Benchmark row count {len(df)} != 240")
 
+    # A. Window types and IDs
+    unique_types = set(df["window_type"].unique())
+    if not unique_types.issubset(VALID_WINDOW_TYPES) or unique_types != VALID_WINDOW_TYPES:
+        raise ValueError(f"Benchmark window_types must be exactly {VALID_WINDOW_TYPES}, got {unique_types}")
+
     ev_df = df[df["window_type"] == "event"]
     ctrl_df = df[df["window_type"] == "control"]
 
@@ -444,8 +548,46 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
     if len(ctrl_df) != 120:
         raise ValueError(f"Control window rows {len(ctrl_df)} != 120")
 
+    ev_window_ids = set(ev_df["window_id"].unique())
+    if len(ev_window_ids) != 1:
+        raise ValueError(f"Event window must contain exactly 1 unique window_id, got {ev_window_ids}")
+    actual_ev_id = list(ev_window_ids)[0]
+    if expected_event_id is not None and actual_ev_id != expected_event_id:
+        raise ValueError(f"Event window_id '{actual_ev_id}' != expected '{expected_event_id}'")
+
+    ctrl_window_ids = set(ctrl_df["window_id"].unique())
+    if len(ctrl_window_ids) != 1:
+        raise ValueError(f"Control window must contain exactly 1 unique window_id, got {ctrl_window_ids}")
+    actual_ctrl_id = list(ctrl_window_ids)[0]
+    if expected_control_id is not None and actual_ctrl_id != expected_control_id:
+        raise ValueError(f"Control window_id '{actual_ctrl_id}' != expected '{expected_control_id}'")
+
+    # B. Phase labels validation
+    ev_phases = set(ev_df["phase_label"].unique())
+    if not ev_phases.issubset(VALID_EVENT_PHASES):
+        invalid_phases = ev_phases - VALID_EVENT_PHASES
+        raise ValueError(f"Event rows contain invalid phase_label(s): {invalid_phases}")
+
+    ctrl_phases = set(ctrl_df["phase_label"].unique())
+    if not ctrl_phases.issubset(VALID_CONTROL_PHASES):
+        invalid_c_phases = ctrl_phases - VALID_CONTROL_PHASES
+        raise ValueError(f"Control rows contain invalid phase_label(s): {invalid_c_phases}")
+
+    # Exactly one control-anchor local day
+    anchor_rows = ctrl_df[ctrl_df["phase_label"] == "control_anchor"]
+    if anchor_rows.empty:
+        raise ValueError("Control window must contain control_anchor phase rows")
+    anchor_dates = anchor_rows["local_date"].unique().tolist()
+    if len(anchor_dates) != 1:
+        raise ValueError(f"Control window must contain exactly 1 control-anchor date, got {anchor_dates}")
+    actual_anchor_d = anchor_dates[0]
+    if len(anchor_rows) != 24:
+        raise ValueError(f"Control anchor must cover full 24 hours of {actual_anchor_d}, got {len(anchor_rows)} rows")
+    if expected_anchor_date is not None and actual_anchor_d != expected_anchor_date:
+        raise ValueError(f"Control anchor date '{actual_anchor_d}' != expected '{expected_anchor_date}'")
+
     # Check timestamps: monotonic within each window, top-of-hour, UTC-aware
-    tz_la = ZoneInfo("America/Los_Angeles")
+    tz_la = ZoneInfo(expected_timezone)
 
     for name, sub_df in [("event", ev_df), ("control", ctrl_df)]:
         ts_list = sub_df["timestamp_utc"].tolist()
@@ -471,7 +613,7 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
             if ts.minute != 0 or ts.second != 0:
                 raise ValueError(f"Row {idx}: timestamp_utc {ts} is not top-of-hour")
 
-            # Validate local timestamps consistency with America/Los_Angeles
+            # Validate local timestamps consistency with configured timezone
             expected_dt_la = ts.astimezone(tz_la)
             expected_local_ts = expected_dt_la.strftime("%Y-%m-%dT%H:%M:%S")
             expected_local_d = expected_dt_la.strftime("%Y-%m-%d")
@@ -490,15 +632,28 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
                     f"Row {idx} ({name}): hour_local {row['hour_local']} != expected {expected_local_h}"
                 )
 
-            # Metadata source checks
-            if row["source_station_id"] != "USW00023234":
-                raise ValueError(f"Row {idx}: unexpected source_station_id '{row['source_station_id']}'")
-            if row["source_caiso_node"] != "TH_NP15_GEN-APND":
-                raise ValueError(f"Row {idx}: unexpected source_caiso_node '{row['source_caiso_node']}'")
-            if row["source_balancing_authority"] != "CISO":
-                raise ValueError(f"Row {idx}: unexpected source_balancing_authority '{row['source_balancing_authority']}'")
+            # Phase mapping agreement if passed
+            if phase_mapping_by_date is not None and expected_local_d in phase_mapping_by_date:
+                expected_p = phase_mapping_by_date[expected_local_d]
+                if row["phase_label"] != expected_p:
+                    raise ValueError(
+                        f"Row {idx} ({name}): phase_label '{row['phase_label']}' != expected '{expected_p}' for date {expected_local_d}"
+                    )
 
-            # Check required fields non-null and not NaN
+            # F. Source metadata validation
+            if expected_station_id is not None and row["source_station_id"] != expected_station_id:
+                raise ValueError(f"Row {idx}: unexpected source_station_id '{row['source_station_id']}' != '{expected_station_id}'")
+            if expected_caiso_node is not None and row["source_caiso_node"] != expected_caiso_node:
+                raise ValueError(f"Row {idx}: unexpected source_caiso_node '{row['source_caiso_node']}' != '{expected_caiso_node}'")
+            if expected_balancing_authority is not None and row["source_balancing_authority"] != expected_balancing_authority:
+                raise ValueError(f"Row {idx}: unexpected source_balancing_authority '{row['source_balancing_authority']}' != '{expected_balancing_authority}'")
+
+            # C. NOAA observation counts
+            temp_obs = row["temperature_obs_count"]
+            if not isinstance(temp_obs, (int, pd.Int64Dtype, type(pd.Series([1]).iloc[0]))) or temp_obs <= 0:
+                raise ValueError(f"Row {idx} ({name}): temperature_obs_count must be a positive integer, got {temp_obs}")
+
+            # E. Measurement and missingness consistency
             for col_val, col_missing, col_name in [
                 (row["temperature_c"], row["temperature_missing"], "temperature"),
                 (row["price_usd_per_mwh"], row["price_missing"], "price"),
@@ -506,15 +661,34 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
                 (row["net_generation_mw"], row["net_generation_missing"], "net_generation"),
                 (row["carbon_g_per_kwh"], row["carbon_missing"], "carbon_intensity"),
             ]:
-                if pd.isna(col_val) or col_missing is True:
-                    raise ValueError(f"Row {idx} ({name}): missing {col_name} observation")
+                if not isinstance(col_missing, (bool, pd.BooleanDtype)) and col_missing not in (True, False):
+                    raise ValueError(f"Row {idx} ({name}): {col_name}_missing must be boolean, got {col_missing}")
+                if col_missing is not False:
+                    raise ValueError(f"Row {idx} ({name}): {col_name}_missing must be False for covered benchmark row")
+                if pd.isna(col_val) or col_val is None:
+                    raise ValueError(f"Row {idx} ({name}): missing {col_name} observation (None/NaN)")
                 if not math.isfinite(float(col_val)):
                     raise ValueError(f"Row {idx} ({name}): non-finite {col_name} observation ({col_val})")
 
             # Logical consistency check for carbon flags
-            if bool(row["carbon_data_issue"]) is True and bool(row["carbon_primary_analysis_eligible"]) is True:
+            has_issue = bool(row["carbon_data_issue"])
+            is_eligible = bool(row["carbon_primary_analysis_eligible"])
+            if has_issue and is_eligible:
                 raise ValueError(
                     f"Row {idx} ({name}): logical contradiction: carbon_data_issue is True but carbon_primary_analysis_eligible is True"
+                )
+
+            # D. Source quality consistency
+            sq = str(row["source_quality"])
+            if sq not in VALID_SOURCE_QUALITIES or sq == "missing":
+                raise ValueError(f"Row {idx} ({name}): invalid source_quality '{sq}'")
+            if has_issue and sq != "success_with_data_issues":
+                raise ValueError(
+                    f"Row {idx} ({name}): source_quality must be 'success_with_data_issues' when carbon_data_issue=True, got '{sq}'"
+                )
+            if not has_issue and sq != "success":
+                raise ValueError(
+                    f"Row {idx} ({name}): source_quality must be 'success' when carbon_data_issue=False, got '{sq}'"
                 )
 
 

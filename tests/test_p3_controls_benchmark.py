@@ -114,11 +114,11 @@ def test_p3_06_audit_completeness():
 
     splits = audit_res["chronological_splits"]
     assert "training_years_2022_2023" in splits
-    assert "validation_year_2024" in splits
-    assert "test_year_2025" in splits
+    assert "validation_years_2024" in splits
+    assert "test_years_2025" in splits
 
-    assert splits["validation_year_2024"]["status"] == "complete_auditable_benchmark_v0"
-    assert splits["test_year_2025"]["events_detected"] == []
+    assert splits["validation_years_2024"]["status"] == "complete_auditable_benchmark_v0"
+    assert splits["test_years_2025"]["events_detected"] == []
 
 
 def test_validate_benchmark_dataframe_negative_mutations():
@@ -177,7 +177,171 @@ def test_validate_benchmark_dataframe_negative_mutations():
     df_bad = df_valid.copy()
     df_bad.loc[0, "source_caiso_node"] = "WRONG_NODE"
     with pytest.raises(ValueError, match="unexpected source_caiso_node"):
+        validate_benchmark_dataframe(df_bad, expected_caiso_node="TH_NP15_GEN-APND")
+
+    # 9. Invalid event phase
+    df_bad = df_valid.copy()
+    df_bad.loc[df_bad["window_type"] == "event", "phase_label"] = "nonsense"
+    with pytest.raises(ValueError, match="invalid phase_label"):
         validate_benchmark_dataframe(df_bad)
+
+    # 10. Control row using event phase
+    df_bad = df_valid.copy()
+    df_bad.loc[df_bad["window_type"] == "control", "phase_label"] = "onset"
+    with pytest.raises(ValueError, match="invalid phase_label"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 11. Wrong event ID
+    df_bad = df_valid.copy()
+    df_bad.loc[df_bad["window_type"] == "event", "window_id"] = "HW_99999999"
+    with pytest.raises(ValueError, match="window_id"):
+        validate_benchmark_dataframe(df_bad, expected_event_id="HW_20240702")
+
+    # 12. Wrong control ID
+    df_bad = df_valid.copy()
+    df_bad.loc[df_bad["window_type"] == "control", "window_id"] = "CTRL_99999999"
+    with pytest.raises(ValueError, match="window_id"):
+        validate_benchmark_dataframe(df_bad, expected_control_id="CTRL_20240605")
+
+    # 13. Zero temperature observation count
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "temperature_obs_count"] = 0
+    with pytest.raises(ValueError, match="temperature_obs_count must be a positive integer"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 14. Negative observation count
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "temperature_obs_count"] = -1
+    with pytest.raises(ValueError, match="temperature_obs_count must be a positive integer"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 15. Inconsistent source quality
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "source_quality"] = "missing"
+    with pytest.raises(ValueError, match="invalid source_quality"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 16. Missingness flag contradiction (missing=True on covered benchmark row)
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "temperature_missing"] = True
+    with pytest.raises(ValueError, match="temperature_missing must be False"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 17. NaN demand
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "demand_mw"] = float("nan")
+    with pytest.raises(ValueError, match="missing demand observation"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 18. NaN net generation
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "net_generation_mw"] = float("nan")
+    with pytest.raises(ValueError, match="missing net_generation observation"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 19. Invalid station
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "source_station_id"] = "WRONG_STATION"
+    with pytest.raises(ValueError, match="unexpected source_station_id"):
+        validate_benchmark_dataframe(df_bad, expected_station_id="USW00023234")
+
+    # 20. Invalid balancing authority
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "source_balancing_authority"] = "WRONG_BA"
+    with pytest.raises(ValueError, match="unexpected source_balancing_authority"):
+        validate_benchmark_dataframe(df_bad, expected_balancing_authority="CISO")
+
+    # 21. Missing hour in sequence
+    df_bad = df_valid.drop(index=10).reset_index(drop=True)
+    with pytest.raises(ValueError, match="(Benchmark row count|non-continuous step)"):
+        validate_benchmark_dataframe(df_bad)
+
+
+def test_audit_workload_canonical_validation_negative_cases(tmp_path):
+    """Verify run_p3_audit rejects workloads with negative energy, duplicate IDs, invalid dead, seed, or missing cols."""
+    base_dir = Path(__file__).resolve().parents[1]
+    import shutil
+
+    # Prepare complete temporary environment with real data
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+
+    wl_path = t_data / "workloads/workload_trace_v0.parquet"
+    df_wl_valid = pd.read_parquet(wl_path)
+
+    # Case 1: negative energy_kwh
+    df_wl_bad = df_wl_valid.copy()
+    df_wl_bad.loc[0, "energy_kwh"] = -999.0
+    df_wl_bad.to_parquet(wl_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("energy_kwh" in r for r in res["failure_reasons"])
+
+    # Case 2: duplicate job_id
+    df_wl_bad = df_wl_valid.copy()
+    df_wl_bad.loc[1, "job_id"] = df_wl_bad.loc[0, "job_id"]
+    df_wl_bad.to_parquet(wl_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("Duplicate job_id" in r for r in res["failure_reasons"])
+
+    # Case 3: deadline before arrival
+    df_wl_bad = df_wl_valid.copy()
+    df_wl_bad.loc[0, "deadline_offset_hours"] = df_wl_bad.loc[0, "arrival_offset_hours"] - 1
+    df_wl_bad.to_parquet(wl_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("deadline_offset_hours" in r for r in res["failure_reasons"])
+
+    # Case 4: invalid seed
+    df_wl_bad = df_wl_valid.copy()
+    df_wl_bad.loc[0, "seed"] = 12345678
+    df_wl_bad.to_parquet(wl_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("seed" in r for r in res["failure_reasons"])
+
+    # Case 5: missing required column
+    df_wl_bad = df_wl_valid.drop(columns=["priority"])
+    df_wl_bad.to_parquet(wl_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("Workload columns mismatch" in r for r in res["failure_reasons"])
+
+
+def test_clean_carbon_data_passes_audit_gate(tmp_path):
+    """Verify that a clean synthetic benchmark with carbon_data_issue=0 and primary_eligible=240 passes the audit."""
+    base_dir = Path(__file__).resolve().parents[1]
+    import shutil
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+
+    b_path = t_data / "benchmarks/benchmark_2024_event_control_v0.parquet"
+    df_clean = pd.read_parquet(b_path)
+    df_clean["carbon_data_issue"] = False
+    df_clean["carbon_primary_analysis_eligible"] = True
+    df_clean["source_quality"] = "success"
+    df_clean.to_parquet(b_path, index=False)
+
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "verified_pass"
+    assert res["carbon_data_issue_audit"]["data_issue_flag_count"] == "0/240"
+    assert res["carbon_data_issue_audit"]["primary_analysis_eligible_count"] == "240/240"
 
 
 def test_audit_failure_on_missing_or_corrupt_data(tmp_path):
