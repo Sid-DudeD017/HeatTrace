@@ -105,8 +105,13 @@ def match_deterministic_control(
         cur_end_inclusive = cur_start + timedelta(days=window_duration_days - 1)
         cur_end_exclusive = cur_end_inclusive + timedelta(days=1)
 
+        # Window duration in hours derived strictly from UTC interval
+        start_utc, _, _ = get_local_day_utc_bounds(cur_start.isoformat(), target_timezone=target_timezone)
+        _, end_utc, _ = get_local_day_utc_bounds(cur_end_inclusive.isoformat(), target_timezone=target_timezone)
+        cur_duration_hours = int(round((end_utc - start_utc).total_seconds() / 3600.0))
+
         window_dates = [cur_start + timedelta(days=i) for i in range(window_duration_days)]
-        window_date_strs = [d.isoformat()] if False else [d.isoformat() for d in window_dates]
+        window_date_strs = [d.isoformat() for d in window_dates]
 
         rejections: list[str] = []
 
@@ -155,9 +160,6 @@ def match_deterministic_control(
 
         is_eligible = len(rejections) == 0
 
-        start_utc, _, _ = get_local_day_utc_bounds(cur_start.isoformat(), target_timezone=target_timezone)
-        _, end_utc, _ = get_local_day_utc_bounds(cur_end_inclusive.isoformat(), target_timezone=target_timezone)
-
         candidates.append({
             "local_start_date": cur_start.isoformat(),
             "local_end_inclusive": cur_end_inclusive.isoformat(),
@@ -165,7 +167,7 @@ def match_deterministic_control(
             "start_timestamp_utc": start_utc,
             "end_timestamp_utc": end_utc,
             "duration_days": window_duration_days,
-            "duration_hours": window_duration_hours,
+            "duration_hours": cur_duration_hours,
             "contains_anchor": contains_anchor,
             "is_eligible": is_eligible,
             "rejection_reasons": rejections,
@@ -203,7 +205,7 @@ def match_deterministic_control(
         "duration_hours": best_candidate["duration_hours"],
         "is_eligible": True,
         "rejection_reasons": json.dumps([]),
-        "source_coverage_status": "verified_complete",
+        "source_coverage_status": "weather_eligible_pending_cross_source_validation",
         "mean_max_temperature_c": best_candidate["mean_max_temperature_c"],
         "target_temperature_distance_c": best_candidate["target_temperature_distance_c"],
         "matching_score": best_candidate["matching_score"],
@@ -260,6 +262,9 @@ def validate_control_dataframe(
             raise ValueError(f"Control {cid}: start_timestamp_utc ({t_start}) >= end_timestamp_utc ({t_end})")
         if bool(row["is_eligible"]) is not True:
             raise ValueError(f"Control {cid}: is_eligible must be True")
+        valid_statuses = {"weather_eligible_pending_cross_source_validation", "verified_complete"}
+        if row["source_coverage_status"] not in valid_statuses:
+            raise ValueError(f"Control {cid}: invalid source_coverage_status '{row['source_coverage_status']}'")
 
 
 def build_and_export_controls(
@@ -320,9 +325,46 @@ def build_and_export_controls(
     df_control.to_parquet(parquet_path, index=False)
     df_control.to_csv(csv_path, index=False)
 
+    def _serialize_candidate(c: dict[str, Any]) -> dict[str, Any]:
+        c_copy = dict(c)
+        c_copy["start_timestamp_utc"] = c_copy["start_timestamp_utc"].isoformat()
+        c_copy["end_timestamp_utc"] = c_copy["end_timestamp_utc"].isoformat()
+        return c_copy
+
+    # Input and config files hashes
+    input_files_meta: dict[str, dict[str, Any]] = {}
+    for psv_f in input_psv_files:
+        if psv_f.exists():
+            rel_p = str(psv_f.relative_to(data_dir.parent)) if psv_f.is_relative_to(data_dir.parent) else str(psv_f)
+            input_files_meta[psv_f.name] = {
+                "path": rel_p,
+                "sha256": sha256_file(psv_f),
+                "size_bytes": psv_f.stat().st_size,
+            }
+
+    config_files_meta: dict[str, dict[str, Any]] = {}
+    for cfg_name in ["sources.yaml", "study.yaml"]:
+        cfg_f = config_dir / cfg_name
+        if cfg_f.exists():
+            rel_cfg = str(cfg_f.relative_to(data_dir.parent)) if cfg_f.is_relative_to(data_dir.parent) else str(cfg_f)
+            config_files_meta[cfg_name] = {
+                "path": rel_cfg,
+                "sha256": sha256_file(cfg_f),
+                "size_bytes": cfg_f.stat().st_size,
+            }
+
+    rel_parquet = str(parquet_path.relative_to(data_dir.parent)) if parquet_path.is_relative_to(data_dir.parent) else str(parquet_path)
+    rel_csv = str(csv_path.relative_to(data_dir.parent)) if csv_path.is_relative_to(data_dir.parent) else str(csv_path)
+
+    selected_cid = str(df_control["control_id"].iloc[0])
+    selected_cands = [c for c in candidates if c["local_start_date"] == str(df_control["local_start_date"].iloc[0])]
+    sel_cand = selected_cands[0] if selected_cands else candidates[0]
+
     audit_meta = {
+        "manifest_version": "1.0",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "matched_event_id": event_id,
-        "selected_control_id": str(df_control["control_id"].iloc[0]),
+        "selected_control_id": selected_cid,
         "anchor_date": anchor_date,
         "local_start_date": str(df_control["local_start_date"].iloc[0]),
         "local_end_exclusive": str(df_control["local_end_exclusive"].iloc[0]),
@@ -331,9 +373,26 @@ def build_and_export_controls(
         "eligible_candidates_count": sum(1 for c in candidates if c["is_eligible"]),
         "rejected_candidates_count": sum(1 for c in candidates if not c["is_eligible"]),
         "matching_method": "ordinary_summer_anchor_distance",
+        "selected_candidate_rationale": (
+            f"Candidate window {sel_cand['local_start_date']} to {sel_cand['local_end_inclusive']} "
+            f"contains the approved ordinary summer anchor date {anchor_date} at index 2 (midpoint of 5-day window), "
+            f"has zero heatwave exceedance runs or overlaps, and minimized distance to anchor temperature "
+            f"({sel_cand['mean_max_temperature_c']}°C)."
+        ),
+        "candidates": [_serialize_candidate(c) for c in candidates],
+        "input_files": input_files_meta,
+        "config_files": config_files_meta,
         "output_files": {
-            "control_catalogue_parquet": str(parquet_path),
-            "control_catalogue_csv": str(csv_path),
+            "control_catalogue_parquet": {
+                "path": rel_parquet,
+                "sha256": sha256_file(parquet_path),
+                "size_bytes": parquet_path.stat().st_size,
+            },
+            "control_catalogue_csv": {
+                "path": rel_csv,
+                "sha256": sha256_file(csv_path),
+                "size_bytes": csv_path.stat().st_size,
+            },
         },
     }
 

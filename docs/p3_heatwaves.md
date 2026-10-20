@@ -172,7 +172,8 @@ For the primary 2024 validation event `HW_20240702` (5-day, 120-hour window from
 
 ## 7. Chronological Split and Benchmark Audit (P3-06 & G3-a)
 - **Training Split (2022–2023)**: 3 multi-day heatwaves identified (`HW_20220620`, `HW_20220904`, `HW_20220922`). These events lack current live CAISO OASIS API coverage due to CAISO's rolling 39-month window restriction and remain un-matched pending offline archive ingestion.
-- **Validation Split (2024)**: Contains `HW_20240702` matched with `CTRL_20240605`. Complete 100% coverage verified across all 5 physical signals (temperature, price, demand, net generation, carbon intensity) across both 120-hour windows ($240$ total hourly rows).
+- **Validation Split (2024)**: Contains `HW_20240702` matched with `CTRL_20240605`. Complete 100% physical coverage verified across all 5 physical signals (temperature, price, demand, net generation, carbon intensity) across both 120-hour windows ($240$ total hourly rows).
+- **Carbon Data Issues Status**: In the 2024 benchmark window, all 240 hours are physically covered with generated carbon intensity values ($240/240$). However, all 240 rows retain the EIA-930 Known Data Issue flags (`carbon_data_issue = True`), meaning $0/240$ hours are eligible for unadjusted primary carbon analysis without sensitivity or exclusion controls (`carbon_primary_analysis_eligible = False`).
 - **Test Split (2025)**: Evaluated 119 observed days (missing Aug 30 - Sep 1). No 3-day consecutive exceedance run occurred; reported honestly with zero events.
 
 ---

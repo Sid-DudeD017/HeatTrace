@@ -119,3 +119,71 @@ def test_p3_06_audit_completeness():
 
     assert splits["validation_year_2024"]["status"] == "complete_auditable_benchmark_v0"
     assert splits["test_year_2025"]["events_detected"] == []
+
+
+def test_validate_benchmark_dataframe_negative_mutations():
+    """Verify validate_benchmark_dataframe catches corrupted timestamps, NaNs, duplicates, and contradictions."""
+    base_dir = Path(__file__).resolve().parents[1]
+    res = build_and_export_p3_benchmark(data_dir=base_dir / "data", config_dir=base_dir / "configs")
+    df_valid = res["df_benchmark"]
+
+    # 1. NaN in temperature
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "temperature_c"] = float("nan")
+    with pytest.raises(ValueError, match="missing temperature observation"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 2. NaN in price
+    df_bad = df_valid.copy()
+    df_bad.loc[5, "price_usd_per_mwh"] = float("nan")
+    with pytest.raises(ValueError, match="missing price observation"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 3. NaN in carbon intensity
+    df_bad = df_valid.copy()
+    df_bad.loc[10, "carbon_g_per_kwh"] = float("nan")
+    with pytest.raises(ValueError, match="missing carbon_intensity observation"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 4. Duplicate timestamp
+    df_bad = df_valid.copy()
+    df_bad.loc[1, "timestamp_utc"] = df_bad.loc[0, "timestamp_utc"]
+    with pytest.raises(ValueError, match="duplicate timestamps"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 5. Non-UTC timezone (e.g. America/New_York)
+    df_bad = df_valid.copy()
+    ts_list = df_bad["timestamp_utc"].tolist()
+    from zoneinfo import ZoneInfo
+    ts_list[0] = ts_list[0].astimezone(ZoneInfo("America/New_York"))
+    df_bad["timestamp_utc"] = ts_list
+    with pytest.raises(ValueError, match="UTC offset"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 6. Logical contradiction: carbon_data_issue=True but carbon_primary_analysis_eligible=True
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "carbon_data_issue"] = True
+    df_bad.loc[0, "carbon_primary_analysis_eligible"] = True
+    with pytest.raises(ValueError, match="logical contradiction"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 7. Inconsistent local date / timestamp
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "local_date"] = "1999-01-01"
+    with pytest.raises(ValueError, match="local_date"):
+        validate_benchmark_dataframe(df_bad)
+
+    # 8. Wrong source node
+    df_bad = df_valid.copy()
+    df_bad.loc[0, "source_caiso_node"] = "WRONG_NODE"
+    with pytest.raises(ValueError, match="unexpected source_caiso_node"):
+        validate_benchmark_dataframe(df_bad)
+
+
+def test_audit_failure_on_missing_or_corrupt_data(tmp_path):
+    """Verify run_p3_audit reports failure when required files are missing."""
+    empty_data_dir = tmp_path / "data"
+    empty_data_dir.mkdir()
+    res = run_p3_audit(data_dir=empty_data_dir)
+    assert res["status"] == "failed"
+    assert len(res["failure_reasons"]) > 0

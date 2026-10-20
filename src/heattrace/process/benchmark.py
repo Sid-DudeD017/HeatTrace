@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from datetime import date, datetime, timedelta, timezone
 import json
+import math
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -232,36 +233,77 @@ def build_and_export_p3_benchmark(
     data_dir = Path(data_dir)
     config_dir = Path(config_dir)
 
-    # Event: HW_20240702 (2024-07-01 through 2024-07-05 local)
-    event_phase_map = {
-        "2024-07-01": "onset",
-        "2024-07-02": "peak",
-        "2024-07-03": "sustained",
-        "2024-07-04": "sustained",
-        "2024-07-05": "recovery",
-    }
+    # Dynamically derive event, control, and phase mappings from catalogues
+    events_parquet = data_dir / "events/heatwave_events_v0.parquet"
+    control_parquet = data_dir / "events/control_catalogue_v0.parquet"
+    labels_parquet = data_dir / "events/hourly_event_labels_v0.parquet"
+    workload_parquet = data_dir / "workloads/workload_trace_v0.parquet"
+
+    if not events_parquet.exists():
+        raise FileNotFoundError(f"Event catalogue missing: {events_parquet}")
+    if not control_parquet.exists():
+        raise FileNotFoundError(f"Control catalogue missing: {control_parquet}")
+    if not labels_parquet.exists():
+        raise FileNotFoundError(f"Hourly labels missing: {labels_parquet}")
+
+    df_events = pd.read_parquet(events_parquet)
+    df_control = pd.read_parquet(control_parquet)
+    df_labels = pd.read_parquet(labels_parquet)
+
+    # Validate approved 2024 benchmark event
+    hw_2024_rows = df_events[df_events["event_id"] == "HW_20240702"]
+    if hw_2024_rows.empty:
+        raise ValueError("Event HW_20240702 not found in heatwave event catalogue")
+    ev_row = hw_2024_rows.iloc[0]
+
+    # Validate approved 2024 benchmark control
+    ctrl_rows = df_control[df_control["matched_event_id"] == "HW_20240702"]
+    if ctrl_rows.empty:
+        raise ValueError("Matched control for HW_20240702 not found in control catalogue")
+    ctrl_row = ctrl_rows.iloc[0]
+    if ctrl_row["control_id"] != "CTRL_20240605":
+        raise ValueError(f"Expected control CTRL_20240605, got {ctrl_row['control_id']}")
+
+    # Derive event window boundaries: onset (1 day pre) to recovery (1 day post)
+    ev_start_d = date.fromisoformat(str(ev_row["local_start_date"])) - timedelta(days=1)
+    ev_end_d = date.fromisoformat(str(ev_row["local_end_date"])) + timedelta(days=1)
+    event_start_str = ev_start_d.isoformat()
+    event_end_str = ev_end_d.isoformat()
+
+    # Extract phase map dynamically from df_labels for HW_20240702
+    hw_labels = df_labels[df_labels["event_id"] == "HW_20240702"]
+    event_phase_map: dict[str, str] = {}
+    for d_str, grp in hw_labels.groupby("local_date"):
+        phases = grp["event_phase"].unique().tolist()
+        event_phase_map[str(d_str)] = phases[0]
+
+    # Derive control window boundaries and phase mapping
+    ctrl_start_str = str(ctrl_row["local_start_date"])
+    ctrl_end_exclusive = date.fromisoformat(str(ctrl_row["local_end_exclusive"]))
+    ctrl_end_str = (ctrl_end_exclusive - timedelta(days=1)).isoformat()
+    anchor_str = str(ctrl_row["anchor_date"])
+
+    control_phase_map: dict[str, str] = {}
+    cur_c_d = date.fromisoformat(ctrl_start_str)
+    while cur_c_d < ctrl_end_exclusive:
+        cur_iso = cur_c_d.isoformat()
+        control_phase_map[cur_iso] = "control_anchor" if cur_iso == anchor_str else "control"
+        cur_c_d += timedelta(days=1)
+
     event_rows = build_benchmark_hourly_rows(
         window_type="event",
         window_id="HW_20240702",
-        start_date_str="2024-07-01",
-        end_date_inclusive_str="2024-07-05",
+        start_date_str=event_start_str,
+        end_date_inclusive_str=event_end_str,
         phase_mapping=event_phase_map,
         data_dir=data_dir,
     )
 
-    # Control: CTRL_20240605 (2024-06-05 through 2024-06-09 local)
-    control_phase_map = {
-        "2024-06-05": "control",
-        "2024-06-06": "control",
-        "2024-06-07": "control_anchor",
-        "2024-06-08": "control",
-        "2024-06-09": "control",
-    }
     control_rows = build_benchmark_hourly_rows(
         window_type="control",
-        window_id="CTRL_20240605",
-        start_date_str="2024-06-05",
-        end_date_inclusive_str="2024-06-09",
+        window_id=str(ctrl_row["control_id"]),
+        start_date_str=ctrl_start_str,
+        end_date_inclusive_str=ctrl_end_str,
         phase_mapping=control_phase_map,
         data_dir=data_dir,
     )
@@ -284,6 +326,47 @@ def build_and_export_p3_benchmark(
     sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
     sample_df.to_csv(csv_sample_path, index=False)
 
+    # Collect project-relative input files lineage
+    repo_root = data_dir.parent
+    def _rel(p: Path) -> str:
+        return str(p.relative_to(repo_root)) if p.is_relative_to(repo_root) else str(p)
+
+    raw_inputs: dict[str, dict[str, Any]] = {}
+    candidate_raw = [
+        data_dir / "raw/noaa/GHCNh_USW00023234_2024.psv",
+        data_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip",
+        data_dir / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
+        data_dir / "raw/eia/eia930_region_CISO_20240605.json",
+        data_dir / "raw/eia/eia930_region_CISO_20240701.json",
+        data_dir / "raw/eia/CISO.xlsx",
+    ]
+    for rf in candidate_raw:
+        if rf.exists():
+            raw_inputs[rf.name] = {
+                "path": _rel(rf),
+                "sha256": sha256_file(rf),
+                "size_bytes": rf.stat().st_size,
+            }
+
+    catalogue_inputs: dict[str, dict[str, Any]] = {}
+    for cf in [events_parquet, control_parquet, labels_parquet, workload_parquet]:
+        if cf.exists():
+            catalogue_inputs[cf.name] = {
+                "path": _rel(cf),
+                "sha256": sha256_file(cf),
+                "size_bytes": cf.stat().st_size,
+            }
+
+    config_inputs: dict[str, dict[str, Any]] = {}
+    for cname in ["sources.yaml", "study.yaml"]:
+        cfg_p = config_dir / cname
+        if cfg_p.exists():
+            config_inputs[cname] = {
+                "path": _rel(cfg_p),
+                "sha256": sha256_file(cfg_p),
+                "size_bytes": cfg_p.stat().st_size,
+            }
+
     manifest = {
         "manifest_version": "1.0",
         "gate": "G3-a",
@@ -291,18 +374,36 @@ def build_and_export_p3_benchmark(
         "total_rows": len(df_benchmark),
         "event_rows": len(event_rows),
         "control_rows": len(control_rows),
-        "event_window_id": "HW_20240702",
-        "control_window_id": "CTRL_20240605",
-        "event_interval_utc": ["2024-07-01T07:00:00+00:00", "2024-07-06T07:00:00+00:00"],
-        "control_interval_utc": ["2024-06-05T07:00:00+00:00", "2024-06-10T07:00:00+00:00"],
+        "event_window_id": str(ev_row["event_id"]),
+        "control_window_id": str(ctrl_row["control_id"]),
+        "event_interval_utc": [
+            control_rows[0]["timestamp_utc"].isoformat() if False else event_rows[0]["timestamp_utc"].isoformat(),
+            (event_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
+        ],
+        "control_interval_utc": [
+            control_rows[0]["timestamp_utc"].isoformat(),
+            (control_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
+        ],
+        "source_summary": {
+            "noaa_station": "USW00023234",
+            "caiso_node": "TH_NP15_GEN-APND",
+            "eia_balancing_authority": "CISO",
+            "timezone": "America/Los_Angeles",
+            "canonical_timezone": "UTC",
+        },
+        "input_files": {
+            "raw_sources": raw_inputs,
+            "catalogues_and_workloads": catalogue_inputs,
+            "configuration": config_inputs,
+        },
         "output_files": {
             "benchmark_parquet": {
-                "path": str(parquet_path),
+                "path": _rel(parquet_path),
                 "sha256": sha256_file(parquet_path),
                 "size_bytes": parquet_path.stat().st_size,
             },
             "benchmark_sample_csv": {
-                "path": str(csv_sample_path),
+                "path": _rel(csv_sample_path),
                 "sha256": sha256_file(csv_sample_path),
                 "size_bytes": csv_sample_path.stat().st_size,
             },
@@ -344,6 +445,8 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
         raise ValueError(f"Control window rows {len(ctrl_df)} != 120")
 
     # Check timestamps: monotonic within each window, top-of-hour, UTC-aware
+    tz_la = ZoneInfo("America/Los_Angeles")
+
     for name, sub_df in [("event", ev_df), ("control", ctrl_df)]:
         ts_list = sub_df["timestamp_utc"].tolist()
         if ts_list != sorted(ts_list):
@@ -351,24 +454,68 @@ def validate_benchmark_dataframe(df: pd.DataFrame) -> None:
         if sub_df["timestamp_utc"].duplicated().any():
             raise ValueError(f"{name} window contains duplicate timestamps")
 
+        # Verify continuous 120-hour hourly sequence
+        for i in range(1, len(ts_list)):
+            step_hours = (ts_list[i] - ts_list[i - 1]).total_seconds() / 3600.0
+            if step_hours != 1.0:
+                raise ValueError(
+                    f"{name} window contains non-continuous step: {ts_list[i-1]} to {ts_list[i]} ({step_hours}h)"
+                )
+
         for idx, row in sub_df.iterrows():
             ts = row["timestamp_utc"]
             if not isinstance(ts, (datetime, pd.Timestamp)) or ts.tzinfo is None:
                 raise ValueError(f"Row {idx}: timestamp_utc must be timezone-aware UTC datetime")
+            if ts.utcoffset() != timedelta(0):
+                raise ValueError(f"Row {idx}: timestamp_utc must have UTC offset 0, got {ts.utcoffset()}")
             if ts.minute != 0 or ts.second != 0:
                 raise ValueError(f"Row {idx}: timestamp_utc {ts} is not top-of-hour")
 
-            # Check required fields non-null
-            if row["temperature_c"] is None or row["temperature_missing"] is True:
-                raise ValueError(f"Row {idx} ({name}): missing temperature observation")
-            if row["price_usd_per_mwh"] is None or row["price_missing"] is True:
-                raise ValueError(f"Row {idx} ({name}): missing price observation")
-            if row["demand_mw"] is None or row["demand_missing"] is True:
-                raise ValueError(f"Row {idx} ({name}): missing demand observation")
-            if row["net_generation_mw"] is None or row["net_generation_missing"] is True:
-                raise ValueError(f"Row {idx} ({name}): missing net generation observation")
-            if row["carbon_g_per_kwh"] is None or row["carbon_missing"] is True:
-                raise ValueError(f"Row {idx} ({name}): missing carbon intensity observation")
+            # Validate local timestamps consistency with America/Los_Angeles
+            expected_dt_la = ts.astimezone(tz_la)
+            expected_local_ts = expected_dt_la.strftime("%Y-%m-%dT%H:%M:%S")
+            expected_local_d = expected_dt_la.strftime("%Y-%m-%d")
+            expected_local_h = expected_dt_la.hour
+
+            if row["local_timestamp"] != expected_local_ts:
+                raise ValueError(
+                    f"Row {idx} ({name}): local_timestamp '{row['local_timestamp']}' != expected '{expected_local_ts}'"
+                )
+            if row["local_date"] != expected_local_d:
+                raise ValueError(
+                    f"Row {idx} ({name}): local_date '{row['local_date']}' != expected '{expected_local_d}'"
+                )
+            if int(row["hour_local"]) != expected_local_h:
+                raise ValueError(
+                    f"Row {idx} ({name}): hour_local {row['hour_local']} != expected {expected_local_h}"
+                )
+
+            # Metadata source checks
+            if row["source_station_id"] != "USW00023234":
+                raise ValueError(f"Row {idx}: unexpected source_station_id '{row['source_station_id']}'")
+            if row["source_caiso_node"] != "TH_NP15_GEN-APND":
+                raise ValueError(f"Row {idx}: unexpected source_caiso_node '{row['source_caiso_node']}'")
+            if row["source_balancing_authority"] != "CISO":
+                raise ValueError(f"Row {idx}: unexpected source_balancing_authority '{row['source_balancing_authority']}'")
+
+            # Check required fields non-null and not NaN
+            for col_val, col_missing, col_name in [
+                (row["temperature_c"], row["temperature_missing"], "temperature"),
+                (row["price_usd_per_mwh"], row["price_missing"], "price"),
+                (row["demand_mw"], row["demand_missing"], "demand"),
+                (row["net_generation_mw"], row["net_generation_missing"], "net_generation"),
+                (row["carbon_g_per_kwh"], row["carbon_missing"], "carbon_intensity"),
+            ]:
+                if pd.isna(col_val) or col_missing is True:
+                    raise ValueError(f"Row {idx} ({name}): missing {col_name} observation")
+                if not math.isfinite(float(col_val)):
+                    raise ValueError(f"Row {idx} ({name}): non-finite {col_name} observation ({col_val})")
+
+            # Logical consistency check for carbon flags
+            if bool(row["carbon_data_issue"]) is True and bool(row["carbon_primary_analysis_eligible"]) is True:
+                raise ValueError(
+                    f"Row {idx} ({name}): logical contradiction: carbon_data_issue is True but carbon_primary_analysis_eligible is True"
+                )
 
 
 def inspect_benchmark_dataset(parquet_path: Path | str) -> None:
