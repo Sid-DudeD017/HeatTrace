@@ -379,37 +379,80 @@ def build_and_export_p3_benchmark(
     benchmarks_dir.mkdir(parents=True, exist_ok=True)
     manifests_dir.mkdir(parents=True, exist_ok=True)
 
+    # 1. Prepare and validate control updates before writing to disk
+    ctrl_audit_path = data_dir / "manifests/control_matching_audit.json"
+    if not ctrl_audit_path.exists():
+        raise FileNotFoundError(
+            f"Required provenance manifest '{ctrl_audit_path}' not found prior to benchmark finalization"
+        )
+
+    try:
+        with ctrl_audit_path.open("r", encoding="utf-8") as f:
+            c_audit = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Malformed JSON in '{ctrl_audit_path}': {e}") from e
+
+    if not isinstance(c_audit, dict):
+        raise TypeError(f"'{ctrl_audit_path}' must parse as a JSON object, got {type(c_audit).__name__}")
+
+    if "output_files" not in c_audit or not isinstance(c_audit["output_files"], dict):
+        raise ValueError(f"'{ctrl_audit_path}' missing required 'output_files' dictionary")
+
+    for req_out in ["control_catalogue_parquet", "control_catalogue_csv"]:
+        if req_out not in c_audit["output_files"] or not isinstance(c_audit["output_files"][req_out], dict):
+            raise ValueError(f"'{ctrl_audit_path}' missing required output entry '{req_out}'")
+
+    sel_ctrl_id = str(c_audit.get("selected_control_id"))
+    match_ev_id = str(c_audit.get("matched_event_id"))
+    exp_ctrl_id = str(ctrl_row["control_id"])
+    exp_ev_id = str(ev_row["event_id"])
+    if sel_ctrl_id != exp_ctrl_id:
+        raise ValueError(
+            f"'{ctrl_audit_path}' selected_control_id '{sel_ctrl_id}' does not match benchmark control ID '{exp_ctrl_id}'"
+        )
+    if match_ev_id != exp_ev_id:
+        raise ValueError(
+            f"'{ctrl_audit_path}' matched_event_id '{match_ev_id}' does not match benchmark event ID '{exp_ev_id}'"
+        )
+
+    # 2. Prepare atomic outputs in temporary files
     parquet_path = benchmarks_dir / "benchmark_2024_event_control_v0.parquet"
     csv_sample_path = benchmarks_dir / "benchmark_2024_event_control_v0_sample.csv"
     manifest_path = manifests_dir / "benchmark_manifest.json"
 
-    df_benchmark.to_parquet(parquet_path, index=False)
-    sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
-    sample_df.to_csv(csv_sample_path, index=False)
+    tmp_parquet = benchmarks_dir / ".tmp_benchmark_2024_event_control_v0.parquet"
+    tmp_csv = benchmarks_dir / ".tmp_benchmark_2024_event_control_v0_sample.csv"
+    tmp_manifest = manifests_dir / ".tmp_benchmark_manifest.json"
 
-    # Reconcile final control coverage status in control catalogue (Option A)
+    df_benchmark.to_parquet(tmp_parquet, index=False)
+    sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
+    sample_df.to_csv(tmp_csv, index=False)
+
     ctrl_parquet_path = data_dir / "events/control_catalogue_v0.parquet"
     ctrl_csv_path = data_dir / "events/control_catalogue_v0.csv"
+    tmp_ctrl_parquet = data_dir / "events/.tmp_control_catalogue_v0.parquet"
+    tmp_ctrl_csv = data_dir / "events/.tmp_control_catalogue_v0.csv"
+    tmp_ctrl_audit = data_dir / "manifests/.tmp_control_matching_audit.json"
+
     df_control_updated = df_control.copy()
     df_control_updated["source_coverage_status"] = "verified_complete"
-    df_control_updated.to_parquet(ctrl_parquet_path, index=False)
-    df_control_updated.to_csv(ctrl_csv_path, index=False)
+    df_control_updated.to_parquet(tmp_ctrl_parquet, index=False)
+    df_control_updated.to_csv(tmp_ctrl_csv, index=False)
 
-    # Update control_matching_audit.json with final hashes
-    ctrl_audit_path = data_dir / "manifests/control_matching_audit.json"
-    if ctrl_audit_path.exists():
-        try:
-            with ctrl_audit_path.open("r", encoding="utf-8") as f:
-                c_audit = json.load(f)
-            c_audit["output_files"]["control_catalogue_parquet"]["sha256"] = sha256_file(ctrl_parquet_path)
-            c_audit["output_files"]["control_catalogue_parquet"]["size_bytes"] = ctrl_parquet_path.stat().st_size
-            c_audit["output_files"]["control_catalogue_csv"]["sha256"] = sha256_file(ctrl_csv_path)
-            c_audit["output_files"]["control_catalogue_csv"]["size_bytes"] = ctrl_csv_path.stat().st_size
-            c_audit["final_cross_source_coverage_status"] = "verified_complete"
-            with ctrl_audit_path.open("w", encoding="utf-8") as f:
-                json.dump(c_audit, f, indent=2, sort_keys=True)
-        except Exception:
-            pass
+    # Calculate hashes on temporary control outputs
+    new_ctrl_parquet_sha = sha256_file(tmp_ctrl_parquet)
+    new_ctrl_parquet_size = tmp_ctrl_parquet.stat().st_size
+    new_ctrl_csv_sha = sha256_file(tmp_ctrl_csv)
+    new_ctrl_csv_size = tmp_ctrl_csv.stat().st_size
+
+    c_audit["output_files"]["control_catalogue_parquet"]["sha256"] = new_ctrl_parquet_sha
+    c_audit["output_files"]["control_catalogue_parquet"]["size_bytes"] = new_ctrl_parquet_size
+    c_audit["output_files"]["control_catalogue_csv"]["sha256"] = new_ctrl_csv_sha
+    c_audit["output_files"]["control_catalogue_csv"]["size_bytes"] = new_ctrl_csv_size
+    c_audit["final_cross_source_coverage_status"] = "verified_complete"
+
+    with tmp_ctrl_audit.open("w", encoding="utf-8") as f:
+        json.dump(c_audit, f, indent=2, sort_keys=True)
 
     # Collect project-relative input files lineage
     repo_root = data_dir.parent
@@ -434,13 +477,19 @@ def build_and_export_p3_benchmark(
             }
 
     catalogue_inputs: dict[str, dict[str, Any]] = {}
-    for cf in [events_parquet, control_parquet, labels_parquet, workload_parquet]:
+    # Use tmp_ctrl_parquet hash for the manifest input entry since it replaces control_catalogue_v0.parquet
+    for cf in [events_parquet, labels_parquet, workload_parquet]:
         if cf.exists():
             catalogue_inputs[cf.name] = {
                 "path": _rel(cf),
                 "sha256": sha256_file(cf),
                 "size_bytes": cf.stat().st_size,
             }
+    catalogue_inputs["control_catalogue_v0.parquet"] = {
+        "path": _rel(ctrl_parquet_path),
+        "sha256": new_ctrl_parquet_sha,
+        "size_bytes": new_ctrl_parquet_size,
+    }
 
     config_inputs: dict[str, dict[str, Any]] = {}
     for cname in ["sources.yaml", "study.yaml"]:
@@ -495,19 +544,39 @@ def build_and_export_p3_benchmark(
         "output_files": {
             "benchmark_parquet": {
                 "path": _rel(parquet_path),
-                "sha256": sha256_file(parquet_path),
-                "size_bytes": parquet_path.stat().st_size,
+                "sha256": sha256_file(tmp_parquet),
+                "size_bytes": tmp_parquet.stat().st_size,
             },
             "benchmark_sample_csv": {
                 "path": _rel(csv_sample_path),
-                "sha256": sha256_file(csv_sample_path),
-                "size_bytes": csv_sample_path.stat().st_size,
+                "sha256": sha256_file(tmp_csv),
+                "size_bytes": tmp_csv.stat().st_size,
             },
         },
     }
 
-    with manifest_path.open("w", encoding="utf-8") as f:
+    with tmp_manifest.open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, sort_keys=True)
+
+    # 3. Atomically replace final destinations
+    tmp_ctrl_parquet.replace(ctrl_parquet_path)
+    tmp_ctrl_csv.replace(ctrl_csv_path)
+    tmp_ctrl_audit.replace(ctrl_audit_path)
+    tmp_parquet.replace(parquet_path)
+    tmp_csv.replace(csv_sample_path)
+    tmp_manifest.replace(manifest_path)
+
+    # 4. Reload and verify written files
+    with ctrl_audit_path.open("r", encoding="utf-8") as f:
+        reloaded_c_audit = json.load(f)
+    if reloaded_c_audit.get("final_cross_source_coverage_status") != "verified_complete":
+        raise ValueError(
+            f"Verification failed: '{ctrl_audit_path}' final_cross_source_coverage_status is not 'verified_complete'"
+        )
+    if reloaded_c_audit["output_files"]["control_catalogue_parquet"]["sha256"] != sha256_file(ctrl_parquet_path):
+        raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_parquet_path}'")
+    if reloaded_c_audit["output_files"]["control_catalogue_csv"]["sha256"] != sha256_file(ctrl_csv_path):
+        raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_csv_path}'")
 
     return {
         "df_benchmark": df_benchmark,

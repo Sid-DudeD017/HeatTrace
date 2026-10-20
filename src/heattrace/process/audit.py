@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import math
+import string
 from pathlib import Path
 from typing import Any
 import pandas as pd
+import zipfile
 
 from heattrace.config import load_yaml
 from heattrace.ingest.provenance import sha256_file
@@ -25,6 +27,342 @@ from heattrace.process.event_validation import (
 from heattrace.workload.generator import validate_workload_dataframe
 
 
+def validate_file_entry_schema(
+    entry: Any,
+    *,
+    manifest_name: str,
+    context: str,
+    expected_path: str | None = None,
+    repo_root: Path,
+) -> list[str]:
+    """Validate that a file entry conforms to schema requirements."""
+    errors: list[str] = []
+    if not isinstance(entry, dict):
+        errors.append(f"{manifest_name} ({context}): entry must be a dictionary object, got {type(entry).__name__}")
+        return errors
+
+    if "path" not in entry:
+        errors.append(f"{manifest_name} ({context}): missing required field 'path'")
+        return errors
+    rel_p_str = entry["path"]
+    if not isinstance(rel_p_str, str) or not rel_p_str.strip():
+        errors.append(f"{manifest_name} ({context}): empty or invalid path '{rel_p_str}'")
+        return errors
+
+    if expected_path is not None and rel_p_str != expected_path:
+        errors.append(f"{manifest_name} ({context}): expected path '{expected_path}', got '{rel_p_str}'")
+
+    p_obj = Path(rel_p_str)
+    if p_obj.is_absolute():
+        errors.append(f"{manifest_name} ({context}): absolute path not permitted '{rel_p_str}'")
+    if ".." in p_obj.parts:
+        errors.append(f"{manifest_name} ({context}): path escape '../' not permitted '{rel_p_str}'")
+
+    full_p = (repo_root / p_obj).resolve()
+    try:
+        full_p.relative_to(repo_root.resolve())
+    except ValueError:
+        errors.append(f"{manifest_name} ({context}): path '{rel_p_str}' escapes repository root")
+
+    if not full_p.exists():
+        errors.append(f"{manifest_name} ({context}): referenced file does not exist: '{rel_p_str}'")
+    elif not full_p.is_file():
+        errors.append(f"{manifest_name} ({context}): referenced path is not a regular file: '{rel_p_str}'")
+
+    if "sha256" not in entry:
+        errors.append(f"{manifest_name} ({context}): missing required field 'sha256'")
+    else:
+        expected_sha = entry["sha256"]
+        if (
+            not isinstance(expected_sha, str)
+            or len(expected_sha) != 64
+            or not all(c in string.hexdigits for c in expected_sha)
+        ):
+            errors.append(f"{manifest_name} ({context}): malformed SHA-256 hash '{expected_sha}' (must be 64-character hexadecimal)")
+        elif full_p.exists() and full_p.is_file():
+            actual_sha = sha256_file(full_p)
+            if actual_sha.lower() != expected_sha.lower():
+                errors.append(
+                    f"{manifest_name} ({context}): hash mismatch for '{rel_p_str}': actual {actual_sha} != recorded {expected_sha}"
+                )
+
+    if "size_bytes" not in entry:
+        errors.append(f"{manifest_name} ({context}): missing required field 'size_bytes'")
+    else:
+        expected_size = entry["size_bytes"]
+        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size < 0:
+            errors.append(f"{manifest_name} ({context}): 'size_bytes' must be a nonnegative integer, got {expected_size}")
+        elif full_p.exists() and full_p.is_file():
+            actual_size = full_p.stat().st_size
+            if actual_size != expected_size:
+                errors.append(
+                    f"{manifest_name} ({context}): size mismatch for '{rel_p_str}': actual {actual_size} bytes != recorded {expected_size} bytes"
+                )
+
+    return errors
+
+
+def validate_required_manifest_schema(
+    manifest_name: str,
+    manifest_data: Any,
+    *,
+    repo_root: Path,
+    expected_metadata: dict[str, Any] | None = None,
+) -> list[str]:
+    """Validate strict top-level and section-level manifest schemas."""
+    errors: list[str] = []
+    if not isinstance(manifest_data, dict) or not manifest_data:
+        errors.append(f"{manifest_name}: manifest must be a non-empty JSON object")
+        return errors
+
+    repo_root = repo_root.resolve()
+    expected_metadata = expected_metadata or {}
+
+    if manifest_name == "benchmark_manifest.json":
+        for req_field in [
+            "manifest_version",
+            "gate",
+            "event_window_id",
+            "control_window_id",
+            "total_rows",
+            "event_rows",
+            "control_rows",
+            "input_files",
+            "output_files",
+            "source_summary",
+        ]:
+            if req_field not in manifest_data:
+                errors.append(f"{manifest_name} missing required entry {req_field}")
+
+        if manifest_data.get("gate") != "G3-a":
+            errors.append(f"{manifest_name}: gate must be 'G3-a', got '{manifest_data.get('gate')}'")
+
+        if manifest_data.get("manifest_version") not in ["1.0", "1.1"]:
+            errors.append(f"{manifest_name}: unsupported manifest_version '{manifest_data.get('manifest_version')}'")
+
+        # Check metadata agreements
+        if manifest_data.get("total_rows") != 240:
+            errors.append(f"{manifest_name}: total_rows must be 240, got {manifest_data.get('total_rows')}")
+        if manifest_data.get("event_rows") != 120:
+            errors.append(f"{manifest_name}: event_rows must be 120, got {manifest_data.get('event_rows')}")
+        if manifest_data.get("control_rows") != 120:
+            errors.append(f"{manifest_name}: control_rows must be 120, got {manifest_data.get('control_rows')}")
+        if manifest_data.get("event_window_id") != "HW_20240702":
+            errors.append(f"{manifest_name}: event_window_id must be 'HW_20240702', got '{manifest_data.get('event_window_id')}'")
+        if manifest_data.get("control_window_id") != "CTRL_20240605":
+            errors.append(f"{manifest_name}: control_window_id must be 'CTRL_20240605', got '{manifest_data.get('control_window_id')}'")
+
+        # Check source summary agreements
+        src_sum = manifest_data.get("source_summary", {})
+        if isinstance(src_sum, dict):
+            if "station_id" in expected_metadata and src_sum.get("noaa_station") != expected_metadata["station_id"]:
+                errors.append(f"{manifest_name}: source_summary.noaa_station '{src_sum.get('noaa_station')}' != expected '{expected_metadata['station_id']}'")
+            if "caiso_node" in expected_metadata and src_sum.get("caiso_node") != expected_metadata["caiso_node"]:
+                errors.append(f"{manifest_name}: source_summary.caiso_node '{src_sum.get('caiso_node')}' != expected '{expected_metadata['caiso_node']}'")
+            if "balancing_authority" in expected_metadata and src_sum.get("eia_balancing_authority") != expected_metadata["balancing_authority"]:
+                errors.append(f"{manifest_name}: source_summary.eia_balancing_authority '{src_sum.get('eia_balancing_authority')}' != expected '{expected_metadata['balancing_authority']}'")
+            if "target_timezone" in expected_metadata and src_sum.get("timezone") != expected_metadata["target_timezone"]:
+                errors.append(f"{manifest_name}: source_summary.timezone '{src_sum.get('timezone')}' != expected '{expected_metadata['target_timezone']}'")
+        else:
+            errors.append(f"{manifest_name}: source_summary must be a dictionary")
+
+        # Required output files
+        out_files = manifest_data.get("output_files")
+        if not isinstance(out_files, dict):
+            errors.append(f"{manifest_name} missing required section output_files")
+        else:
+            for out_key, exp_path in [
+                ("benchmark_parquet", "data/benchmarks/benchmark_2024_event_control_v0.parquet"),
+                ("benchmark_sample_csv", "data/benchmarks/benchmark_2024_event_control_v0_sample.csv"),
+            ]:
+                if out_key not in out_files:
+                    errors.append(f"{manifest_name} missing required entry output_files.{out_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        out_files[out_key],
+                        manifest_name=manifest_name,
+                        context=f"output_files.{out_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+        # Required input files sections
+        in_files = manifest_data.get("input_files")
+        if not isinstance(in_files, dict):
+            errors.append(f"{manifest_name} missing required section input_files")
+        else:
+            for in_sec in ["raw_sources", "catalogues_and_workloads", "configuration"]:
+                if in_sec not in in_files or not isinstance(in_files[in_sec], dict):
+                    errors.append(f"{manifest_name} missing required section input_files.{in_sec}")
+
+            # Validate protected catalogues and workloads
+            cat_files = in_files.get("catalogues_and_workloads", {}) if isinstance(in_files, dict) else {}
+            for cat_key, exp_path in [
+                ("heatwave_events_v0.parquet", "data/events/heatwave_events_v0.parquet"),
+                ("hourly_event_labels_v0.parquet", "data/events/hourly_event_labels_v0.parquet"),
+                ("control_catalogue_v0.parquet", "data/events/control_catalogue_v0.parquet"),
+                ("workload_trace_v0.parquet", "data/workloads/workload_trace_v0.parquet"),
+            ]:
+                if cat_key not in cat_files:
+                    errors.append(f"{manifest_name} missing required catalogue entry input_files.catalogues_and_workloads.{cat_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        cat_files[cat_key],
+                        manifest_name=manifest_name,
+                        context=f"input_files.catalogues_and_workloads.{cat_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+            # Validate configuration files
+            cfg_files = in_files.get("configuration", {}) if isinstance(in_files, dict) else {}
+            for cfg_key, exp_path in [
+                ("sources.yaml", "configs/sources.yaml"),
+                ("study.yaml", "configs/study.yaml"),
+            ]:
+                if cfg_key not in cfg_files:
+                    errors.append(f"{manifest_name} missing required configuration entry input_files.configuration.{cfg_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        cfg_files[cfg_key],
+                        manifest_name=manifest_name,
+                        context=f"input_files.configuration.{cfg_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+            # Validate raw source files
+            raw_files = in_files.get("raw_sources", {}) if isinstance(in_files, dict) else {}
+            for raw_key, exp_path in [
+                ("GHCNh_USW00023234_2024.psv", "data/raw/noaa/GHCNh_USW00023234_2024.psv"),
+                ("caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip", "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip"),
+                ("caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip", "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip"),
+                ("eia930_region_CISO_20240605.json", "data/raw/eia/eia930_region_CISO_20240605.json"),
+                ("eia930_region_CISO_20240701.json", "data/raw/eia/eia930_region_CISO_20240701.json"),
+                ("CISO.xlsx", "data/raw/eia/CISO.xlsx"),
+            ]:
+                if raw_key not in raw_files:
+                    errors.append(f"{manifest_name} missing required raw source entry input_files.raw_sources.{raw_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        raw_files[raw_key],
+                        manifest_name=manifest_name,
+                        context=f"input_files.raw_sources.{raw_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+    elif manifest_name == "control_matching_audit.json":
+        for req_field in [
+            "manifest_version",
+            "selected_control_id",
+            "matched_event_id",
+            "matching_method",
+            "duration_hours",
+            "candidates_evaluated",
+            "candidates",
+            "input_files",
+            "config_files",
+            "output_files",
+            "final_cross_source_coverage_status",
+        ]:
+            if req_field not in manifest_data:
+                errors.append(f"{manifest_name} missing required entry {req_field}")
+
+        if manifest_data.get("final_cross_source_coverage_status") != "verified_complete":
+            errors.append(
+                f"{manifest_name}: final_cross_source_coverage_status must be 'verified_complete', got '{manifest_data.get('final_cross_source_coverage_status')}'"
+            )
+
+        out_files = manifest_data.get("output_files")
+        if not isinstance(out_files, dict):
+            errors.append(f"{manifest_name} missing required section output_files")
+        else:
+            for out_key, exp_path in [
+                ("control_catalogue_parquet", "data/events/control_catalogue_v0.parquet"),
+                ("control_catalogue_csv", "data/events/control_catalogue_v0.csv"),
+            ]:
+                if out_key not in out_files:
+                    errors.append(f"{manifest_name} missing required entry output_files.{out_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        out_files[out_key],
+                        manifest_name=manifest_name,
+                        context=f"output_files.{out_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+    elif manifest_name == "event_catalogue_manifest.json":
+        for req_field in [
+            "manifest_version",
+            "event_ids",
+            "events_count",
+            "input_files",
+            "config_files",
+            "output_files",
+            "validation_status",
+        ]:
+            if req_field not in manifest_data:
+                errors.append(f"{manifest_name} missing required entry {req_field}")
+
+        out_files = manifest_data.get("output_files")
+        if not isinstance(out_files, dict):
+            errors.append(f"{manifest_name} missing required section output_files")
+        else:
+            for out_key, exp_path in [
+                ("heatwave_events_parquet", "data/events/heatwave_events_v0.parquet"),
+                ("heatwave_events_csv", "data/events/heatwave_events_v0.csv"),
+                ("hourly_event_labels_parquet", "data/events/hourly_event_labels_v0.parquet"),
+                ("hourly_event_labels_sample_csv", "data/events/hourly_event_labels_v0_sample.csv"),
+                ("event_coverage_csv", "data/manifests/event_coverage.csv"),
+            ]:
+                if out_key not in out_files:
+                    errors.append(f"{manifest_name} missing required entry output_files.{out_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        out_files[out_key],
+                        manifest_name=manifest_name,
+                        context=f"output_files.{out_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+    elif manifest_name == "workload_manifest.json":
+        for req_field in [
+            "manifest_version",
+            "generator_version",
+            "workload_trace_id",
+            "random_seed",
+            "window_duration_hours",
+            "job_count",
+            "output_files",
+        ]:
+            if req_field not in manifest_data:
+                errors.append(f"{manifest_name} missing required metadata {req_field}")
+
+        out_files = manifest_data.get("output_files")
+        if not isinstance(out_files, dict):
+            errors.append(f"{manifest_name} missing required section output_files")
+        else:
+            for out_key, exp_path in [
+                ("workload_trace_parquet", "data/workloads/workload_trace_v0.parquet"),
+                ("workload_trace_csv", "data/workloads/workload_trace_v0.csv"),
+            ]:
+                if out_key not in out_files:
+                    errors.append(f"{manifest_name} missing required entry output_files.{out_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        out_files[out_key],
+                        manifest_name=manifest_name,
+                        context=f"output_files.{out_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+    return errors
+
+
 def verify_provenance_manifest_entries(
     manifest_data: dict[str, Any],
     *,
@@ -36,58 +374,12 @@ def verify_provenance_manifest_entries(
     repo_root = repo_root.resolve()
 
     def _check_entry(entry: dict[str, Any], context: str) -> None:
-        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
-            return
-
-        rel_p_str = entry["path"]
-        expected_sha = entry["sha256"]
-        expected_size = entry.get("size_bytes")
-
-        if not isinstance(rel_p_str, str) or not rel_p_str.strip():
-            errors.append(f"{manifest_name} ({context}): empty or invalid path '{rel_p_str}'")
-            return
-
-        p_obj = Path(rel_p_str)
-        # Check absolute or escaping path
-        if p_obj.is_absolute():
-            errors.append(f"{manifest_name} ({context}): absolute path not permitted '{rel_p_str}'")
-            return
-        if ".." in p_obj.parts:
-            errors.append(f"{manifest_name} ({context}): path escape '../' not permitted '{rel_p_str}'")
-            return
-
-        full_p = (repo_root / p_obj).resolve()
-        # Verify does not escape repo root
-        try:
-            full_p.relative_to(repo_root)
-        except ValueError:
-            errors.append(f"{manifest_name} ({context}): path '{rel_p_str}' escapes repository root")
-            return
-
-        if not full_p.exists():
-            errors.append(f"{manifest_name} ({context}): referenced file does not exist: '{rel_p_str}'")
-            return
-        if not full_p.is_file():
-            errors.append(f"{manifest_name} ({context}): referenced path is not a regular file: '{rel_p_str}'")
-            return
-
-        if not isinstance(expected_sha, str) or len(expected_sha) != 64:
-            errors.append(f"{manifest_name} ({context}): malformed SHA-256 hash '{expected_sha}'")
-            return
-
-        actual_sha = sha256_file(full_p)
-        if actual_sha.lower() != expected_sha.lower():
-            errors.append(
-                f"{manifest_name} ({context}): hash mismatch for '{rel_p_str}': actual {actual_sha} != recorded {expected_sha}"
-            )
-            return
-
-        if expected_size is not None:
-            actual_size = full_p.stat().st_size
-            if actual_size != expected_size:
-                errors.append(
-                    f"{manifest_name} ({context}): size mismatch for '{rel_p_str}': actual {actual_size} bytes != recorded {expected_size} bytes"
-                )
+        errors.extend(validate_file_entry_schema(
+            entry,
+            manifest_name=manifest_name,
+            context=context,
+            repo_root=repo_root,
+        ))
 
     def _scan(node: Any, ctx: str) -> None:
         if isinstance(node, dict):
@@ -311,6 +603,14 @@ def run_p3_audit(
         ("workload_manifest.json", data_dir / "workloads/workload_manifest.json"),
     ]
 
+    expected_metadata = {
+        "station_id": station_id,
+        "caiso_node": caiso_node,
+        "balancing_authority": balancing_authority,
+        "target_timezone": target_timezone,
+        "random_seed": expected_seed,
+    }
+
     manifest_errors: list[str] = []
     for m_name, m_path in manifest_paths:
         if not m_path.exists():
@@ -322,13 +622,23 @@ def run_p3_audit(
             manifest_errors.append(f"Malformed JSON in provenance manifest {m_name}: {e}")
             continue
 
-        errs = verify_provenance_manifest_entries(m_data, manifest_name=m_name, repo_root=data_dir.parent)
+        # Strict schema validation
+        schema_errs = validate_required_manifest_schema(
+            m_name,
+            m_data,
+            repo_root=repo_root,
+            expected_metadata=expected_metadata,
+        )
+        manifest_errors.extend(schema_errs)
+
+        # Recursive hash/size checker over any additional entries
+        errs = verify_provenance_manifest_entries(m_data, manifest_name=m_name, repo_root=repo_root)
         manifest_errors.extend(errs)
 
     if manifest_errors:
         return _write_and_return_failure([f"Provenance manifest verification failed: {e}" for e in manifest_errors])
 
-    # 7. Chronological Split Categorization & Unmatched Reasons
+    # 7. Chronological Split Categorization & Evidence-Derived Unmatched Analysis
     all_event_ids = df_events["event_id"].tolist()
     matched_event_ids = df_control["matched_event_id"].tolist()
     unmatched_event_ids = [eid for eid in all_event_ids if eid not in matched_event_ids]
@@ -346,12 +656,151 @@ def run_p3_audit(
     val_matched = [eid for eid in val_events if eid in matched_event_ids]
     test_matched = [eid for eid in test_events if eid in matched_event_ids]
 
+    # Pre-index manifests and raw records to evaluate source evidence
+    raw_manifest_path = data_dir / "manifests/raw_sources.jsonl"
+    manifest_records: list[dict[str, Any]] = []
+    if raw_manifest_path.exists():
+        try:
+            with raw_manifest_path.open("r", encoding="utf-8") as rmf:
+                for line in rmf:
+                    if line.strip():
+                        manifest_records.append(json.loads(line))
+        except Exception:
+            pass
+
+    caiso_zip_dir = data_dir / "raw/caiso"
+    caiso_intervals: list[dict[str, Any]] = []
+    if caiso_zip_dir.exists():
+        for zpath in caiso_zip_dir.glob("*.zip"):
+            try:
+                with zipfile.ZipFile(zpath, "r") as zf_obj:
+                    for zname in zf_obj.namelist():
+                        if zname.endswith(".csv"):
+                            with zf_obj.open(zname) as zf_csv:
+                                df_z = pd.read_csv(zf_csv)
+                                if "LMP_TYPE" in df_z.columns and "INTERVALSTARTTIME_GMT" in df_z.columns:
+                                    df_lmp = df_z[df_z["LMP_TYPE"] == "LMP"]
+                                    if not df_lmp.empty:
+                                        t_min = pd.to_datetime(df_lmp["INTERVALSTARTTIME_GMT"].min())
+                                        t_max = pd.to_datetime(df_lmp["INTERVALENDTIME_GMT"].max())
+                                        caiso_intervals.append({"file": zpath.name, "start": t_min, "end": t_max, "count": len(df_lmp)})
+            except Exception:
+                pass
+
+    eia_dir = data_dir / "raw/eia"
+    eia_json_coverage: list[dict[str, Any]] = []
+    if eia_dir.exists():
+        for jpath in eia_dir.glob("*.json"):
+            try:
+                with jpath.open("r", encoding="utf-8") as jf:
+                    jdata = json.load(jf)
+                    items = jdata.get("response", {}).get("data", [])
+                    periods_d = set(it.get("period") for it in items if it.get("type") == "D" and it.get("period"))
+                    periods_ng = set(it.get("period") for it in items if it.get("type") == "NG" and it.get("period"))
+                    if periods_d or periods_ng:
+                        eia_json_coverage.append({
+                            "file": jpath.name,
+                            "periods_d": periods_d,
+                            "periods_ng": periods_ng,
+                        })
+            except Exception:
+                pass
+
+    unmatched_cases_evidence: list[dict[str, Any]] = []
     unmatched_reasons: dict[str, str] = {}
+
     for eid in unmatched_event_ids:
-        # Check if source data for this event exists on disk
-        ev_yr = event_start_years.get(eid)
+        ev_row = event_dict.get(eid)
+        if ev_row is None:
+            unmatched_reasons[eid] = "unmatched_no_complete_cross_source_benchmark: event details missing from catalogue"
+            continue
+
+        ev_start_utc = pd.to_datetime(ev_row["event_start_utc"]) - pd.Timedelta(days=1)
+        ev_end_utc = pd.to_datetime(ev_row["event_end_utc"]) + pd.Timedelta(days=1)
+        ev_year = ev_start_utc.year
+
+        # 1. Weather provider (NOAA)
+        noaa_file = data_dir / f"raw/noaa/GHCNh_{station_id}_{ev_year}.psv"
+        weather_avail = noaa_file.exists() and noaa_file.is_file() and noaa_file.stat().st_size > 0
+        weather_status = "available" if weather_avail else "missing"
+
+        # 2. CAISO LMP price provider
+        caiso_manifest_match = any(
+            r.get("provider") == "CAISO"
+            and r.get("request", {}).get("startdatetime") == ev_start_utc.isoformat()
+            for r in manifest_records
+        )
+        caiso_zip_match = any(
+            it["start"] <= ev_start_utc and it["end"] >= ev_end_utc
+            for it in caiso_intervals
+        )
+        caiso_found = caiso_manifest_match or caiso_zip_match
+        caiso_status = "available" if caiso_found else "missing"
+
+        # 3. EIA demand & net generation (EIA API v2)
+        # Required hour-ending intervals
+        req_dt_range = pd.date_range(ev_start_utc + pd.Timedelta(hours=1), ev_end_utc, freq="h")
+        req_periods = set(dt.strftime("%Y-%m-%dT%H") for dt in req_dt_range)
+
+        d_covered = any(req_periods.issubset(c["periods_d"]) for c in eia_json_coverage)
+        ng_covered = any(req_periods.issubset(c["periods_ng"]) for c in eia_json_coverage)
+        eia_demand_status = "available" if d_covered else "not_verified"
+        eia_netgen_status = "available" if ng_covered else "not_verified"
+
+        # 4. EIA carbon intensity
+        # Authentic workbook contains years 2018-2024, but without complete raw API inputs for demand/price/netgen
+        # interval matching, carbon intensity alone cannot form a benchmark.
+        eia_carbon_status = "available_or_not_verified"
+
+        # Identify missing or incomplete sources
+        missing_sources: list[str] = []
+        if weather_status != "available":
+            missing_sources.append("weather")
+        if caiso_status != "available":
+            missing_sources.append("caiso_price")
+        if eia_demand_status != "available":
+            missing_sources.append("eia_demand")
+        if eia_netgen_status != "available":
+            missing_sources.append("eia_net_generation")
+
+        case_evidence = {
+            "event_id": eid,
+            "status": "unmatched_no_complete_cross_source_benchmark",
+            "required_interval_utc": {
+                "start": ev_start_utc.isoformat(),
+                "end_exclusive": ev_end_utc.isoformat(),
+            },
+            "source_evidence": {
+                "weather": {
+                    "status": weather_status,
+                },
+                "caiso_price": {
+                    "status": caiso_status,
+                    "matching_manifest_record_found": caiso_found,
+                },
+                "eia_demand": {
+                    "status": eia_demand_status,
+                },
+                "eia_net_generation": {
+                    "status": eia_netgen_status,
+                },
+                "eia_carbon_intensity": {
+                    "status": eia_carbon_status,
+                },
+            },
+            "missing_or_incomplete_sources": missing_sources,
+            "context": (
+                "Historical CAISO OASIS access may be constrained by its rolling API window."
+                if "caiso_price" in missing_sources and ev_year < 2023
+                else "Insufficient verified cross-source input data available for benchmark pair construction."
+            ),
+        }
+        unmatched_cases_evidence.append(case_evidence)
+
+        # Build concise human-readable summary
+        missing_desc = ", ".join(missing_sources) if missing_sources else "unverified cross-source alignment"
         unmatched_reasons[eid] = (
-            f"unmatched_no_complete_cross_source_benchmark: year {ev_yr} lacks complete multi-source API data (e.g. historical CAISO 39-month rolling window)"
+            f"unmatched_no_complete_cross_source_benchmark: missing or unverified sources [{missing_desc}] for required interval {ev_start_utc.strftime('%Y-%m-%d')} to {ev_end_utc.strftime('%Y-%m-%d')}"
         )
 
     split_audit = {
@@ -442,6 +891,7 @@ def run_p3_audit(
         "matched_events": matched_event_ids,
         "unmatched_events": unmatched_event_ids,
         "unmatched_reasons": unmatched_reasons,
+        "unmatched_cases_evidence": unmatched_cases_evidence,
         "chronological_splits": split_audit,
         "benchmark_summary": {
             "total_row_count": total_benchmark_rows,

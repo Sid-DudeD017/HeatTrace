@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import pytest
 import pandas as pd
@@ -485,3 +486,309 @@ def test_audit_fails_on_pending_or_duplicated_control(tmp_path):
     res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
     assert res["status"] == "failed"
     assert any("price.node" in r for r in res["failure_reasons"])
+
+
+def test_audit_fails_on_manifest_deletion_and_schema_tampering(tmp_path):
+    """Verify that removing required entries from manifests or tampering with schemas fails audit."""
+    import shutil
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    bm_path = t_data / "manifests/benchmark_manifest.json"
+    ctrl_m_path = t_data / "manifests/control_matching_audit.json"
+    ev_m_path = t_data / "manifests/event_catalogue_manifest.json"
+    wl_m_path = t_data / "workloads/workload_manifest.json"
+
+    # 1. Exact bypass test: tamper benchmark price, delete output_files.benchmark_parquet entry, audit must fail
+    b_parquet = t_data / "benchmarks/benchmark_2024_event_control_v0.parquet"
+    df_tampered = pd.read_parquet(b_parquet)
+    df_tampered.loc[0, "price_usd_per_mwh"] = 999.99
+    df_tampered.to_parquet(b_parquet, index=False)
+
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["output_files"]["benchmark_parquet"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("benchmark_manifest.json missing required entry output_files.benchmark_parquet" in r for r in res["failure_reasons"])
+
+    # Restore price and manifest
+    df_orig = pd.read_parquet(base_dir / "data/benchmarks/benchmark_2024_event_control_v0.parquet")
+    df_orig.to_parquet(b_parquet, index=False)
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 2. benchmark_sample_csv removed
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["output_files"]["benchmark_sample_csv"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("benchmark_manifest.json missing required entry output_files.benchmark_sample_csv" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 3. Control catalogue entry removed from benchmark inputs
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["input_files"]["catalogues_and_workloads"]["control_catalogue_v0.parquet"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("input_files.catalogues_and_workloads.control_catalogue_v0.parquet" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 4. Workload trace entry removed from benchmark inputs
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["input_files"]["catalogues_and_workloads"]["workload_trace_v0.parquet"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("input_files.catalogues_and_workloads.workload_trace_v0.parquet" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 5. sources.yaml entry removed from benchmark inputs
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["input_files"]["configuration"]["sources.yaml"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("input_files.configuration.sources.yaml" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 6. Raw source entry removed from benchmark inputs
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["input_files"]["raw_sources"]["GHCNh_USW00023234_2024.psv"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("input_files.raw_sources.GHCNh_USW00023234_2024.psv" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 7. Control output Parquet entry removed from control_matching_audit.json
+    with ctrl_m_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    del cm_data["output_files"]["control_catalogue_parquet"]
+    with ctrl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("output_files.control_catalogue_parquet" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_m_path)
+
+    # 8. Workload manifest output entry removed
+    with wl_m_path.open("r", encoding="utf-8") as f:
+        wm_data = json.load(f)
+    del wm_data["output_files"]["workload_trace_parquet"]
+    with wl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(wm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("output_files.workload_trace_parquet" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/workloads/workload_manifest.json", wl_m_path)
+
+    # 9. Event manifest output entry removed
+    with ev_m_path.open("r", encoding="utf-8") as f:
+        em_data = json.load(f)
+    del em_data["output_files"]["heatwave_events_parquet"]
+    with ev_m_path.open("w", encoding="utf-8") as f:
+        json.dump(em_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("output_files.heatwave_events_parquet" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/event_catalogue_manifest.json", ev_m_path)
+
+    # 10. Entire required manifest replaced with {}
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump({}, f)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("manifest must be a non-empty JSON object" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 11. Required hash field removed
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["output_files"]["benchmark_parquet"]["sha256"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("missing required field 'sha256'" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 12. Required size_bytes removed
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    del bm_data["output_files"]["benchmark_parquet"]["size_bytes"]
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("missing required field 'size_bytes'" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+    # 13. SHA contains non-hex characters
+    with bm_path.open("r", encoding="utf-8") as f:
+        bm_data = json.load(f)
+    bm_data["output_files"]["benchmark_parquet"]["sha256"] = "z" * 64
+    with bm_path.open("w", encoding="utf-8") as f:
+        json.dump(bm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("malformed SHA-256 hash" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/benchmark_manifest.json", bm_path)
+
+
+def test_benchmark_construction_fails_on_corrupt_or_missing_control_audit(tmp_path):
+    """Verify build_and_export_p3_benchmark fails strictly on control_matching_audit errors."""
+    import shutil
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    ctrl_audit_path = t_data / "manifests/control_matching_audit.json"
+
+    # 1. Missing control_matching_audit.json
+    ctrl_audit_path.unlink()
+    with pytest.raises(FileNotFoundError, match="Required provenance manifest .* not found"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 2. Malformed JSON
+    ctrl_audit_path.write_text("{this is not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="Malformed JSON"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 3. Non-object JSON
+    ctrl_audit_path.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(TypeError, match="must parse as a JSON object"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 4. Missing output_files
+    with ctrl_audit_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    del cm_data["output_files"]
+    with ctrl_audit_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    with pytest.raises(ValueError, match="missing required 'output_files'"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 5. Missing expected Parquet entry
+    with ctrl_audit_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    del cm_data["output_files"]["control_catalogue_parquet"]
+    with ctrl_audit_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    with pytest.raises(ValueError, match="missing required output entry 'control_catalogue_parquet'"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 6. Wrong selected control ID
+    with ctrl_audit_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    cm_data["selected_control_id"] = "CTRL_WRONG"
+    with ctrl_audit_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    with pytest.raises(ValueError, match="selected_control_id .* does not match"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+    # 7. Wrong matched event ID
+    with ctrl_audit_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    cm_data["matched_event_id"] = "HW_WRONG"
+    with ctrl_audit_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    with pytest.raises(ValueError, match="matched_event_id .* does not match"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_audit_path)
+
+
+def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
+    """Verify unmatched event reasons derive from actual file / manifest evidence."""
+    import shutil
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    # Initial run: 2022 weather is available, but caiso price is missing from zip / manifest
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "verified_pass"
+    unmatched_cases = {c["event_id"]: c for c in res["unmatched_cases_evidence"]}
+
+    hw_2022 = unmatched_cases["HW_20220620"]
+    assert hw_2022["source_evidence"]["weather"]["status"] == "available"
+    assert hw_2022["source_evidence"]["caiso_price"]["status"] == "missing"
+    assert "caiso_price" in hw_2022["missing_or_incomplete_sources"]
+
+    # 1. Removing weather source evidence changes weather status to missing
+    noaa_2022 = t_data / "raw/noaa/GHCNh_USW00023234_2022.psv"
+    noaa_2022.unlink()
+    res_no_weather = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    # Even if audit fails later due to event_catalogue manifest requiring the file, check unmatched_cases
+    cases_no_w = {c["event_id"]: c for c in res_no_weather.get("unmatched_cases_evidence", [])}
+    if "HW_20220620" in cases_no_w:
+        assert cases_no_w["HW_20220620"]["source_evidence"]["weather"]["status"] == "missing"
+
+    shutil.copyfile(base_dir / "data/raw/noaa/GHCNh_USW00023234_2022.psv", noaa_2022)
+
+    # 2. Adding valid CAISO manifest record for 2022-06-19 changes caiso_price status to available
+    raw_m_path = t_data / "manifests/raw_sources.jsonl"
+    with raw_m_path.open("a", encoding="utf-8") as f:
+        dummy_caiso_rec = {
+            "provider": "CAISO",
+            "request": {
+                "startdatetime": "2022-06-19T07:00:00+00:00"
+            }
+        }
+        f.write(json.dumps(dummy_caiso_rec) + "\n")
+
+    res_with_caiso = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    cases_with_c = {c["event_id"]: c for c in res_with_caiso.get("unmatched_cases_evidence", [])}
+    assert cases_with_c["HW_20220620"]["source_evidence"]["caiso_price"]["status"] == "available"
+    assert "caiso_price" not in cases_with_c["HW_20220620"]["missing_or_incomplete_sources"]
