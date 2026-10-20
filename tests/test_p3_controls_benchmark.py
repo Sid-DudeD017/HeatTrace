@@ -740,7 +740,162 @@ def test_benchmark_construction_fails_on_corrupt_or_missing_control_audit(tmp_pa
 
 
 def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
-    """Verify unmatched event reasons derive from actual file / manifest evidence."""
+    """Verify unmatched event reasons derive from actual file / manifest evidence without false-pass patterns."""
+    import shutil
+    from heattrace.process.audit import verify_caiso_interval_source_evidence
+    from heattrace.ingest.provenance import sha256_file
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    ev_start_utc = pd.to_datetime("2022-06-19 07:00:00+00:00")
+    ev_end_utc = pd.to_datetime("2022-06-24 07:00:00+00:00")
+    caiso_node = "TH_NP15_GEN-APND"
+
+    # A. Direct tests on verify_caiso_interval_source_evidence:
+    # 1. Incomplete CAISO manifest record remains not_verified or missing
+    dummy_rec_incomplete = {
+        "provider": "CAISO",
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2022-06-19T07:00:00+00:00",
+            # missing enddatetime
+        }
+    }
+    res_inc = verify_caiso_interval_source_evidence(
+        data_dir=t_data,
+        caiso_node=caiso_node,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        manifest_records=[dummy_rec_incomplete],
+    )
+    assert res_inc["status"] == "missing"
+    assert res_inc["manifest_record_found"] is False
+    assert res_inc["file_verified"] is False
+    assert res_inc["parsed_interval_coverage_verified"] is False
+
+    # 2. Valid record without a file fails verification
+    dummy_rec_nofile = {
+        "provider": "CAISO",
+        "path": "data/raw/caiso/nonexistent_2022.zip",
+        "sha256": "0" * 64,
+        "size_bytes": 1000,
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2022-06-19T07:00:00+00:00",
+            "enddatetime": "2022-06-24T07:00:00+00:00",
+        }
+    }
+    res_nofile = verify_caiso_interval_source_evidence(
+        data_dir=t_data,
+        caiso_node=caiso_node,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        manifest_records=[dummy_rec_nofile],
+    )
+    assert res_nofile["status"] == "missing"
+    assert res_nofile["manifest_record_found"] is True
+    assert res_nofile["file_verified"] is False
+
+    # 3. File with bad hash fails verification
+    real_zip = t_data / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip"
+    dummy_rec_badhash = {
+        "provider": "CAISO",
+        "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
+        "sha256": "f" * 64,
+        "size_bytes": real_zip.stat().st_size,
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2022-06-19T07:00:00+00:00",
+            "enddatetime": "2022-06-24T07:00:00+00:00",
+        }
+    }
+    res_badhash = verify_caiso_interval_source_evidence(
+        data_dir=t_data,
+        caiso_node=caiso_node,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        manifest_records=[dummy_rec_badhash],
+    )
+    assert res_badhash["status"] == "missing"
+    assert res_badhash["manifest_record_found"] is True
+    assert res_badhash["file_verified"] is False
+
+    # 4. Partial interval coverage fails verification (e.g. 24h zip claiming 120h window)
+    partial_zip = t_data / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240702_20240703.zip"
+    dummy_rec_partial = {
+        "provider": "CAISO",
+        "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240702_20240703.zip",
+        "sha256": sha256_file(partial_zip),
+        "size_bytes": partial_zip.stat().st_size,
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2024-07-01T07:00:00+00:00",
+            "enddatetime": "2024-07-06T07:00:00+00:00",
+        }
+    }
+    res_partial = verify_caiso_interval_source_evidence(
+        data_dir=t_data,
+        caiso_node=caiso_node,
+        ev_start_utc=pd.to_datetime("2024-07-01 07:00:00+00:00"),
+        ev_end_utc=pd.to_datetime("2024-07-06 07:00:00+00:00"),
+        manifest_records=[dummy_rec_partial],
+    )
+    assert res_partial["status"] == "missing"
+    assert res_partial["manifest_record_found"] is True
+    assert res_partial["file_verified"] is True
+    assert res_partial["parsed_interval_coverage_verified"] is False
+    assert any("Missing" in d for d in res_partial["details"])
+
+    # 5. Complete, verified, parsed interval coverage becomes available
+    full_zip = t_data / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip"
+    dummy_rec_full = {
+        "provider": "CAISO",
+        "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
+        "sha256": sha256_file(full_zip),
+        "size_bytes": full_zip.stat().st_size,
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2024-07-01T07:00:00+00:00",
+            "enddatetime": "2024-07-06T07:00:00+00:00",
+        }
+    }
+    res_full = verify_caiso_interval_source_evidence(
+        data_dir=t_data,
+        caiso_node=caiso_node,
+        ev_start_utc=pd.to_datetime("2024-07-01 07:00:00+00:00"),
+        ev_end_utc=pd.to_datetime("2024-07-06 07:00:00+00:00"),
+        manifest_records=[dummy_rec_full],
+    )
+    assert res_full["status"] == "available"
+    assert res_full["manifest_record_found"] is True
+    assert res_full["file_verified"] is True
+    assert res_full["parsed_interval_coverage_verified"] is True
+
+    # B. Integrated audit test:
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "verified_pass"
+    unmatched_cases = {c["event_id"]: c for c in res["unmatched_cases_evidence"]}
+    assert "HW_20220620" in unmatched_cases
+    hw_2022 = unmatched_cases["HW_20220620"]
+    assert hw_2022["source_evidence"]["weather"]["status"] == "available"
+    assert hw_2022["source_evidence"]["caiso_price"]["status"] == "missing"
+    assert hw_2022["source_evidence"]["caiso_price"]["parsed_interval_coverage_verified"] is False
+    assert "caiso_price" in hw_2022["missing_or_incomplete_sources"]
+
+
+def test_audit_fails_on_semantic_manifest_schema_violations(tmp_path):
+    """Verify audit fails on semantic metadata and input omissions across all manifests."""
     import shutil
     base_dir = Path(__file__).resolve().parents[1]
 
@@ -756,39 +911,126 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
     shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
     shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
 
-    # Initial run: 2022 weather is available, but caiso price is missing from zip / manifest
+    ev_m_path = t_data / "manifests/event_catalogue_manifest.json"
+    ctrl_m_path = t_data / "manifests/control_matching_audit.json"
+    wl_m_path = t_data / "workloads/workload_manifest.json"
+
+    # 1. NOAA input entry deleted from event manifest
+    with ev_m_path.open("r", encoding="utf-8") as f:
+        em_data = json.load(f)
+    del em_data["input_files"]["GHCNh_USW00023234_2022.psv"]
+    with ev_m_path.open("w", encoding="utf-8") as f:
+        json.dump(em_data, f, indent=2)
     res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
-    assert res["status"] == "verified_pass"
-    unmatched_cases = {c["event_id"]: c for c in res["unmatched_cases_evidence"]}
+    assert res["status"] == "failed"
+    assert any("event_catalogue_manifest.json missing required input file input_files.GHCNh_USW00023234_2022.psv" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/event_catalogue_manifest.json", ev_m_path)
 
-    hw_2022 = unmatched_cases["HW_20220620"]
-    assert hw_2022["source_evidence"]["weather"]["status"] == "available"
-    assert hw_2022["source_evidence"]["caiso_price"]["status"] == "missing"
-    assert "caiso_price" in hw_2022["missing_or_incomplete_sources"]
+    # 2. NOAA input entry deleted from control manifest
+    with ctrl_m_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    del cm_data["input_files"]["GHCNh_USW00023234_2023.psv"]
+    with ctrl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("control_matching_audit.json missing required input file input_files.GHCNh_USW00023234_2023.psv" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_m_path)
 
-    # 1. Removing weather source evidence changes weather status to missing
-    noaa_2022 = t_data / "raw/noaa/GHCNh_USW00023234_2022.psv"
-    noaa_2022.unlink()
-    res_no_weather = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
-    # Even if audit fails later due to event_catalogue manifest requiring the file, check unmatched_cases
-    cases_no_w = {c["event_id"]: c for c in res_no_weather.get("unmatched_cases_evidence", [])}
-    if "HW_20220620" in cases_no_w:
-        assert cases_no_w["HW_20220620"]["source_evidence"]["weather"]["status"] == "missing"
+    # 3. Control/event IDs replaced with fake values in control manifest
+    with ctrl_m_path.open("r", encoding="utf-8") as f:
+        cm_data = json.load(f)
+    cm_data["selected_control_id"] = "CTRL_FAKE"
+    with ctrl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(cm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("selected_control_id must be 'CTRL_20240605'" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/control_matching_audit.json", ctrl_m_path)
 
-    shutil.copyfile(base_dir / "data/raw/noaa/GHCNh_USW00023234_2022.psv", noaa_2022)
+    # 4. Event IDs disagree with event catalogue in event manifest
+    with ev_m_path.open("r", encoding="utf-8") as f:
+        em_data = json.load(f)
+    em_data["event_ids"] = ["HW_FAKE"]
+    with ev_m_path.open("w", encoding="utf-8") as f:
+        json.dump(em_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("event_ids" in r and "HW_FAKE" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/event_catalogue_manifest.json", ev_m_path)
 
-    # 2. Adding valid CAISO manifest record for 2022-06-19 changes caiso_price status to available
-    raw_m_path = t_data / "manifests/raw_sources.jsonl"
-    with raw_m_path.open("a", encoding="utf-8") as f:
-        dummy_caiso_rec = {
-            "provider": "CAISO",
-            "request": {
-                "startdatetime": "2022-06-19T07:00:00+00:00"
-            }
-        }
-        f.write(json.dumps(dummy_caiso_rec) + "\n")
+    # 5. Workload seed disagrees with configuration
+    with wl_m_path.open("r", encoding="utf-8") as f:
+        wm_data = json.load(f)
+    wm_data["random_seed"] = 99999999
+    with wl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(wm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("random_seed" in r and "99999999" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/workloads/workload_manifest.json", wl_m_path)
 
-    res_with_caiso = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
-    cases_with_c = {c["event_id"]: c for c in res_with_caiso.get("unmatched_cases_evidence", [])}
-    assert cases_with_c["HW_20220620"]["source_evidence"]["caiso_price"]["status"] == "available"
-    assert "caiso_price" not in cases_with_c["HW_20220620"]["missing_or_incomplete_sources"]
+    # 6. Workload duration disagrees with workload trace
+    with wl_m_path.open("r", encoding="utf-8") as f:
+        wm_data = json.load(f)
+    wm_data["window_duration_hours"] = 72
+    with wl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(wm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("window_duration_hours" in r and "72" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/workloads/workload_manifest.json", wl_m_path)
+
+    # 7. Workload job count disagrees with workload trace
+    with wl_m_path.open("r", encoding="utf-8") as f:
+        wm_data = json.load(f)
+    wm_data["job_count"] = 999
+    with wl_m_path.open("w", encoding="utf-8") as f:
+        json.dump(wm_data, f, indent=2)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("job_count" in r and "999" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/workloads/workload_manifest.json", wl_m_path)
+
+
+def test_benchmark_publication_atomic_rollback_on_failure(tmp_path, monkeypatch):
+    """Verify that simulated failure during publication triggers clean rollback with original files intact."""
+    import shutil
+    from heattrace.ingest.provenance import sha256_file
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    b_parquet = t_data / "benchmarks/benchmark_2024_event_control_v0.parquet"
+    c_audit = t_data / "manifests/control_matching_audit.json"
+    orig_b_sha = sha256_file(b_parquet)
+    orig_c_sha = sha256_file(c_audit)
+
+    # Mock Path.replace so that it fails midway on benchmark_manifest.json
+    orig_replace = Path.replace
+    def failing_replace(self, target):
+        if "benchmark_manifest.json" in str(target):
+            raise IOError("Simulated disk error during benchmark_manifest.json publication")
+        return orig_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", failing_replace)
+
+    with pytest.raises(IOError, match="Simulated disk error"):
+        build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
+
+    # Verify rollback: destination files exist and hashes are completely preserved
+    assert sha256_file(b_parquet) == orig_b_sha
+    assert sha256_file(c_audit) == orig_c_sha
+    # Verify no temporary directories left behind
+    assert not list(t_data.glob("p3_pub_stage_*"))
+    assert not list(t_data.glob("p3_pub_bak_*"))

@@ -415,168 +415,227 @@ def build_and_export_p3_benchmark(
             f"'{ctrl_audit_path}' matched_event_id '{match_ev_id}' does not match benchmark event ID '{exp_ev_id}'"
         )
 
-    # 2. Prepare atomic outputs in temporary files
+    # 2. Prepare atomic outputs in a isolated temporary staging directory
     parquet_path = benchmarks_dir / "benchmark_2024_event_control_v0.parquet"
     csv_sample_path = benchmarks_dir / "benchmark_2024_event_control_v0_sample.csv"
     manifest_path = manifests_dir / "benchmark_manifest.json"
-
-    tmp_parquet = benchmarks_dir / ".tmp_benchmark_2024_event_control_v0.parquet"
-    tmp_csv = benchmarks_dir / ".tmp_benchmark_2024_event_control_v0_sample.csv"
-    tmp_manifest = manifests_dir / ".tmp_benchmark_manifest.json"
-
-    df_benchmark.to_parquet(tmp_parquet, index=False)
-    sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
-    sample_df.to_csv(tmp_csv, index=False)
-
     ctrl_parquet_path = data_dir / "events/control_catalogue_v0.parquet"
     ctrl_csv_path = data_dir / "events/control_catalogue_v0.csv"
-    tmp_ctrl_parquet = data_dir / "events/.tmp_control_catalogue_v0.parquet"
-    tmp_ctrl_csv = data_dir / "events/.tmp_control_catalogue_v0.csv"
-    tmp_ctrl_audit = data_dir / "manifests/.tmp_control_matching_audit.json"
 
-    df_control_updated = df_control.copy()
-    df_control_updated["source_coverage_status"] = "verified_complete"
-    df_control_updated.to_parquet(tmp_ctrl_parquet, index=False)
-    df_control_updated.to_csv(tmp_ctrl_csv, index=False)
-
-    # Calculate hashes on temporary control outputs
-    new_ctrl_parquet_sha = sha256_file(tmp_ctrl_parquet)
-    new_ctrl_parquet_size = tmp_ctrl_parquet.stat().st_size
-    new_ctrl_csv_sha = sha256_file(tmp_ctrl_csv)
-    new_ctrl_csv_size = tmp_ctrl_csv.stat().st_size
-
-    c_audit["output_files"]["control_catalogue_parquet"]["sha256"] = new_ctrl_parquet_sha
-    c_audit["output_files"]["control_catalogue_parquet"]["size_bytes"] = new_ctrl_parquet_size
-    c_audit["output_files"]["control_catalogue_csv"]["sha256"] = new_ctrl_csv_sha
-    c_audit["output_files"]["control_catalogue_csv"]["size_bytes"] = new_ctrl_csv_size
-    c_audit["final_cross_source_coverage_status"] = "verified_complete"
-
-    with tmp_ctrl_audit.open("w", encoding="utf-8") as f:
-        json.dump(c_audit, f, indent=2, sort_keys=True)
-
-    # Collect project-relative input files lineage
-    repo_root = data_dir.parent
-    def _rel(p: Path) -> str:
-        return str(p.relative_to(repo_root)) if p.is_relative_to(repo_root) else str(p)
-
-    raw_inputs: dict[str, dict[str, Any]] = {}
-    candidate_raw = [
-        data_dir / f"raw/noaa/GHCNh_{station_id}_2024.psv",
-        data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240605_20240610.zip",
-        data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240701_20240706.zip",
-        data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240605.json",
-        data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240701.json",
-        data_dir / f"raw/eia/{balancing_authority}.xlsx",
-    ]
-    for rf in candidate_raw:
-        if rf.exists():
-            raw_inputs[rf.name] = {
-                "path": _rel(rf),
-                "sha256": sha256_file(rf),
-                "size_bytes": rf.stat().st_size,
-            }
-
-    catalogue_inputs: dict[str, dict[str, Any]] = {}
-    # Use tmp_ctrl_parquet hash for the manifest input entry since it replaces control_catalogue_v0.parquet
-    for cf in [events_parquet, labels_parquet, workload_parquet]:
-        if cf.exists():
-            catalogue_inputs[cf.name] = {
-                "path": _rel(cf),
-                "sha256": sha256_file(cf),
-                "size_bytes": cf.stat().st_size,
-            }
-    catalogue_inputs["control_catalogue_v0.parquet"] = {
-        "path": _rel(ctrl_parquet_path),
-        "sha256": new_ctrl_parquet_sha,
-        "size_bytes": new_ctrl_parquet_size,
+    # Destination map for atomic publication and rollback
+    dest_files = {
+        "ctrl_parquet": ctrl_parquet_path,
+        "ctrl_csv": ctrl_csv_path,
+        "ctrl_audit": ctrl_audit_path,
+        "bench_parquet": parquet_path,
+        "bench_csv": csv_sample_path,
+        "bench_manifest": manifest_path,
     }
 
-    config_inputs: dict[str, dict[str, Any]] = {}
-    for cname in ["sources.yaml", "study.yaml"]:
-        cfg_p = config_dir / cname
-        if cfg_p.exists():
-            config_inputs[cname] = {
-                "path": _rel(cfg_p),
-                "sha256": sha256_file(cfg_p),
-                "size_bytes": cfg_p.stat().st_size,
-            }
+    import tempfile
+    import shutil
+    staging_dir = Path(tempfile.mkdtemp(prefix="p3_pub_stage_", dir=str(data_dir)))
+    backup_dir = Path(tempfile.mkdtemp(prefix="p3_pub_bak_", dir=str(data_dir)))
 
-    manifest = {
-        "manifest_version": "1.0",
-        "gate": "G3-a",
-        "methodology_version": "1.0",
-        "validator_version": "1.0",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "total_rows": len(df_benchmark),
-        "event_rows": len(event_rows),
-        "control_rows": len(control_rows),
-        "event_window_id": str(ev_row["event_id"]),
-        "control_window_id": str(ctrl_row["control_id"]),
-        "event_interval_utc": [
-            event_rows[0]["timestamp_utc"].isoformat(),
-            (event_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
-        ],
-        "control_interval_utc": [
-            control_rows[0]["timestamp_utc"].isoformat(),
-            (control_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
-        ],
-        "source_summary": {
-            "noaa_station": station_id,
-            "caiso_node": caiso_node,
-            "eia_balancing_authority": balancing_authority,
-            "timezone": target_timezone,
-            "canonical_timezone": "UTC",
-        },
-        "coverage_metrics": {
-            "temperature_covered": int((~df_benchmark["temperature_missing"]).sum()),
-            "price_covered": int((~df_benchmark["price_missing"]).sum()),
-            "demand_covered": int((~df_benchmark["demand_missing"]).sum()),
-            "net_generation_covered": int((~df_benchmark["net_generation_missing"]).sum()),
-            "carbon_covered": int((~df_benchmark["carbon_missing"]).sum()),
-            "carbon_data_issue_count": int(df_benchmark["carbon_data_issue"].sum()),
-            "carbon_primary_analysis_eligible_count": int(df_benchmark["carbon_primary_analysis_eligible"].sum()),
-        },
-        "input_files": {
-            "raw_sources": raw_inputs,
-            "catalogues_and_workloads": catalogue_inputs,
-            "configuration": config_inputs,
-        },
-        "output_files": {
-            "benchmark_parquet": {
-                "path": _rel(parquet_path),
-                "sha256": sha256_file(tmp_parquet),
-                "size_bytes": tmp_parquet.stat().st_size,
+    try:
+        stg_parquet = staging_dir / "benchmark_2024_event_control_v0.parquet"
+        stg_csv = staging_dir / "benchmark_2024_event_control_v0_sample.csv"
+        stg_manifest = staging_dir / "benchmark_manifest.json"
+        stg_ctrl_parquet = staging_dir / "control_catalogue_v0.parquet"
+        stg_ctrl_csv = staging_dir / "control_catalogue_v0.csv"
+        stg_ctrl_audit = staging_dir / "control_matching_audit.json"
+
+        df_benchmark.to_parquet(stg_parquet, index=False)
+        sample_df = pd.concat([df_benchmark.head(20), df_benchmark.tail(20)]).drop_duplicates().reset_index(drop=True)
+        sample_df.to_csv(stg_csv, index=False)
+
+        df_control_updated = df_control.copy()
+        df_control_updated["source_coverage_status"] = "verified_complete"
+        df_control_updated.to_parquet(stg_ctrl_parquet, index=False)
+        df_control_updated.to_csv(stg_ctrl_csv, index=False)
+
+        # Calculate hashes on staged control outputs
+        new_ctrl_parquet_sha = sha256_file(stg_ctrl_parquet)
+        new_ctrl_parquet_size = stg_ctrl_parquet.stat().st_size
+        new_ctrl_csv_sha = sha256_file(stg_ctrl_csv)
+        new_ctrl_csv_size = stg_ctrl_csv.stat().st_size
+
+        c_audit["output_files"]["control_catalogue_parquet"]["sha256"] = new_ctrl_parquet_sha
+        c_audit["output_files"]["control_catalogue_parquet"]["size_bytes"] = new_ctrl_parquet_size
+        c_audit["output_files"]["control_catalogue_csv"]["sha256"] = new_ctrl_csv_sha
+        c_audit["output_files"]["control_catalogue_csv"]["size_bytes"] = new_ctrl_csv_size
+        c_audit["final_cross_source_coverage_status"] = "verified_complete"
+
+        with stg_ctrl_audit.open("w", encoding="utf-8") as f:
+            json.dump(c_audit, f, indent=2, sort_keys=True)
+
+        # Collect project-relative input files lineage
+        repo_root = data_dir.parent
+        def _rel(p: Path) -> str:
+            return str(p.relative_to(repo_root)) if p.is_relative_to(repo_root) else str(p)
+
+        raw_inputs: dict[str, dict[str, Any]] = {}
+        candidate_raw = [
+            data_dir / f"raw/noaa/GHCNh_{station_id}_2024.psv",
+            data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240605_20240610.zip",
+            data_dir / f"raw/caiso/caiso_dam_lmp_{caiso_node}_20240701_20240706.zip",
+            data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240605.json",
+            data_dir / f"raw/eia/eia930_region_{balancing_authority}_20240701.json",
+            data_dir / f"raw/eia/{balancing_authority}.xlsx",
+        ]
+        for rf in candidate_raw:
+            if rf.exists():
+                raw_inputs[rf.name] = {
+                    "path": _rel(rf),
+                    "sha256": sha256_file(rf),
+                    "size_bytes": rf.stat().st_size,
+                }
+
+        catalogue_inputs: dict[str, dict[str, Any]] = {}
+        # Use staged control catalogue hash for the manifest input entry
+        for cf in [events_parquet, labels_parquet, workload_parquet]:
+            if cf.exists():
+                catalogue_inputs[cf.name] = {
+                    "path": _rel(cf),
+                    "sha256": sha256_file(cf),
+                    "size_bytes": cf.stat().st_size,
+                }
+        catalogue_inputs["control_catalogue_v0.parquet"] = {
+            "path": _rel(ctrl_parquet_path),
+            "sha256": new_ctrl_parquet_sha,
+            "size_bytes": new_ctrl_parquet_size,
+        }
+
+        config_inputs: dict[str, dict[str, Any]] = {}
+        for cname in ["sources.yaml", "study.yaml"]:
+            cfg_p = config_dir / cname
+            if cfg_p.exists():
+                config_inputs[cname] = {
+                    "path": _rel(cfg_p),
+                    "sha256": sha256_file(cfg_p),
+                    "size_bytes": cfg_p.stat().st_size,
+                }
+
+        manifest = {
+            "manifest_version": "1.0",
+            "gate": "G3-a",
+            "methodology_version": "1.0",
+            "validator_version": "1.0",
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "total_rows": len(df_benchmark),
+            "event_rows": len(event_rows),
+            "control_rows": len(control_rows),
+            "event_window_id": str(ev_row["event_id"]),
+            "control_window_id": str(ctrl_row["control_id"]),
+            "event_interval_utc": [
+                event_rows[0]["timestamp_utc"].isoformat(),
+                (event_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
+            ],
+            "control_interval_utc": [
+                control_rows[0]["timestamp_utc"].isoformat(),
+                (control_rows[-1]["timestamp_utc"] + timedelta(hours=1)).isoformat(),
+            ],
+            "source_summary": {
+                "noaa_station": station_id,
+                "caiso_node": caiso_node,
+                "eia_balancing_authority": balancing_authority,
+                "timezone": target_timezone,
+                "canonical_timezone": "UTC",
             },
-            "benchmark_sample_csv": {
-                "path": _rel(csv_sample_path),
-                "sha256": sha256_file(tmp_csv),
-                "size_bytes": tmp_csv.stat().st_size,
+            "coverage_metrics": {
+                "temperature_covered": int((~df_benchmark["temperature_missing"]).sum()),
+                "price_covered": int((~df_benchmark["price_missing"]).sum()),
+                "demand_covered": int((~df_benchmark["demand_missing"]).sum()),
+                "net_generation_covered": int((~df_benchmark["net_generation_missing"]).sum()),
+                "carbon_covered": int((~df_benchmark["carbon_missing"]).sum()),
+                "carbon_data_issue_count": int(df_benchmark["carbon_data_issue"].sum()),
+                "carbon_primary_analysis_eligible_count": int(df_benchmark["carbon_primary_analysis_eligible"].sum()),
             },
-        },
-    }
+            "input_files": {
+                "raw_sources": raw_inputs,
+                "catalogues_and_workloads": catalogue_inputs,
+                "configuration": config_inputs,
+            },
+            "output_files": {
+                "benchmark_parquet": {
+                    "path": _rel(parquet_path),
+                    "sha256": sha256_file(stg_parquet),
+                    "size_bytes": stg_parquet.stat().st_size,
+                },
+                "benchmark_sample_csv": {
+                    "path": _rel(csv_sample_path),
+                    "sha256": sha256_file(stg_csv),
+                    "size_bytes": stg_csv.stat().st_size,
+                },
+            },
+        }
 
-    with tmp_manifest.open("w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
+        with stg_manifest.open("w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2, sort_keys=True)
 
-    # 3. Atomically replace final destinations
-    tmp_ctrl_parquet.replace(ctrl_parquet_path)
-    tmp_ctrl_csv.replace(ctrl_csv_path)
-    tmp_ctrl_audit.replace(ctrl_audit_path)
-    tmp_parquet.replace(parquet_path)
-    tmp_csv.replace(csv_sample_path)
-    tmp_manifest.replace(manifest_path)
+        # Pre-validate staged artifacts before making any replacements
+        staged_manifest_data = json.loads(stg_manifest.read_text(encoding="utf-8"))
+        if staged_manifest_data.get("output_files", {}).get("benchmark_parquet", {}).get("sha256") != sha256_file(stg_parquet):
+            raise ValueError("Staged benchmark parquet hash mismatch")
 
-    # 4. Reload and verify written files
-    with ctrl_audit_path.open("r", encoding="utf-8") as f:
-        reloaded_c_audit = json.load(f)
-    if reloaded_c_audit.get("final_cross_source_coverage_status") != "verified_complete":
-        raise ValueError(
-            f"Verification failed: '{ctrl_audit_path}' final_cross_source_coverage_status is not 'verified_complete'"
-        )
-    if reloaded_c_audit["output_files"]["control_catalogue_parquet"]["sha256"] != sha256_file(ctrl_parquet_path):
-        raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_parquet_path}'")
-    if reloaded_c_audit["output_files"]["control_catalogue_csv"]["sha256"] != sha256_file(ctrl_csv_path):
-        raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_csv_path}'")
+        # 3. Create backups of all existing destination files
+        backup_files: dict[str, Path] = {}
+        for key, dst in dest_files.items():
+            if dst.exists():
+                bak = backup_dir / f"{key}_{dst.name}.bak"
+                shutil.copy2(dst, bak)
+                backup_files[key] = bak
+
+        # Publish transaction map: staged -> destination
+        trans_pairs = [
+            (stg_ctrl_parquet, ctrl_parquet_path),
+            (stg_ctrl_csv, ctrl_csv_path),
+            (stg_ctrl_audit, ctrl_audit_path),
+            (stg_parquet, parquet_path),
+            (stg_csv, csv_sample_path),
+            (stg_manifest, manifest_path),
+        ]
+
+        replaced_destinations: list[tuple[str, Path]] = []
+        try:
+            for stg_src, dst in trans_pairs:
+                stg_src.replace(dst)
+                # Find key
+                match_k = next(k for k, p in dest_files.items() if p == dst)
+                replaced_destinations.append((match_k, dst))
+
+            # 4. Reload and verify all published outputs and manifests
+            with ctrl_audit_path.open("r", encoding="utf-8") as f:
+                reloaded_c_audit = json.load(f)
+            if reloaded_c_audit.get("final_cross_source_coverage_status") != "verified_complete":
+                raise ValueError(
+                    f"Verification failed: '{ctrl_audit_path}' final_cross_source_coverage_status is not 'verified_complete'"
+                )
+            if reloaded_c_audit["output_files"]["control_catalogue_parquet"]["sha256"] != sha256_file(ctrl_parquet_path):
+                raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_parquet_path}'")
+            if reloaded_c_audit["output_files"]["control_catalogue_csv"]["sha256"] != sha256_file(ctrl_csv_path):
+                raise ValueError(f"Verification failed: hash mismatch on written '{ctrl_csv_path}'")
+
+            with manifest_path.open("r", encoding="utf-8") as f:
+                reloaded_bm = json.load(f)
+            if reloaded_bm["output_files"]["benchmark_parquet"]["sha256"] != sha256_file(parquet_path):
+                raise ValueError(f"Verification failed: hash mismatch on written '{parquet_path}'")
+            if reloaded_bm["output_files"]["benchmark_sample_csv"]["sha256"] != sha256_file(csv_sample_path):
+                raise ValueError(f"Verification failed: hash mismatch on written '{csv_sample_path}'")
+
+        except Exception as pub_exc:
+            # Transaction rollback: restore all original destinations from backup
+            for key, dst in replaced_destinations:
+                if key in backup_files and backup_files[key].exists():
+                    shutil.copy2(backup_files[key], dst)
+                elif dst.exists():
+                    dst.unlink(missing_ok=True)
+            raise pub_exc
+
+    finally:
+        # Clean up temporary staging and backup directories
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
     return {
         "df_benchmark": df_benchmark,

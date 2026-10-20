@@ -14,6 +14,7 @@ from heattrace.config import load_yaml
 from heattrace.ingest.provenance import sha256_file
 from heattrace.process.benchmark import (
     BENCHMARK_COLUMNS,
+    parse_caiso_zip,
     validate_benchmark_dataframe,
 )
 from heattrace.process.controls import (
@@ -269,10 +270,60 @@ def validate_required_manifest_schema(
             if req_field not in manifest_data:
                 errors.append(f"{manifest_name} missing required entry {req_field}")
 
+        if manifest_data.get("selected_control_id") != "CTRL_20240605":
+            errors.append(f"{manifest_name}: selected_control_id must be 'CTRL_20240605', got '{manifest_data.get('selected_control_id')}'")
+        if manifest_data.get("matched_event_id") != "HW_20240702":
+            errors.append(f"{manifest_name}: matched_event_id must be 'HW_20240702', got '{manifest_data.get('matched_event_id')}'")
+        if manifest_data.get("duration_hours") != 120:
+            errors.append(f"{manifest_name}: duration_hours must be 120, got {manifest_data.get('duration_hours')}")
+        if manifest_data.get("matching_method") != "ordinary_summer_anchor_distance":
+            errors.append(f"{manifest_name}: matching_method must be 'ordinary_summer_anchor_distance', got '{manifest_data.get('matching_method')}'")
+
         if manifest_data.get("final_cross_source_coverage_status") != "verified_complete":
             errors.append(
                 f"{manifest_name}: final_cross_source_coverage_status must be 'verified_complete', got '{manifest_data.get('final_cross_source_coverage_status')}'"
             )
+
+        # Validate input files (NOAA for study years)
+        in_files = manifest_data.get("input_files")
+        if not isinstance(in_files, dict):
+            errors.append(f"{manifest_name} missing required section input_files")
+        else:
+            study_years = expected_metadata.get("study_years") or [2022, 2023, 2024, 2025]
+            st_id = expected_metadata.get("station_id", "USW00023234")
+            for y in study_years:
+                n_key = f"GHCNh_{st_id}_{y}.psv"
+                exp_path = f"data/raw/noaa/{n_key}"
+                if n_key not in in_files:
+                    errors.append(f"{manifest_name} missing required input file input_files.{n_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        in_files[n_key],
+                        manifest_name=manifest_name,
+                        context=f"input_files.{n_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+        # Validate configuration files
+        cfg_files = manifest_data.get("config_files")
+        if not isinstance(cfg_files, dict):
+            errors.append(f"{manifest_name} missing required section config_files")
+        else:
+            for cfg_key, exp_path in [
+                ("sources.yaml", "configs/sources.yaml"),
+                ("study.yaml", "configs/study.yaml"),
+            ]:
+                if cfg_key not in cfg_files:
+                    errors.append(f"{manifest_name} missing required configuration entry config_files.{cfg_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        cfg_files[cfg_key],
+                        manifest_name=manifest_name,
+                        context=f"config_files.{cfg_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
 
         out_files = manifest_data.get("output_files")
         if not isinstance(out_files, dict):
@@ -302,9 +353,68 @@ def validate_required_manifest_schema(
             "config_files",
             "output_files",
             "validation_status",
+            "station_id",
+            "target_timezone",
         ]:
             if req_field not in manifest_data:
                 errors.append(f"{manifest_name} missing required entry {req_field}")
+
+        if manifest_data.get("validation_status") != "verified_pass":
+            errors.append(f"{manifest_name}: validation_status must be 'verified_pass', got '{manifest_data.get('validation_status')}'")
+
+        if "station_id" in expected_metadata and manifest_data.get("station_id") != expected_metadata["station_id"]:
+            errors.append(f"{manifest_name}: station_id '{manifest_data.get('station_id')}' != expected '{expected_metadata['station_id']}'")
+        if "target_timezone" in expected_metadata and manifest_data.get("target_timezone") != expected_metadata["target_timezone"]:
+            errors.append(f"{manifest_name}: target_timezone '{manifest_data.get('target_timezone')}' != expected '{expected_metadata['target_timezone']}'")
+
+        # Event IDs & count checks
+        exp_event_ids = expected_metadata.get("event_ids")
+        if exp_event_ids is not None:
+            if manifest_data.get("event_ids") != exp_event_ids:
+                errors.append(f"{manifest_name}: event_ids {manifest_data.get('event_ids')} != expected {exp_event_ids}")
+            if manifest_data.get("events_count") != len(exp_event_ids):
+                errors.append(f"{manifest_name}: events_count {manifest_data.get('events_count')} != expected {len(exp_event_ids)}")
+
+        # Validate input files (NOAA for study years)
+        in_files = manifest_data.get("input_files")
+        if not isinstance(in_files, dict):
+            errors.append(f"{manifest_name} missing required section input_files")
+        else:
+            study_years = expected_metadata.get("study_years") or [2022, 2023, 2024, 2025]
+            st_id = expected_metadata.get("station_id", "USW00023234")
+            for y in study_years:
+                n_key = f"GHCNh_{st_id}_{y}.psv"
+                exp_path = f"data/raw/noaa/{n_key}"
+                if n_key not in in_files:
+                    errors.append(f"{manifest_name} missing required input file input_files.{n_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        in_files[n_key],
+                        manifest_name=manifest_name,
+                        context=f"input_files.{n_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
+
+        # Validate configuration files
+        cfg_files = manifest_data.get("config_files")
+        if not isinstance(cfg_files, dict):
+            errors.append(f"{manifest_name} missing required section config_files")
+        else:
+            for cfg_key, exp_path in [
+                ("sources.yaml", "configs/sources.yaml"),
+                ("study.yaml", "configs/study.yaml"),
+            ]:
+                if cfg_key not in cfg_files:
+                    errors.append(f"{manifest_name} missing required configuration entry config_files.{cfg_key}")
+                else:
+                    errors.extend(validate_file_entry_schema(
+                        cfg_files[cfg_key],
+                        manifest_name=manifest_name,
+                        context=f"config_files.{cfg_key}",
+                        expected_path=exp_path,
+                        repo_root=repo_root,
+                    ))
 
         out_files = manifest_data.get("output_files")
         if not isinstance(out_files, dict):
@@ -341,6 +451,15 @@ def validate_required_manifest_schema(
             if req_field not in manifest_data:
                 errors.append(f"{manifest_name} missing required metadata {req_field}")
 
+        if "random_seed" in expected_metadata and manifest_data.get("random_seed") != expected_metadata["random_seed"]:
+            errors.append(f"{manifest_name}: random_seed {manifest_data.get('random_seed')} != expected {expected_metadata['random_seed']}")
+        if "workload_trace_id" in expected_metadata and manifest_data.get("workload_trace_id") != expected_metadata["workload_trace_id"]:
+            errors.append(f"{manifest_name}: workload_trace_id '{manifest_data.get('workload_trace_id')}' != expected '{expected_metadata['workload_trace_id']}'")
+        if "window_duration_hours" in expected_metadata and manifest_data.get("window_duration_hours") != expected_metadata["window_duration_hours"]:
+            errors.append(f"{manifest_name}: window_duration_hours {manifest_data.get('window_duration_hours')} != expected {expected_metadata['window_duration_hours']}")
+        if "workload_job_count" in expected_metadata and manifest_data.get("job_count") != expected_metadata["workload_job_count"]:
+            errors.append(f"{manifest_name}: job_count {manifest_data.get('job_count')} != expected {expected_metadata['workload_job_count']}")
+
         out_files = manifest_data.get("output_files")
         if not isinstance(out_files, dict):
             errors.append(f"{manifest_name} missing required section output_files")
@@ -361,6 +480,116 @@ def validate_required_manifest_schema(
                     ))
 
     return errors
+
+
+def verify_caiso_interval_source_evidence(
+    *,
+    data_dir: Path,
+    caiso_node: str,
+    ev_start_utc: pd.Timestamp,
+    ev_end_utc: pd.Timestamp,
+    manifest_records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Verify CAISO interval availability through manifest, file, checksum, and parsed hourly LMP coverage."""
+    repo_root = data_dir.parent.resolve()
+    caiso_records = [
+        r for r in manifest_records
+        if isinstance(r, dict) and r.get("provider") == "CAISO" and r.get("request", {}).get("node") == caiso_node
+    ]
+
+    manifest_record_found = False
+    file_verified = False
+    interval_verified = False
+    details: list[str] = []
+
+    for r in caiso_records:
+        req_start_str = r.get("request", {}).get("startdatetime")
+        req_end_str = r.get("request", {}).get("enddatetime")
+        if not req_start_str or not req_end_str:
+            continue
+        try:
+            req_start = pd.to_datetime(req_start_str)
+            req_end = pd.to_datetime(req_end_str)
+        except Exception as e:
+            details.append(f"Invalid timestamp in manifest request: {e}")
+            continue
+
+        if req_start <= ev_start_utc and req_end >= ev_end_utc:
+            manifest_record_found = True
+            rel_p = r.get("path")
+            if not rel_p or not isinstance(rel_p, str):
+                details.append("Manifest record missing valid 'path'")
+                continue
+
+            p_obj = Path(rel_p)
+            if p_obj.is_absolute() or ".." in p_obj.parts:
+                details.append(f"Unsafe path in manifest: {rel_p}")
+                continue
+
+            full_p = (repo_root / p_obj).resolve()
+            try:
+                full_p.relative_to(repo_root)
+            except ValueError:
+                details.append(f"Path escapes repository root: {rel_p}")
+                continue
+
+            if not full_p.exists() or not full_p.is_file():
+                details.append(f"Referenced file does not exist: {rel_p}")
+                continue
+
+            exp_sha = r.get("sha256")
+            exp_size = r.get("size_bytes")
+            if not exp_sha or len(exp_sha) != 64:
+                details.append(f"Missing or malformed SHA-256 in manifest for {rel_p}")
+                continue
+
+            act_sha = sha256_file(full_p)
+            if act_sha.lower() != exp_sha.lower():
+                details.append(f"Checksum mismatch for {rel_p}: actual {act_sha} != recorded {exp_sha}")
+                continue
+
+            if exp_size is not None and full_p.stat().st_size != exp_size:
+                details.append(f"Size mismatch for {rel_p}: actual {full_p.stat().st_size} != recorded {exp_size}")
+                continue
+
+            file_verified = True
+
+            # Parse and validate complete expected hourly LMP coverage
+            try:
+                rows, err = parse_caiso_zip(full_p, expected_node=caiso_node, expected_market="DAM")
+                if err:
+                    details.append(f"Error parsing CAISO ZIP {rel_p}: {err}")
+                    continue
+
+                lmp_rows = [x for x in rows if x.get("lmp_type") == "LMP"]
+                timestamps = [pd.to_datetime(x["timestamp_utc"]) for x in lmp_rows]
+
+                # Check duplicate intervals
+                if len(timestamps) != len(set(timestamps)):
+                    details.append(f"Duplicate hourly LMP intervals detected in {rel_p}")
+                    continue
+
+                ts_set = set(timestamps)
+                expected_hours = pd.date_range(ev_start_utc, ev_end_utc - pd.Timedelta(hours=1), freq="h")
+                missing_set = set(expected_hours) - ts_set
+                if missing_set:
+                    details.append(f"Missing {len(missing_set)} required hourly LMP intervals in {rel_p}")
+                    continue
+
+                interval_verified = True
+                break
+            except Exception as e:
+                details.append(f"Unexpected error validating {rel_p}: {e}")
+                continue
+
+    status = "available" if (manifest_record_found and file_verified and interval_verified) else "missing"
+    return {
+        "status": status,
+        "manifest_record_found": manifest_record_found,
+        "file_verified": file_verified,
+        "parsed_interval_coverage_verified": interval_verified,
+        "details": details,
+    }
 
 
 def verify_provenance_manifest_entries(
@@ -609,6 +838,11 @@ def run_p3_audit(
         "balancing_authority": balancing_authority,
         "target_timezone": target_timezone,
         "random_seed": expected_seed,
+        "study_years": sorted(list(study_years)),
+        "event_ids": df_events["event_id"].tolist(),
+        "workload_trace_id": str(df_workload["workload_trace_id"].iloc[0]),
+        "window_duration_hours": 120,
+        "workload_job_count": len(df_workload),
     }
 
     manifest_errors: list[str] = []
@@ -684,8 +918,8 @@ def run_p3_audit(
                                         t_min = pd.to_datetime(df_lmp["INTERVALSTARTTIME_GMT"].min())
                                         t_max = pd.to_datetime(df_lmp["INTERVALENDTIME_GMT"].max())
                                         caiso_intervals.append({"file": zpath.name, "start": t_min, "end": t_max, "count": len(df_lmp)})
-            except Exception:
-                pass
+            except Exception as e:
+                manifest_errors.append(f"Unexpected error reading CAISO archive {zpath.name}: {e}")
 
     eia_dir = data_dir / "raw/eia"
     eia_json_coverage: list[dict[str, Any]] = []
@@ -703,8 +937,8 @@ def run_p3_audit(
                             "periods_d": periods_d,
                             "periods_ng": periods_ng,
                         })
-            except Exception:
-                pass
+            except Exception as e:
+                manifest_errors.append(f"Unexpected error reading EIA JSON {jpath.name}: {e}")
 
     unmatched_cases_evidence: list[dict[str, Any]] = []
     unmatched_reasons: dict[str, str] = {}
@@ -725,17 +959,14 @@ def run_p3_audit(
         weather_status = "available" if weather_avail else "missing"
 
         # 2. CAISO LMP price provider
-        caiso_manifest_match = any(
-            r.get("provider") == "CAISO"
-            and r.get("request", {}).get("startdatetime") == ev_start_utc.isoformat()
-            for r in manifest_records
+        caiso_evidence = verify_caiso_interval_source_evidence(
+            data_dir=data_dir,
+            caiso_node=caiso_node,
+            ev_start_utc=ev_start_utc,
+            ev_end_utc=ev_end_utc,
+            manifest_records=manifest_records,
         )
-        caiso_zip_match = any(
-            it["start"] <= ev_start_utc and it["end"] >= ev_end_utc
-            for it in caiso_intervals
-        )
-        caiso_found = caiso_manifest_match or caiso_zip_match
-        caiso_status = "available" if caiso_found else "missing"
+        caiso_status = caiso_evidence["status"]
 
         # 3. EIA demand & net generation (EIA API v2)
         # Required hour-ending intervals
@@ -776,7 +1007,10 @@ def run_p3_audit(
                 },
                 "caiso_price": {
                     "status": caiso_status,
-                    "matching_manifest_record_found": caiso_found,
+                    "manifest_record_found": caiso_evidence["manifest_record_found"],
+                    "file_verified": caiso_evidence["file_verified"],
+                    "parsed_interval_coverage_verified": caiso_evidence["parsed_interval_coverage_verified"],
+                    "verification_details": caiso_evidence["details"],
                 },
                 "eia_demand": {
                     "status": eia_demand_status,
