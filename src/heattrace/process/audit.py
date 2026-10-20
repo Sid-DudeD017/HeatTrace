@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from heattrace.config import load_yaml
+from heattrace.ingest.provenance import sha256_file
 from heattrace.process.benchmark import (
     BENCHMARK_COLUMNS,
     validate_benchmark_dataframe,
@@ -22,6 +23,85 @@ from heattrace.process.event_validation import (
     validate_heatwave_events,
 )
 from heattrace.workload.generator import validate_workload_dataframe
+
+
+def verify_provenance_manifest_entries(
+    manifest_data: dict[str, Any],
+    *,
+    manifest_name: str,
+    repo_root: Path,
+) -> list[str]:
+    """Verify that every file entry in a manifest exists, matches sha256, matches size, and has safe project-relative path."""
+    errors: list[str] = []
+    repo_root = repo_root.resolve()
+
+    def _check_entry(entry: dict[str, Any], context: str) -> None:
+        if not isinstance(entry, dict) or "path" not in entry or "sha256" not in entry:
+            return
+
+        rel_p_str = entry["path"]
+        expected_sha = entry["sha256"]
+        expected_size = entry.get("size_bytes")
+
+        if not isinstance(rel_p_str, str) or not rel_p_str.strip():
+            errors.append(f"{manifest_name} ({context}): empty or invalid path '{rel_p_str}'")
+            return
+
+        p_obj = Path(rel_p_str)
+        # Check absolute or escaping path
+        if p_obj.is_absolute():
+            errors.append(f"{manifest_name} ({context}): absolute path not permitted '{rel_p_str}'")
+            return
+        if ".." in p_obj.parts:
+            errors.append(f"{manifest_name} ({context}): path escape '../' not permitted '{rel_p_str}'")
+            return
+
+        full_p = (repo_root / p_obj).resolve()
+        # Verify does not escape repo root
+        try:
+            full_p.relative_to(repo_root)
+        except ValueError:
+            errors.append(f"{manifest_name} ({context}): path '{rel_p_str}' escapes repository root")
+            return
+
+        if not full_p.exists():
+            errors.append(f"{manifest_name} ({context}): referenced file does not exist: '{rel_p_str}'")
+            return
+        if not full_p.is_file():
+            errors.append(f"{manifest_name} ({context}): referenced path is not a regular file: '{rel_p_str}'")
+            return
+
+        if not isinstance(expected_sha, str) or len(expected_sha) != 64:
+            errors.append(f"{manifest_name} ({context}): malformed SHA-256 hash '{expected_sha}'")
+            return
+
+        actual_sha = sha256_file(full_p)
+        if actual_sha.lower() != expected_sha.lower():
+            errors.append(
+                f"{manifest_name} ({context}): hash mismatch for '{rel_p_str}': actual {actual_sha} != recorded {expected_sha}"
+            )
+            return
+
+        if expected_size is not None:
+            actual_size = full_p.stat().st_size
+            if actual_size != expected_size:
+                errors.append(
+                    f"{manifest_name} ({context}): size mismatch for '{rel_p_str}': actual {actual_size} bytes != recorded {expected_size} bytes"
+                )
+
+    def _scan(node: Any, ctx: str) -> None:
+        if isinstance(node, dict):
+            if "path" in node and "sha256" in node:
+                _check_entry(node, ctx)
+            for k, v in node.items():
+                new_ctx = f"{ctx}.{k}" if ctx else str(k)
+                _scan(v, new_ctx)
+        elif isinstance(node, list):
+            for idx, item in enumerate(node):
+                _scan(item, f"{ctx}[{idx}]")
+
+    _scan(manifest_data, "")
+    return errors
 
 
 def run_p3_audit(
@@ -101,10 +181,29 @@ def run_p3_audit(
         unassigned = study_years - all_split_years
         return _write_and_return_failure([f"Configured study years not assigned to splits: {unassigned}"])
 
-    station_id = sources_cfg.get("heatwaves", {}).get("station_id") or sources_cfg.get("qc", {}).get("primary_station_id", "USW00023234")
-    target_timezone = sources_cfg.get("heatwaves", {}).get("target_timezone") or "America/Los_Angeles"
-    caiso_node = sources_cfg.get("price", {}).get("node", "TH_NP15_GEN-APND")
-    balancing_authority = sources_cfg.get("carbon", {}).get("balancing_authority", "CISO")
+    station_cfg = sources_cfg.get("heatwaves", {}).get("station_id")
+    if not station_cfg:
+        return _write_and_return_failure(["Missing required configuration 'heatwaves.station_id' in configs/sources.yaml"])
+    station_id = station_cfg
+
+    tz_cfg = sources_cfg.get("heatwaves", {}).get("target_timezone")
+    if not tz_cfg:
+        return _write_and_return_failure(["Missing required configuration 'heatwaves.target_timezone' in configs/sources.yaml"])
+    target_timezone = tz_cfg
+
+    price_cfg = sources_cfg.get("price")
+    if not isinstance(price_cfg, dict) or not price_cfg.get("node"):
+        return _write_and_return_failure(["Missing required configuration 'price.node' in configs/sources.yaml"])
+    caiso_node = price_cfg["node"]
+
+    carbon_cfg = sources_cfg.get("carbon")
+    if not isinstance(carbon_cfg, dict) or not carbon_cfg.get("balancing_authority"):
+        return _write_and_return_failure(["Missing required configuration 'carbon.balancing_authority' in configs/sources.yaml"])
+    balancing_authority = carbon_cfg["balancing_authority"]
+
+    if "random_seed" not in study_cfg or study_cfg["random_seed"] is None:
+        return _write_and_return_failure(["Missing required configuration 'random_seed' in configs/study.yaml"])
+    expected_seed = study_cfg["random_seed"]
 
     # 1. Validate Event Catalogue
     try:
@@ -118,9 +217,24 @@ def run_p3_audit(
 
     # 2. Validate Control Catalogue
     try:
-        validate_control_dataframe(df_control)
+        validate_control_dataframe(
+            df_control,
+            expected_event_id="HW_20240702",
+            required_status="verified_complete",
+            require_unique_event=True,
+        )
     except Exception as e:
         return _write_and_return_failure([f"Control catalogue validation failed: {e}"])
+
+    if len(df_control) != 1:
+        return _write_and_return_failure([f"Control catalogue must contain exactly 1 approved record for G3-a, got {len(df_control)}"])
+    ctrl_row_0 = df_control.iloc[0]
+    if str(ctrl_row_0["control_id"]) != "CTRL_20240605":
+        return _write_and_return_failure([f"Approved control ID must be 'CTRL_20240605', got '{ctrl_row_0['control_id']}'"])
+    if str(ctrl_row_0["matched_event_id"]) != "HW_20240702":
+        return _write_and_return_failure([f"Approved matched event must be 'HW_20240702', got '{ctrl_row_0['matched_event_id']}'"])
+    if str(ctrl_row_0["source_coverage_status"]) != "verified_complete":
+        return _write_and_return_failure([f"Control coverage status must be 'verified_complete', got '{ctrl_row_0['source_coverage_status']}'"])
 
     # Validate control event references and duration compatibility
     event_dict = {str(r["event_id"]): r for _, r in df_events.iterrows()}
@@ -140,7 +254,6 @@ def run_p3_audit(
                 return _write_and_return_failure([f"Control {c_row['control_id']} overlaps with event/buffer of {ev_id}"])
 
     # 3. Canonical Workload Validation
-    expected_seed = study_cfg.get("random_seed", 20261016)
     try:
         validate_workload_dataframe(
             df_workload,
@@ -189,7 +302,33 @@ def run_p3_audit(
             f"Benchmark control window interval [{actual_ctrl_start}, {actual_ctrl_end}) does not match catalogue [{expected_ctrl_start_utc}, {expected_ctrl_end_utc})"
         ])
 
-    # 6. Chronological Split Categorization & Unmatched Reasons
+    # 6. Comprehensive Provenance Manifest Verification (P3-06 / G3-a)
+    repo_root = data_dir.parent
+    manifest_paths = [
+        ("benchmark_manifest.json", data_dir / "manifests/benchmark_manifest.json"),
+        ("control_matching_audit.json", data_dir / "manifests/control_matching_audit.json"),
+        ("event_catalogue_manifest.json", data_dir / "manifests/event_catalogue_manifest.json"),
+        ("workload_manifest.json", data_dir / "workloads/workload_manifest.json"),
+    ]
+
+    manifest_errors: list[str] = []
+    for m_name, m_path in manifest_paths:
+        if not m_path.exists():
+            manifest_errors.append(f"Missing required provenance manifest: {m_name}")
+            continue
+        try:
+            m_data = json.loads(m_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            manifest_errors.append(f"Malformed JSON in provenance manifest {m_name}: {e}")
+            continue
+
+        errs = verify_provenance_manifest_entries(m_data, manifest_name=m_name, repo_root=data_dir.parent)
+        manifest_errors.extend(errs)
+
+    if manifest_errors:
+        return _write_and_return_failure([f"Provenance manifest verification failed: {e}" for e in manifest_errors])
+
+    # 7. Chronological Split Categorization & Unmatched Reasons
     all_event_ids = df_events["event_id"].tolist()
     matched_event_ids = df_control["matched_event_id"].tolist()
     unmatched_event_ids = [eid for eid in all_event_ids if eid not in matched_event_ids]

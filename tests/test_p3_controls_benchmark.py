@@ -330,6 +330,11 @@ def test_clean_carbon_data_passes_audit_gate(tmp_path):
     shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
     shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
     shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    from heattrace.ingest.provenance import sha256_file
+    import json
 
     b_path = t_data / "benchmarks/benchmark_2024_event_control_v0.parquet"
     df_clean = pd.read_parquet(b_path)
@@ -337,6 +342,13 @@ def test_clean_carbon_data_passes_audit_gate(tmp_path):
     df_clean["carbon_primary_analysis_eligible"] = True
     df_clean["source_quality"] = "success"
     df_clean.to_parquet(b_path, index=False)
+
+    # Update benchmark manifest hash and size to match clean mutation
+    bm_path = t_data / "manifests/benchmark_manifest.json"
+    bm_data = json.loads(bm_path.read_text(encoding="utf-8"))
+    bm_data["output_files"]["benchmark_parquet"]["sha256"] = sha256_file(b_path)
+    bm_data["output_files"]["benchmark_parquet"]["size_bytes"] = b_path.stat().st_size
+    bm_path.write_text(json.dumps(bm_data, indent=2), encoding="utf-8")
 
     res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
     assert res["status"] == "verified_pass"
@@ -351,3 +363,125 @@ def test_audit_failure_on_missing_or_corrupt_data(tmp_path):
     res = run_p3_audit(data_dir=empty_data_dir)
     assert res["status"] == "failed"
     assert len(res["failure_reasons"]) > 0
+
+
+def test_audit_fails_on_provenance_manifest_mismatch(tmp_path):
+    """Verify run_p3_audit fails when benchmark data is mutated without manifest update."""
+    base_dir = Path(__file__).resolve().parents[1]
+    import shutil
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    b_path = t_data / "benchmarks/benchmark_2024_event_control_v0.parquet"
+    df_tampered = pd.read_parquet(b_path)
+    # Alter one finite price value without updating benchmark_manifest.json
+    df_tampered.loc[0, "price_usd_per_mwh"] = 999.99
+    df_tampered.to_parquet(b_path, index=False)
+
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("hash mismatch" in r and "benchmark_2024_event_control_v0.parquet" in r for r in res["failure_reasons"])
+
+
+def test_audit_provenance_manifest_verification_edge_cases(tmp_path):
+    """Verify manifest verification catches missing, malformed, incorrect size, absolute, and escaping paths."""
+    from heattrace.process.audit import verify_provenance_manifest_entries
+
+    from heattrace.ingest.provenance import sha256_file
+    dummy_file = tmp_path / "dummy.txt"
+    dummy_file.write_text("hello world\n", encoding="utf-8")
+    real_sha = sha256_file(dummy_file)
+
+    # Valid manifest
+    manifest_valid = {
+        "output_files": {
+            "dummy": {
+                "path": "dummy.txt",
+                "sha256": real_sha,
+                "size_bytes": dummy_file.stat().st_size,
+            }
+        }
+    }
+    assert verify_provenance_manifest_entries(manifest_valid, manifest_name="test", repo_root=tmp_path) == []
+
+    # 1. Missing referenced file
+    m_bad = {"f": {"path": "nonexistent.txt", "sha256": real_sha}}
+    errs = verify_provenance_manifest_entries(m_bad, manifest_name="test", repo_root=tmp_path)
+    assert any("does not exist" in e for e in errs)
+
+    # 2. Incorrect recorded hash
+    m_bad = {"f": {"path": "dummy.txt", "sha256": "0" * 64}}
+    errs = verify_provenance_manifest_entries(m_bad, manifest_name="test", repo_root=tmp_path)
+    assert any("hash mismatch" in e for e in errs)
+
+    # 3. Incorrect size
+    m_bad = {"f": {"path": "dummy.txt", "sha256": real_sha, "size_bytes": 999999}}
+    errs = verify_provenance_manifest_entries(m_bad, manifest_name="test", repo_root=tmp_path)
+    assert any("size mismatch" in e for e in errs)
+
+    # 4. Absolute path
+    m_bad = {"f": {"path": str(dummy_file.resolve()), "sha256": real_sha}}
+    errs = verify_provenance_manifest_entries(m_bad, manifest_name="test", repo_root=tmp_path)
+    assert any("absolute path not permitted" in e for e in errs)
+
+    # 5. Escaping path ../
+    m_bad = {"f": {"path": "../other.txt", "sha256": real_sha}}
+    errs = verify_provenance_manifest_entries(m_bad, manifest_name="test", repo_root=tmp_path)
+    assert any("path escape '../' not permitted" in e for e in errs)
+
+
+def test_audit_fails_on_pending_or_duplicated_control(tmp_path):
+    """Verify run_p3_audit fails on weather_eligible_pending status, duplicate controls, or missing required config."""
+    base_dir = Path(__file__).resolve().parents[1]
+    import shutil
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    c_path = t_data / "events/control_catalogue_v0.parquet"
+    df_ctrl_valid = pd.read_parquet(c_path)
+
+    # 1. Pending status: weather_eligible_pending_cross_source_validation
+    df_pending = df_ctrl_valid.copy()
+    df_pending["source_coverage_status"] = "weather_eligible_pending_cross_source_validation"
+    df_pending.to_parquet(c_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("verified_complete" in r for r in res["failure_reasons"])
+
+    # 2. Duplicated control record
+    df_dup = pd.concat([df_ctrl_valid, df_ctrl_valid], ignore_index=True)
+    df_dup.to_parquet(c_path, index=False)
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("Duplicate" in r or "exactly 1 approved record" in r for r in res["failure_reasons"])
+
+    # 3. Missing required price.node configuration
+    df_ctrl_valid.to_parquet(c_path, index=False)
+    # Remove price.node from configs/sources.yaml
+    src_yaml = (t_cfg / "sources.yaml").read_text(encoding="utf-8")
+    import re
+    src_yaml_no_node = re.sub(r"node:\s*TH_NP15_GEN-APND", "", src_yaml)
+    (t_cfg / "sources.yaml").write_text(src_yaml_no_node, encoding="utf-8")
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("price.node" in r for r in res["failure_reasons"])

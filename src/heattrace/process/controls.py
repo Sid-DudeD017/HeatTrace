@@ -223,6 +223,8 @@ def validate_control_dataframe(
     *,
     expected_event_id: str | None = None,
     expected_duration_hours: int = 120,
+    required_status: str | None = None,
+    require_unique_event: bool = False,
 ) -> None:
     """Validate control catalogue DataFrame according to P3-05 contract."""
     if not isinstance(df_control, pd.DataFrame):
@@ -236,6 +238,14 @@ def validate_control_dataframe(
 
     if df_control.empty:
         raise ValueError("Control catalogue cannot be empty")
+
+    if df_control["control_id"].duplicated().any():
+        dups = df_control[df_control["control_id"].duplicated()]["control_id"].tolist()
+        raise ValueError(f"Duplicate control_id values found: {dups}")
+
+    if require_unique_event and df_control["matched_event_id"].duplicated().any():
+        dups_ev = df_control[df_control["matched_event_id"].duplicated()]["matched_event_id"].tolist()
+        raise ValueError(f"Duplicate matched_event_id mappings found: {dups_ev}")
 
     for idx, row in df_control.iterrows():
         cid = str(row["control_id"])
@@ -263,8 +273,11 @@ def validate_control_dataframe(
         if bool(row["is_eligible"]) is not True:
             raise ValueError(f"Control {cid}: is_eligible must be True")
         valid_statuses = {"weather_eligible_pending_cross_source_validation", "verified_complete"}
-        if row["source_coverage_status"] not in valid_statuses:
-            raise ValueError(f"Control {cid}: invalid source_coverage_status '{row['source_coverage_status']}'")
+        status_val = str(row["source_coverage_status"])
+        if status_val not in valid_statuses:
+            raise ValueError(f"Control {cid}: invalid source_coverage_status '{status_val}'")
+        if required_status is not None and status_val != required_status:
+            raise ValueError(f"Control {cid}: source_coverage_status '{status_val}' != required '{required_status}'")
 
 
 def build_and_export_controls(

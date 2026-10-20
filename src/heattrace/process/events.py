@@ -55,18 +55,33 @@ def load_heatwave_config(
         study_cfg = load_yaml(config_dir / "study.yaml")
 
     hw_cfg = sources_cfg.get("heatwaves")
-    if not hw_cfg:
+    if not isinstance(hw_cfg, dict):
         raise ValueError("Missing 'heatwaves' section in sources configuration")
 
-    station_id = hw_cfg.get("station_id") or sources_cfg.get("qc", {}).get("primary_station_id", "USW00023234")
-    target_timezone = hw_cfg.get("target_timezone") or sources_cfg.get("qc", {}).get("target_timezone", "America/Los_Angeles")
-    years = hw_cfg.get("years") or sources_cfg.get("study", {}).get("years", [2022, 2023, 2024, 2025])
-    months = hw_cfg.get("months") or sources_cfg.get("study", {}).get("months", [6, 7, 8, 9])
+    station_id = hw_cfg.get("station_id")
+    if not station_id:
+        raise ValueError("Missing required configuration 'heatwaves.station_id' in configs/sources.yaml")
+
+    target_timezone = hw_cfg.get("target_timezone")
+    if not target_timezone:
+        raise ValueError("Missing required configuration 'heatwaves.target_timezone' in configs/sources.yaml")
+
+    years = hw_cfg.get("years")
+    if not isinstance(years, list) or not years:
+        raise ValueError("Missing required configuration 'heatwaves.years' (must be a non-empty list) in configs/sources.yaml")
+
+    months = hw_cfg.get("months")
+    if not isinstance(months, list) or not months:
+        raise ValueError("Missing required configuration 'heatwaves.months' (must be a non-empty list) in configs/sources.yaml")
+
+    if "random_seed" not in study_cfg or study_cfg["random_seed"] is None:
+        raise ValueError("Missing required configuration 'random_seed' in configs/study.yaml")
+    random_seed = study_cfg["random_seed"]
+
     percentile = float(hw_cfg.get("percentile", 90.0))
     percentile_method = hw_cfg.get("percentile_method", "linear_interpolation")
     min_consecutive_days = int(hw_cfg.get("min_consecutive_days", 3))
     phases = hw_cfg.get("phases", ["onset", "peak", "sustained", "recovery"])
-    random_seed = study_cfg.get("random_seed", 20261016)
 
     # Validate configuration parameters
     if not isinstance(years, list) or not years:

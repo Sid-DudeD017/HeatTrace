@@ -259,8 +259,16 @@ def build_and_export_p3_benchmark(
 
     station_id = hw_cfg["station_id"]
     target_timezone = hw_cfg["target_timezone"]
-    caiso_node = sources_cfg.get("price", {}).get("node", "TH_NP15_GEN-APND")
-    balancing_authority = sources_cfg.get("carbon", {}).get("balancing_authority", "CISO")
+
+    price_cfg = sources_cfg.get("price")
+    if not isinstance(price_cfg, dict) or not price_cfg.get("node"):
+        raise ValueError("Missing required configuration 'price.node' in configs/sources.yaml")
+    caiso_node = price_cfg["node"]
+
+    carbon_cfg = sources_cfg.get("carbon")
+    if not isinstance(carbon_cfg, dict) or not carbon_cfg.get("balancing_authority"):
+        raise ValueError("Missing required configuration 'carbon.balancing_authority' in configs/sources.yaml")
+    balancing_authority = carbon_cfg["balancing_authority"]
 
     # 2. Dynamically derive event, control, and phase mappings from catalogues
     events_parquet = data_dir / "events/heatwave_events_v0.parquet"
