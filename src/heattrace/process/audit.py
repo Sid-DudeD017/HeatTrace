@@ -12,7 +12,7 @@ import pandas as pd
 import zipfile
 
 from heattrace.config import load_yaml
-from heattrace.ingest.noaa import parse_ghcnh_psv
+from heattrace.ingest.noaa import check_noaa_temperature_quality, parse_ghcnh_psv
 from heattrace.ingest.provenance import sha256_file
 from heattrace.process.benchmark import (
     BENCHMARK_COLUMNS,
@@ -499,6 +499,7 @@ def verify_caiso_interval_source_evidence(
         if isinstance(r, dict) and r.get("provider") == "CAISO" and r.get("request", {}).get("node") == caiso_node
     ]
 
+    candidate_record_found = len(caiso_records) > 0
     manifest_record_found = False
     file_verified = False
     interval_verified = False
@@ -616,15 +617,16 @@ def verify_caiso_interval_source_evidence(
                 details.append(f"Unexpected error validating {rel_p}: {e}")
                 continue
 
-    if manifest_record_found and file_verified and interval_verified:
+    if candidate_record_found and manifest_record_found and file_verified and interval_verified:
         status = "available"
-    elif manifest_record_found:
+    elif candidate_record_found:
         status = "not_verified"
     else:
         status = "missing"
 
     return {
         "status": status,
+        "candidate_record_found": candidate_record_found,
         "manifest_record_found": manifest_record_found,
         "file_verified": file_verified,
         "parsed_interval_coverage_verified": interval_verified,
@@ -800,9 +802,60 @@ def verify_noaa_interval_source_evidence(
             ts = pd.to_datetime(r["timestamp_utc"]).floor("h")
             obs_by_hour.setdefault(ts, []).append(r)
 
-        missing_hours = [h for h in expected_hours if h not in obs_by_hour]
+        missing_hours: list[pd.Timestamp] = []
+        unusable_hours: list[pd.Timestamp] = []
+        wrong_station_count = 0
+        unresolved_qc_count = 0
+        invalid_temp_count = 0
+
+        for h in expected_hours:
+            hour_rows = obs_by_hour.get(h)
+            if not hour_rows:
+                missing_hours.append(h)
+                continue
+
+            has_usable_obs = False
+            for r in hour_rows:
+                # 1. Station ID match
+                r_station = r.get("station_id")
+                if r_station != station_id:
+                    wrong_station_count += 1
+                    continue
+
+                # 2. Temperature present, non-bool, numeric, finite, plausible (-60 to +65 C)
+                temp = r.get("temperature_c")
+                if temp is None or type(temp) is bool or not isinstance(temp, (int, float)):
+                    invalid_temp_count += 1
+                    continue
+                if not math.isfinite(temp) or temp < -60.0 or temp > 65.0:
+                    invalid_temp_count += 1
+                    continue
+
+                # 3. Quality code accepted
+                qc = r.get("temperature_quality_code", "")
+                qc_status = check_noaa_temperature_quality(str(qc) if qc is not None else "")
+                if qc_status != "accepted":
+                    unresolved_qc_count += 1
+                    continue
+
+                has_usable_obs = True
+                break
+
+            if not has_usable_obs:
+                unusable_hours.append(h)
+
         if missing_hours:
-            details.append(f"Missing {len(missing_hours)} required hourly temperature observations in {rel_p}")
+            details.append(f"Missing {len(missing_hours)} required hourly observation intervals in {rel_p}")
+        if unusable_hours:
+            details.append(f"Found {len(unusable_hours)} hours containing observations but no usable temperature in {rel_p}")
+        if wrong_station_count > 0:
+            details.append(f"Encountered {wrong_station_count} observations from non-matching station in {rel_p} (expected {station_id})")
+        if unresolved_qc_count > 0:
+            details.append(f"Encountered {unresolved_qc_count} observations with rejected or unresolved quality codes in {rel_p}")
+        if invalid_temp_count > 0:
+            details.append(f"Encountered {invalid_temp_count} observations with null, nonnumeric, infinite, or implausible temperatures in {rel_p}")
+
+        if missing_hours or unusable_hours:
             return {
                 "status": "not_verified",
                 "manifest_record_found": True,

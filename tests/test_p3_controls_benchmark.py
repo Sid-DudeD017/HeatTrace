@@ -764,7 +764,7 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
     caiso_node = "TH_NP15_GEN-APND"
 
     # A. Direct tests on verify_caiso_interval_source_evidence:
-    # 1. Incomplete CAISO manifest record remains not_verified or missing
+    # 1. Incomplete CAISO manifest record remains not_verified
     dummy_rec_incomplete = {
         "provider": "CAISO",
         "request": {
@@ -780,7 +780,8 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
         ev_end_utc=ev_end_utc,
         manifest_records=[dummy_rec_incomplete],
     )
-    assert res_inc["status"] == "missing"
+    assert res_inc["status"] == "not_verified"
+    assert res_inc["candidate_record_found"] is True
     assert res_inc["manifest_record_found"] is False
     assert res_inc["file_verified"] is False
     assert res_inc["parsed_interval_coverage_verified"] is False
@@ -890,7 +891,7 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
     assert "HW_20220620" in unmatched_cases
     hw_2022 = unmatched_cases["HW_20220620"]
     assert hw_2022["source_evidence"]["weather"]["status"] == "available"
-    assert hw_2022["source_evidence"]["caiso_price"]["status"] == "missing"
+    assert hw_2022["source_evidence"]["caiso_price"]["status"] in ("not_verified", "missing")
     assert hw_2022["source_evidence"]["caiso_price"]["parsed_interval_coverage_verified"] is False
     assert "caiso_price" in hw_2022["missing_or_incomplete_sources"]
 
@@ -1123,24 +1124,44 @@ def test_caiso_timestamp_and_integrity_metadata(tmp_path):
         )
 
     # --- 1. Timestamp validation ---
-    # Naive start
-    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00", "enddatetime": "2024-07-06T07:00:00+00:00"}}])
+    # Empty records -> missing
+    r = _call([])
     assert r["status"] == "missing"
+    assert r["candidate_record_found"] is False
+
+    # Different provider/node only -> missing
+    r = _call([{"provider": "OTHER", "request": {"node": caiso_node}}, {"provider": "CAISO", "request": {"node": "OTHER_NODE"}}])
+    assert r["status"] == "missing"
+    assert r["candidate_record_found"] is False
+
+    # Naive start -> not_verified
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00", "enddatetime": "2024-07-06T07:00:00+00:00"}}])
+    assert r["status"] == "not_verified"
+    assert r["candidate_record_found"] is True
     assert any("startdatetime is timezone-naive" in d for d in r["verification_details"])
 
-    # Naive end
+    # Naive end -> not_verified
     r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00+00:00", "enddatetime": "2024-07-06T07:00:00"}}])
-    assert r["status"] == "missing"
+    assert r["status"] == "not_verified"
+    assert r["candidate_record_found"] is True
     assert any("enddatetime is timezone-naive" in d for d in r["verification_details"])
 
-    # Invalid timestamp string
+    # Invalid timestamp string -> not_verified
     r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "invalid-date", "enddatetime": "2024-07-06T07:00:00+00:00"}}])
-    assert r["status"] == "missing"
+    assert r["status"] == "not_verified"
+    assert r["candidate_record_found"] is True
     assert any("Invalid timestamp" in d for d in r["verification_details"])
 
-    # Start >= End
+    # Missing startdatetime or enddatetime -> not_verified
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00+00:00"}}])
+    assert r["status"] == "not_verified"
+    assert r["candidate_record_found"] is True
+    assert any("missing startdatetime or enddatetime" in d for d in r["verification_details"])
+
+    # Start >= End (reversed interval) -> not_verified
     r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-06T07:00:00+00:00", "enddatetime": "2024-07-01T07:00:00+00:00"}}])
-    assert r["status"] == "missing"
+    assert r["status"] == "not_verified"
+    assert r["candidate_record_found"] is True
     assert any("startdatetime" in d and ">= enddatetime" in d for d in r["verification_details"])
 
     # Mixed offsets that normalize to valid UTC
@@ -1209,7 +1230,7 @@ def test_caiso_timestamp_and_integrity_metadata(tmp_path):
     for bad_st in ["failure", "failed", "dry_run", "blocked_pending_historical_oasis_download", "pending"]:
         rec = dict(base_rec, status=bad_st)
         r = _call([rec])
-        assert r["status"] == "missing"  # candidate rejected due to status
+        assert r["status"] == "not_verified"  # candidate exists but rejected
         assert any(f"rejected with explicit non-success status '{bad_st}'" in d for d in r["verification_details"])
 
     # Explicit success passes
@@ -1220,6 +1241,13 @@ def test_caiso_timestamp_and_integrity_metadata(tmp_path):
     rec = dict(base_rec)
     rec.pop("status", None)
     assert _call([rec])["status"] == "available"
+
+    # One invalid candidate followed by one valid candidate -> available
+    invalid_rec = dict(base_rec, status="failure")
+    r = _call([invalid_rec, base_rec])
+    assert r["status"] == "available"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is True
 
 
 def test_noaa_interval_source_evidence_direct(tmp_path):
@@ -1330,3 +1358,146 @@ def test_noaa_interval_source_evidence_direct(tmp_path):
     assert r["file_verified"] is True
     assert r["parsed_interval_coverage_verified"] is False
     assert any("No temperature observations parsed" in d or "Missing" in d for d in r["verification_details"])
+
+    # 7. Helper to create synthetic valid PSV for the 120h interval
+    def generate_psv_rows(row_modifier=None):
+        header = [
+            "STATION", "Station_name", "DATE", "Year", "Month", "Day", "Hour", "Minute",
+            "LATITUDE", "LONGITUDE", "ELEVATION", "temperature", "temperature_Measurement_Code",
+            "temperature_Quality_Code", "temperature_Report_Type", "temperature_Source_Code",
+            "temperature_Source_Station_ID"
+        ]
+        out_lines = ["|".join(header)]
+        hours = pd.date_range(ev_start_utc, ev_end_utc - pd.Timedelta(hours=1), freq="h")
+        for h in hours:
+            base_row = {
+                "STATION": station_id,
+                "Station_name": "TEST STATION",
+                "DATE": h.strftime("%Y-%m-%dT%H:%M:%S"),
+                "Year": str(h.year),
+                "Month": f"{h.month:02d}",
+                "Day": f"{h.day:02d}",
+                "Hour": f"{h.hour:02d}",
+                "Minute": f"{h.minute:02d}",
+                "LATITUDE": "37.6197",
+                "LONGITUDE": "-122.3656",
+                "ELEVATION": "3.0",
+                "temperature": "20.5",
+                "temperature_Measurement_Code": "",
+                "temperature_Quality_Code": "1",
+                "temperature_Report_Type": "FM12",
+                "temperature_Source_Code": "223",
+                "temperature_Source_Station_ID": "TEST",
+            }
+            if row_modifier:
+                modified_rows = row_modifier(h, base_row)
+            else:
+                modified_rows = [base_row]
+
+            for mr in modified_rows:
+                out_lines.append("|".join(mr.get(col, "") for col in header))
+        return "\n".join(out_lines) + "\n"
+
+    def test_psv_content(content):
+        noaa_file.write_text(content, encoding="utf-8")
+        entry = dict(valid_entry, sha256=sha256_file(noaa_file), size_bytes=noaa_file.stat().st_size)
+        return verify_noaa_interval_source_evidence(
+            data_dir=t_data,
+            station_id=station_id,
+            ev_start_utc=ev_start_utc,
+            ev_end_utc=ev_end_utc,
+            event_manifest_data=make_ev_manifest(entry),
+        )
+
+    # 8. All temperature values blank/None -> not_verified
+    def mod_blank_temp(h, r):
+        r["temperature"] = ""
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_blank_temp))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+
+    # 9. Temperature values NaN / infinite -> not_verified
+    def mod_nan_temp(h, r):
+        r["temperature"] = "NaN"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_nan_temp))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+
+    def mod_inf_temp(h, r):
+        r["temperature"] = "inf"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_inf_temp))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+
+    # 10. Temperature values implausible outside [-60, +65] -> not_verified
+    def mod_implausible_temp(h, r):
+        r["temperature"] = "75.0"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_implausible_temp))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+
+    # 11. Quality codes rejected (e.g. '2' or 'Failed') -> not_verified
+    def mod_rejected_qc(h, r):
+        r["temperature_Quality_Code"] = "2"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_rejected_qc))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+    assert any("rejected or unresolved quality codes" in d for d in r["verification_details"])
+
+    # 12. Quality codes unresolved (e.g. '99' or 'UNKNOWN_CODE') -> not_verified
+    def mod_unresolved_qc(h, r):
+        r["temperature_Quality_Code"] = "99"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_unresolved_qc))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("no usable temperature" in d for d in r["verification_details"])
+    assert any("rejected or unresolved quality codes" in d for d in r["verification_details"])
+
+    # 13. Rows belong to another station -> not_verified
+    def mod_wrong_station(h, r):
+        r["STATION"] = "OTHER_STATION"
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_wrong_station))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("non-matching station" in d for d in r["verification_details"])
+
+    # 14. Exactly one required hour has only unusable rows -> not_verified
+    target_bad_hour = ev_start_utc + pd.Timedelta(hours=10)
+    def mod_one_bad_hour(h, r):
+        if h == target_bad_hour:
+            r["temperature_Quality_Code"] = "2"  # rejected
+        return [r]
+    r = test_psv_content(generate_psv_rows(mod_one_bad_hour))
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("Found 1 hours containing observations but no usable temperature" in d for d in r["verification_details"])
+
+    # 15. Multiple rows per hour where at least one row is valid and accepted -> available
+    def mod_multi_row(h, r):
+        bad_sub_row = dict(r, temperature="NaN", temperature_Quality_Code="2")
+        good_sub_row = dict(r, temperature="22.0", temperature_Quality_Code="1")
+        return [bad_sub_row, good_sub_row]
+    r = test_psv_content(generate_psv_rows(mod_multi_row))
+    assert r["status"] == "available"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is True
