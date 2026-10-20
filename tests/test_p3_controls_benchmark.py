@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import shutil
 import pytest
 import pandas as pd
 
@@ -803,7 +804,7 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
         ev_end_utc=ev_end_utc,
         manifest_records=[dummy_rec_nofile],
     )
-    assert res_nofile["status"] == "missing"
+    assert res_nofile["status"] == "not_verified"
     assert res_nofile["manifest_record_found"] is True
     assert res_nofile["file_verified"] is False
 
@@ -827,7 +828,7 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
         ev_end_utc=ev_end_utc,
         manifest_records=[dummy_rec_badhash],
     )
-    assert res_badhash["status"] == "missing"
+    assert res_badhash["status"] == "not_verified"
     assert res_badhash["manifest_record_found"] is True
     assert res_badhash["file_verified"] is False
 
@@ -851,7 +852,7 @@ def test_unmatched_event_reasons_are_evidence_derived(tmp_path):
         ev_end_utc=pd.to_datetime("2024-07-06 07:00:00+00:00"),
         manifest_records=[dummy_rec_partial],
     )
-    assert res_partial["status"] == "missing"
+    assert res_partial["status"] == "not_verified"
     assert res_partial["manifest_record_found"] is True
     assert res_partial["file_verified"] is True
     assert res_partial["parsed_interval_coverage_verified"] is False
@@ -1034,3 +1035,298 @@ def test_benchmark_publication_atomic_rollback_on_failure(tmp_path, monkeypatch)
     # Verify no temporary directories left behind
     assert not list(t_data.glob("p3_pub_stage_*"))
     assert not list(t_data.glob("p3_pub_bak_*"))
+
+
+def test_audit_error_propagation_raw_sources_and_archives(tmp_path):
+    """Verify raw_sources.jsonl and raw archives report line numbers and produce controlled failures."""
+    import shutil
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir()
+    t_cfg.mkdir()
+
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    raw_manifest = t_data / "manifests/raw_sources.jsonl"
+
+    # 1. Malformed JSON with reported line number
+    lines = raw_manifest.read_text(encoding="utf-8").splitlines()
+    lines[2] = "{ corrupt_json: line 3"
+    raw_manifest.write_text("\n".join(lines), encoding="utf-8")
+
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("raw_sources.jsonl at line 3" in r for r in res["failure_reasons"])
+
+    # 2. Non-object line (e.g. JSON list) in raw_sources.jsonl
+    lines[2] = json.dumps(["not", "an", "object"])
+    raw_manifest.write_text("\n".join(lines), encoding="utf-8")
+
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("Non-object entry in raw_sources.jsonl at line 3: expected JSON object, got list" in r for r in res["failure_reasons"])
+    shutil.copyfile(base_dir / "data/manifests/raw_sources.jsonl", raw_manifest)
+
+    # 3. Corrupt CAISO ZIP archive
+    bad_zip = t_data / "raw/caiso/corrupt_archive.zip"
+    bad_zip.write_bytes(b"PK\x03\x04not_a_valid_zip_payload_data")
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("corrupt_archive.zip" in r for r in res["failure_reasons"])
+    bad_zip.unlink()
+
+    # 4. Malformed EIA JSON file (syntax error or non-object)
+    bad_eia = t_data / "raw/eia/corrupt_eia.json"
+    bad_eia.write_text("{ unclosed json", encoding="utf-8")
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("corrupt_eia.json" in r for r in res["failure_reasons"])
+
+    bad_eia.write_text(json.dumps(["list", "instead", "of", "dict"]), encoding="utf-8")
+    res = run_p3_audit(data_dir=t_data, config_dir=t_cfg)
+    assert res["status"] == "failed"
+    assert any("corrupt_eia.json must be a JSON object" in r for r in res["failure_reasons"])
+    bad_eia.unlink()
+
+
+def test_caiso_timestamp_and_integrity_metadata(tmp_path):
+    """Direct tests for CAISO timestamp validation, integrity metadata, and retrieval status."""
+    from heattrace.process.audit import verify_caiso_interval_source_evidence
+    from heattrace.ingest.provenance import sha256_file
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_data.mkdir()
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    ev_start_utc = pd.to_datetime("2024-07-01 07:00:00+00:00")
+    ev_end_utc = pd.to_datetime("2024-07-06 07:00:00+00:00")
+    caiso_node = "TH_NP15_GEN-APND"
+    valid_zip = t_data / "raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip"
+    valid_sha = sha256_file(valid_zip)
+    valid_size = valid_zip.stat().st_size
+
+    def _call(manifest_records):
+        return verify_caiso_interval_source_evidence(
+            data_dir=t_data,
+            caiso_node=caiso_node,
+            ev_start_utc=ev_start_utc,
+            ev_end_utc=ev_end_utc,
+            manifest_records=manifest_records,
+        )
+
+    # --- 1. Timestamp validation ---
+    # Naive start
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00", "enddatetime": "2024-07-06T07:00:00+00:00"}}])
+    assert r["status"] == "missing"
+    assert any("startdatetime is timezone-naive" in d for d in r["verification_details"])
+
+    # Naive end
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-01T07:00:00+00:00", "enddatetime": "2024-07-06T07:00:00"}}])
+    assert r["status"] == "missing"
+    assert any("enddatetime is timezone-naive" in d for d in r["verification_details"])
+
+    # Invalid timestamp string
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "invalid-date", "enddatetime": "2024-07-06T07:00:00+00:00"}}])
+    assert r["status"] == "missing"
+    assert any("Invalid timestamp" in d for d in r["verification_details"])
+
+    # Start >= End
+    r = _call([{"provider": "CAISO", "request": {"node": caiso_node, "startdatetime": "2024-07-06T07:00:00+00:00", "enddatetime": "2024-07-01T07:00:00+00:00"}}])
+    assert r["status"] == "missing"
+    assert any("startdatetime" in d and ">= enddatetime" in d for d in r["verification_details"])
+
+    # Mixed offsets that normalize to valid UTC
+    # 2024-07-01 00:00:00-07:00 == 2024-07-01 07:00:00+00:00
+    # 2024-07-06 03:00:00-04:00 == 2024-07-06 07:00:00+00:00
+    base_rec = {
+        "provider": "CAISO",
+        "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
+        "sha256": valid_sha,
+        "size_bytes": valid_size,
+        "request": {
+            "node": caiso_node,
+            "startdatetime": "2024-07-01T00:00:00-07:00",
+            "enddatetime": "2024-07-06T03:00:00-04:00",
+        },
+    }
+    r = _call([base_rec])
+    assert r["status"] == "available"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is True
+
+    # --- 2. Integrity metadata ---
+    # Missing size_bytes
+    rec = dict(base_rec)
+    del rec["size_bytes"]
+    assert _call([rec])["status"] == "not_verified"
+
+    # String size_bytes
+    rec = dict(base_rec, size_bytes="1000")
+    assert _call([rec])["status"] == "not_verified"
+
+    # Negative size_bytes
+    rec = dict(base_rec, size_bytes=-10)
+    assert _call([rec])["status"] == "not_verified"
+
+    # Boolean size_bytes (True == 1)
+    rec = dict(base_rec, size_bytes=True)
+    assert _call([rec])["status"] == "not_verified"
+
+    # Wrong size_bytes
+    rec = dict(base_rec, size_bytes=valid_size + 1)
+    assert _call([rec])["status"] == "not_verified"
+
+    # Missing sha256
+    rec = dict(base_rec)
+    del rec["sha256"]
+    assert _call([rec])["status"] == "not_verified"
+
+    # Malformed non-hex sha256
+    rec = dict(base_rec, sha256="z" * 64)
+    assert _call([rec])["status"] == "not_verified"
+
+    # Absolute path
+    rec = dict(base_rec, path="/tmp/not_allowed.zip")
+    assert _call([rec])["status"] == "not_verified"
+
+    # Path traversal ../
+    rec = dict(base_rec, path="../caiso.zip")
+    assert _call([rec])["status"] == "not_verified"
+
+    # Missing file
+    rec = dict(base_rec, path="data/raw/caiso/nonexistent_file.zip")
+    assert _call([rec])["status"] == "not_verified"
+
+    # --- 3. Status handling ---
+    for bad_st in ["failure", "failed", "dry_run", "blocked_pending_historical_oasis_download", "pending"]:
+        rec = dict(base_rec, status=bad_st)
+        r = _call([rec])
+        assert r["status"] == "missing"  # candidate rejected due to status
+        assert any(f"rejected with explicit non-success status '{bad_st}'" in d for d in r["verification_details"])
+
+    # Explicit success passes
+    rec = dict(base_rec, status="success")
+    assert _call([rec])["status"] == "available"
+
+    # Omitted status passes
+    rec = dict(base_rec)
+    rec.pop("status", None)
+    assert _call([rec])["status"] == "available"
+
+
+def test_noaa_interval_source_evidence_direct(tmp_path):
+    """Direct tests for verify_noaa_interval_source_evidence integrity and parsed observations."""
+    from heattrace.process.audit import verify_noaa_interval_source_evidence
+    from heattrace.ingest.provenance import sha256_file
+    base_dir = Path(__file__).resolve().parents[1]
+
+    t_data = tmp_path / "data"
+    t_data.mkdir()
+    shutil.copytree(base_dir / "data/raw/noaa", t_data / "raw/noaa", dirs_exist_ok=True)
+    station_id = "USW00023234"
+    ev_start_utc = pd.to_datetime("2024-07-01 07:00:00+00:00")
+    ev_end_utc = pd.to_datetime("2024-07-06 07:00:00+00:00")
+
+    noaa_file = t_data / f"raw/noaa/GHCNh_{station_id}_2024.psv"
+    valid_sha = sha256_file(noaa_file)
+    valid_size = noaa_file.stat().st_size
+
+    def make_ev_manifest(input_entry):
+        return {
+            "input_files": {
+                f"GHCNh_{station_id}_2024.psv": input_entry
+            }
+        }
+
+    # 1. Valid NOAA evidence
+    valid_entry = {
+        "path": f"data/raw/noaa/GHCNh_{station_id}_2024.psv",
+        "sha256": valid_sha,
+        "size_bytes": valid_size,
+    }
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data=make_ev_manifest(valid_entry),
+    )
+    assert r["status"] == "available"
+    assert r["manifest_record_found"] is True
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is True
+
+    # 2. Removing NOAA file makes weather unavailable
+    noaa_file.unlink()
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data=make_ev_manifest(valid_entry),
+    )
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is False
+    shutil.copyfile(base_dir / f"data/raw/noaa/GHCNh_{station_id}_2024.psv", noaa_file)
+
+    # 3. Removing required NOAA provenance entry makes weather missing
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data={"input_files": {}},
+    )
+    assert r["status"] == "missing"
+    assert r["manifest_record_found"] is False
+
+    # 4. Wrong NOAA hash fails verification
+    bad_hash_entry = dict(valid_entry, sha256="0" * 64)
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data=make_ev_manifest(bad_hash_entry),
+    )
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is False
+    assert any("Checksum mismatch" in d for d in r["verification_details"])
+
+    # 5. Wrong NOAA size fails verification
+    bad_size_entry = dict(valid_entry, size_bytes=valid_size + 10)
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data=make_ev_manifest(bad_size_entry),
+    )
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is False
+    assert any("Size mismatch" in d for d in r["verification_details"])
+
+    # 6. Truncated NOAA data fails parsed coverage
+    # Write only header and first few lines
+    lines = noaa_file.read_text(encoding="utf-8").splitlines()[:50]
+    noaa_file.write_text("\n".join(lines), encoding="utf-8")
+    trunc_entry = dict(valid_entry, sha256=sha256_file(noaa_file), size_bytes=noaa_file.stat().st_size)
+    r = verify_noaa_interval_source_evidence(
+        data_dir=t_data,
+        station_id=station_id,
+        ev_start_utc=ev_start_utc,
+        ev_end_utc=ev_end_utc,
+        event_manifest_data=make_ev_manifest(trunc_entry),
+    )
+    assert r["status"] == "not_verified"
+    assert r["file_verified"] is True
+    assert r["parsed_interval_coverage_verified"] is False
+    assert any("No temperature observations parsed" in d or "Missing" in d for d in r["verification_details"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timezone
 import json
 import math
 import string
@@ -11,6 +12,7 @@ import pandas as pd
 import zipfile
 
 from heattrace.config import load_yaml
+from heattrace.ingest.noaa import parse_ghcnh_psv
 from heattrace.ingest.provenance import sha256_file
 from heattrace.process.benchmark import (
     BENCHMARK_COLUMNS,
@@ -503,27 +505,54 @@ def verify_caiso_interval_source_evidence(
     details: list[str] = []
 
     for r in caiso_records:
+        # Check explicit retrieval status if present
+        rec_status = r.get("status")
+        if rec_status is not None:
+            if rec_status != "success":
+                details.append(f"Candidate manifest record rejected with explicit non-success status '{rec_status}'")
+                continue
+
         req_start_str = r.get("request", {}).get("startdatetime")
         req_end_str = r.get("request", {}).get("enddatetime")
         if not req_start_str or not req_end_str:
+            details.append("Manifest candidate missing startdatetime or enddatetime")
             continue
+
+        # Safe timezone-aware timestamp parsing
         try:
-            req_start = pd.to_datetime(req_start_str)
-            req_end = pd.to_datetime(req_end_str)
+            req_start_raw = pd.to_datetime(req_start_str)
+            req_end_raw = pd.to_datetime(req_end_str)
         except Exception as e:
             details.append(f"Invalid timestamp in manifest request: {e}")
+            continue
+
+        if req_start_raw.tz is None:
+            details.append(f"Timestamp startdatetime is timezone-naive: {req_start_str}")
+            continue
+        if req_end_raw.tz is None:
+            details.append(f"Timestamp enddatetime is timezone-naive: {req_end_str}")
+            continue
+
+        req_start = req_start_raw.tz_convert(timezone.utc)
+        req_end = req_end_raw.tz_convert(timezone.utc)
+
+        if req_start >= req_end:
+            details.append(f"Invalid interval: startdatetime ({req_start}) >= enddatetime ({req_end})")
             continue
 
         if req_start <= ev_start_utc and req_end >= ev_end_utc:
             manifest_record_found = True
             rel_p = r.get("path")
-            if not rel_p or not isinstance(rel_p, str):
+            if not rel_p or not isinstance(rel_p, str) or not rel_p.strip():
                 details.append("Manifest record missing valid 'path'")
                 continue
 
             p_obj = Path(rel_p)
-            if p_obj.is_absolute() or ".." in p_obj.parts:
-                details.append(f"Unsafe path in manifest: {rel_p}")
+            if p_obj.is_absolute():
+                details.append(f"Absolute path not permitted in manifest: {rel_p}")
+                continue
+            if ".." in p_obj.parts:
+                details.append(f"Path escape '../' not permitted in manifest: {rel_p}")
                 continue
 
             full_p = (repo_root / p_obj).resolve()
@@ -538,9 +567,8 @@ def verify_caiso_interval_source_evidence(
                 continue
 
             exp_sha = r.get("sha256")
-            exp_size = r.get("size_bytes")
-            if not exp_sha or len(exp_sha) != 64:
-                details.append(f"Missing or malformed SHA-256 in manifest for {rel_p}")
+            if not isinstance(exp_sha, str) or len(exp_sha) != 64 or not all(c in string.hexdigits for c in exp_sha):
+                details.append(f"Missing or malformed 64-character hex SHA-256 in manifest for {rel_p}")
                 continue
 
             act_sha = sha256_file(full_p)
@@ -548,8 +576,14 @@ def verify_caiso_interval_source_evidence(
                 details.append(f"Checksum mismatch for {rel_p}: actual {act_sha} != recorded {exp_sha}")
                 continue
 
-            if exp_size is not None and full_p.stat().st_size != exp_size:
-                details.append(f"Size mismatch for {rel_p}: actual {full_p.stat().st_size} != recorded {exp_size}")
+            exp_size = r.get("size_bytes")
+            if type(exp_size) is not int or exp_size < 0:
+                details.append(f"Missing or invalid nonnegative integer size_bytes in manifest for {rel_p}: {exp_size}")
+                continue
+
+            act_size = full_p.stat().st_size
+            if act_size != exp_size:
+                details.append(f"Size mismatch for {rel_p}: actual {act_size} != recorded {exp_size}")
                 continue
 
             file_verified = True
@@ -582,13 +616,218 @@ def verify_caiso_interval_source_evidence(
                 details.append(f"Unexpected error validating {rel_p}: {e}")
                 continue
 
-    status = "available" if (manifest_record_found and file_verified and interval_verified) else "missing"
+    if manifest_record_found and file_verified and interval_verified:
+        status = "available"
+    elif manifest_record_found:
+        status = "not_verified"
+    else:
+        status = "missing"
+
     return {
         "status": status,
         "manifest_record_found": manifest_record_found,
         "file_verified": file_verified,
         "parsed_interval_coverage_verified": interval_verified,
+        "verification_details": details,
         "details": details,
+    }
+
+
+def verify_noaa_interval_source_evidence(
+    *,
+    data_dir: Path,
+    station_id: str,
+    ev_start_utc: pd.Timestamp,
+    ev_end_utc: pd.Timestamp,
+    manifest_records: list[dict[str, Any]] | None = None,
+    event_manifest_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Verify NOAA interval availability through manifest lineage, checksum, and parsed temperature observations."""
+    repo_root = data_dir.parent.resolve()
+    ev_year = ev_start_utc.year
+    expected_filename = f"GHCNh_{station_id}_{ev_year}.psv"
+    expected_rel_path = f"data/raw/noaa/{expected_filename}"
+
+    manifest_record_found = False
+    file_verified = False
+    interval_verified = False
+    details: list[str] = []
+
+    # Check event_manifest_data input_files first, then manifest_records
+    noaa_entry: dict[str, Any] | None = None
+    if event_manifest_data and isinstance(event_manifest_data.get("input_files"), dict):
+        if expected_filename in event_manifest_data["input_files"]:
+            noaa_entry = event_manifest_data["input_files"][expected_filename]
+            manifest_record_found = True
+
+    if not manifest_record_found and manifest_records is not None:
+        for r in manifest_records:
+            if isinstance(r, dict) and r.get("provider") == "NOAA":
+                p = r.get("path")
+                if p and Path(p).name == expected_filename:
+                    noaa_entry = r
+                    manifest_record_found = True
+                    break
+
+    if not manifest_record_found or not noaa_entry:
+        details.append(f"No manifest or provenance record found for {expected_filename}")
+        return {
+            "status": "missing",
+            "manifest_record_found": False,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    rel_p = noaa_entry.get("path", expected_rel_path)
+    if not isinstance(rel_p, str) or not rel_p.strip():
+        details.append("Manifest entry missing valid 'path'")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    p_obj = Path(rel_p)
+    if p_obj.is_absolute():
+        details.append(f"Absolute path not permitted in manifest: {rel_p}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+    if ".." in p_obj.parts:
+        details.append(f"Path escape '../' not permitted in manifest: {rel_p}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    full_p = (repo_root / p_obj).resolve()
+    try:
+        full_p.relative_to(repo_root)
+    except ValueError:
+        details.append(f"Path escapes repository root: {rel_p}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    if not full_p.exists() or not full_p.is_file():
+        details.append(f"Referenced file does not exist: {rel_p}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    exp_sha = noaa_entry.get("sha256")
+    if not isinstance(exp_sha, str) or len(exp_sha) != 64 or not all(c in string.hexdigits for c in exp_sha):
+        details.append(f"Missing or malformed 64-character hex SHA-256 for {rel_p}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    act_sha = sha256_file(full_p)
+    if act_sha.lower() != exp_sha.lower():
+        details.append(f"Checksum mismatch for {rel_p}: actual {act_sha} != recorded {exp_sha}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    exp_size = noaa_entry.get("size_bytes")
+    if type(exp_size) is not int or exp_size < 0:
+        details.append(f"Missing or invalid nonnegative integer size_bytes for {rel_p}: {exp_size}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    act_size = full_p.stat().st_size
+    if act_size != exp_size:
+        details.append(f"Size mismatch for {rel_p}: actual {act_size} != recorded {exp_size}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": False,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    file_verified = True
+
+    # Parse and verify temperature observations over required interval
+    try:
+        s_dt = ev_start_utc.to_pydatetime()
+        e_dt = ev_end_utc.to_pydatetime()
+        rows = parse_ghcnh_psv(full_p, filter_date_start=s_dt, filter_date_end=e_dt)
+        if not rows:
+            details.append(f"No temperature observations parsed from {rel_p} for interval [{ev_start_utc}, {ev_end_utc})")
+            return {
+                "status": "not_verified",
+                "manifest_record_found": True,
+                "file_verified": True,
+                "parsed_interval_coverage_verified": False,
+                "verification_details": details,
+            }
+
+        expected_hours = pd.date_range(ev_start_utc, ev_end_utc - pd.Timedelta(hours=1), freq="h")
+        obs_by_hour: dict[pd.Timestamp, list[dict[str, Any]]] = {}
+        for r in rows:
+            ts = pd.to_datetime(r["timestamp_utc"]).floor("h")
+            obs_by_hour.setdefault(ts, []).append(r)
+
+        missing_hours = [h for h in expected_hours if h not in obs_by_hour]
+        if missing_hours:
+            details.append(f"Missing {len(missing_hours)} required hourly temperature observations in {rel_p}")
+            return {
+                "status": "not_verified",
+                "manifest_record_found": True,
+                "file_verified": True,
+                "parsed_interval_coverage_verified": False,
+                "verification_details": details,
+            }
+
+        interval_verified = True
+    except Exception as e:
+        details.append(f"Exception parsing NOAA file {rel_p}: {e}")
+        return {
+            "status": "not_verified",
+            "manifest_record_found": True,
+            "file_verified": True,
+            "parsed_interval_coverage_verified": False,
+            "verification_details": details,
+        }
+
+    return {
+        "status": "available",
+        "manifest_record_found": True,
+        "file_verified": True,
+        "parsed_interval_coverage_verified": True,
+        "verification_details": details,
     }
 
 
@@ -846,12 +1085,14 @@ def run_p3_audit(
     }
 
     manifest_errors: list[str] = []
+    manifest_datas: dict[str, dict[str, Any]] = {}
     for m_name, m_path in manifest_paths:
         if not m_path.exists():
             manifest_errors.append(f"Missing required provenance manifest: {m_name}")
             continue
         try:
             m_data = json.loads(m_path.read_text(encoding="utf-8"))
+            manifest_datas[m_name] = m_data
         except Exception as e:
             manifest_errors.append(f"Malformed JSON in provenance manifest {m_name}: {e}")
             continue
@@ -868,6 +1109,61 @@ def run_p3_audit(
         # Recursive hash/size checker over any additional entries
         errs = verify_provenance_manifest_entries(m_data, manifest_name=m_name, repo_root=repo_root)
         manifest_errors.extend(errs)
+
+    # Pre-index manifests and raw records to evaluate source evidence
+    raw_manifest_path = data_dir / "manifests/raw_sources.jsonl"
+    manifest_records: list[dict[str, Any]] = []
+    if raw_manifest_path.exists():
+        try:
+            with raw_manifest_path.open("r", encoding="utf-8") as rmf:
+                for line_no, line in enumerate(rmf, 1):
+                    line_s = line.strip()
+                    if not line_s:
+                        continue
+                    try:
+                        rec = json.loads(line_s)
+                    except json.JSONDecodeError as jde:
+                        manifest_errors.append(f"Malformed JSON in raw_sources.jsonl at line {line_no}: {jde}")
+                        continue
+                    if not isinstance(rec, dict):
+                        manifest_errors.append(f"Non-object entry in raw_sources.jsonl at line {line_no}: expected JSON object, got {type(rec).__name__}")
+                        continue
+                    manifest_records.append(rec)
+        except Exception as e:
+            manifest_errors.append(f"Failed to read raw_sources.jsonl: {e}")
+
+    caiso_zip_dir = data_dir / "raw/caiso"
+    if caiso_zip_dir.exists():
+        for zpath in sorted(caiso_zip_dir.glob("*.zip")):
+            try:
+                with zipfile.ZipFile(zpath, "r") as zf_obj:
+                    first_bad = zf_obj.testzip()
+                    if first_bad is not None:
+                        manifest_errors.append(f"Corrupted archive in CAISO raw directory: {zpath.name} (corrupt member: {first_bad})")
+            except Exception as e:
+                manifest_errors.append(f"Unexpected error reading CAISO archive {zpath.name}: {e}")
+
+    eia_dir = data_dir / "raw/eia"
+    eia_json_coverage: list[dict[str, Any]] = []
+    if eia_dir.exists():
+        for jpath in sorted(eia_dir.glob("*.json")):
+            try:
+                with jpath.open("r", encoding="utf-8") as jf:
+                    jdata = json.load(jf)
+                    if not isinstance(jdata, dict):
+                        manifest_errors.append(f"EIA JSON {jpath.name} must be a JSON object, got {type(jdata).__name__}")
+                        continue
+                    items = jdata.get("response", {}).get("data", [])
+                    periods_d = set(it.get("period") for it in items if isinstance(it, dict) and it.get("type") == "D" and it.get("period"))
+                    periods_ng = set(it.get("period") for it in items if isinstance(it, dict) and it.get("type") == "NG" and it.get("period"))
+                    if periods_d or periods_ng:
+                        eia_json_coverage.append({
+                            "file": jpath.name,
+                            "periods_d": periods_d,
+                            "periods_ng": periods_ng,
+                        })
+            except Exception as e:
+                manifest_errors.append(f"Unexpected error reading EIA JSON {jpath.name}: {e}")
 
     if manifest_errors:
         return _write_and_return_failure([f"Provenance manifest verification failed: {e}" for e in manifest_errors])
@@ -890,56 +1186,6 @@ def run_p3_audit(
     val_matched = [eid for eid in val_events if eid in matched_event_ids]
     test_matched = [eid for eid in test_events if eid in matched_event_ids]
 
-    # Pre-index manifests and raw records to evaluate source evidence
-    raw_manifest_path = data_dir / "manifests/raw_sources.jsonl"
-    manifest_records: list[dict[str, Any]] = []
-    if raw_manifest_path.exists():
-        try:
-            with raw_manifest_path.open("r", encoding="utf-8") as rmf:
-                for line in rmf:
-                    if line.strip():
-                        manifest_records.append(json.loads(line))
-        except Exception:
-            pass
-
-    caiso_zip_dir = data_dir / "raw/caiso"
-    caiso_intervals: list[dict[str, Any]] = []
-    if caiso_zip_dir.exists():
-        for zpath in caiso_zip_dir.glob("*.zip"):
-            try:
-                with zipfile.ZipFile(zpath, "r") as zf_obj:
-                    for zname in zf_obj.namelist():
-                        if zname.endswith(".csv"):
-                            with zf_obj.open(zname) as zf_csv:
-                                df_z = pd.read_csv(zf_csv)
-                                if "LMP_TYPE" in df_z.columns and "INTERVALSTARTTIME_GMT" in df_z.columns:
-                                    df_lmp = df_z[df_z["LMP_TYPE"] == "LMP"]
-                                    if not df_lmp.empty:
-                                        t_min = pd.to_datetime(df_lmp["INTERVALSTARTTIME_GMT"].min())
-                                        t_max = pd.to_datetime(df_lmp["INTERVALENDTIME_GMT"].max())
-                                        caiso_intervals.append({"file": zpath.name, "start": t_min, "end": t_max, "count": len(df_lmp)})
-            except Exception as e:
-                manifest_errors.append(f"Unexpected error reading CAISO archive {zpath.name}: {e}")
-
-    eia_dir = data_dir / "raw/eia"
-    eia_json_coverage: list[dict[str, Any]] = []
-    if eia_dir.exists():
-        for jpath in eia_dir.glob("*.json"):
-            try:
-                with jpath.open("r", encoding="utf-8") as jf:
-                    jdata = json.load(jf)
-                    items = jdata.get("response", {}).get("data", [])
-                    periods_d = set(it.get("period") for it in items if it.get("type") == "D" and it.get("period"))
-                    periods_ng = set(it.get("period") for it in items if it.get("type") == "NG" and it.get("period"))
-                    if periods_d or periods_ng:
-                        eia_json_coverage.append({
-                            "file": jpath.name,
-                            "periods_d": periods_d,
-                            "periods_ng": periods_ng,
-                        })
-            except Exception as e:
-                manifest_errors.append(f"Unexpected error reading EIA JSON {jpath.name}: {e}")
-
     unmatched_cases_evidence: list[dict[str, Any]] = []
     unmatched_reasons: dict[str, str] = {}
 
@@ -954,9 +1200,14 @@ def run_p3_audit(
         ev_year = ev_start_utc.year
 
         # 1. Weather provider (NOAA)
-        noaa_file = data_dir / f"raw/noaa/GHCNh_{station_id}_{ev_year}.psv"
-        weather_avail = noaa_file.exists() and noaa_file.is_file() and noaa_file.stat().st_size > 0
-        weather_status = "available" if weather_avail else "missing"
+        noaa_evidence = verify_noaa_interval_source_evidence(
+            data_dir=data_dir,
+            station_id=station_id,
+            ev_start_utc=ev_start_utc,
+            ev_end_utc=ev_end_utc,
+            event_manifest_data=manifest_datas.get("event_catalogue_manifest.json"),
+        )
+        weather_status = noaa_evidence["status"]
 
         # 2. CAISO LMP price provider
         caiso_evidence = verify_caiso_interval_source_evidence(
@@ -1004,6 +1255,10 @@ def run_p3_audit(
             "source_evidence": {
                 "weather": {
                     "status": weather_status,
+                    "manifest_record_found": noaa_evidence["manifest_record_found"],
+                    "file_verified": noaa_evidence["file_verified"],
+                    "parsed_interval_coverage_verified": noaa_evidence["parsed_interval_coverage_verified"],
+                    "verification_details": noaa_evidence["verification_details"],
                 },
                 "caiso_price": {
                     "status": caiso_status,
