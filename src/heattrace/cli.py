@@ -173,6 +173,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load, validate, and inspect the 240-row 2024 event/control benchmark table (G3-a)",
     )
     parser.add_argument(
+        "--build-p4",
+        action="store_true",
+        help="Build P4 manifests and historical-only forecast inputs (P4-01, P4-02)",
+    )
+    parser.add_argument(
+        "--run-p4",
+        action="store_true",
+        help="Execute authentic event/control benchmark across all P4 policies (P4-08, P4-09)",
+    )
+    parser.add_argument(
+        "--audit-p4",
+        action="store_true",
+        help="Run gate G4-a comprehensive verification audit",
+    )
+    parser.add_argument(
+        "--load-p4-results",
+        action="store_true",
+        help="Load and print P4 policy comparison metrics and carbon data-quality caveats",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1162,9 +1182,142 @@ def run_load_p3_benchmark(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_build_p4(args: argparse.Namespace) -> int:
+    """Build P4 experiment manifest and historical-only forecasts."""
+    from heattrace.forecast.historical import build_historical_forecast_dataset
+    from heattrace.manifests import (
+        build_p4_experiment_manifest,
+        build_p4_forecast_manifest,
+        write_atomic_json,
+    )
+    import pandas as pd
+
+    repo_root = Path(".").resolve()
+    data_dir = Path(args.data_dir).resolve()
+    config_dir = Path(args.config_dir).resolve()
+
+    print("\n======================= HeatTrace P4 Suite Builder =======================")
+    try:
+        p4_cfg_path = config_dir / "p4.yaml"
+        bench_path = data_dir / "benchmarks/benchmark_2024_event_control_v0.parquet"
+        bench_df = pd.read_parquet(bench_path)
+
+        print("[1/3] Building historical-only forecasts (no future actuals)...")
+        fc_df = build_historical_forecast_dataset(bench_df)
+
+        fc_dir = data_dir / "forecasts"
+        fc_dir.mkdir(parents=True, exist_ok=True)
+        fc_p = fc_dir / "p4_historical_forecasts_v0.parquet"
+        fc_s = fc_dir / "p4_historical_forecasts_v0_sample.csv"
+        fc_df.to_parquet(fc_p, index=False)
+        fc_df.head(20).to_csv(fc_s, index=False)
+
+        print("[2/3] Writing forecast manifest...")
+        fc_m = build_p4_forecast_manifest(fc_p, fc_s, p4_config_path=p4_cfg_path, repo_root=repo_root)
+        write_atomic_json(data_dir / "manifests/p4_forecast_manifest.json", fc_m)
+
+        print("[3/3] Writing experiment manifest...")
+        exp_m = build_p4_experiment_manifest(repo_root=repo_root, p4_config_path=p4_cfg_path)
+        write_atomic_json(data_dir / "manifests/p4_experiment_manifest.json", exp_m)
+
+        print("Success! P4 manifests and forecasts successfully built.")
+        print("==========================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD P4 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_run_p4(args: argparse.Namespace) -> int:
+    """Execute authentic P4 benchmark across event and control windows."""
+    from heattrace.evaluation.runner import run_p4_benchmark
+
+    repo_root = Path(".").resolve()
+    p4_cfg = Path(args.config_dir).resolve() / "p4.yaml"
+
+    print("\n======================= HeatTrace P4 Benchmark Runner =======================")
+    try:
+        res = run_p4_benchmark(repo_root=repo_root, p4_config_path=p4_cfg)
+        print(f"Success! Executed {res['metrics_count']} policy evaluations across event & control windows.")
+        print(f"Outputs written to: {res['output_run_dir']}")
+        print("==============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[RUN P4 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_audit_p4(args: argparse.Namespace) -> int:
+    """Execute Gate G4-a comprehensive verification audit."""
+    from heattrace.process.p4_audit import run_g4_audit
+
+    repo_root = Path(".").resolve()
+    data_dir = Path(args.data_dir).resolve()
+    config_dir = Path(args.config_dir).resolve()
+
+    print("\n======================= Gate G4-a Comprehensive Audit =======================")
+    try:
+        audit_res = run_g4_audit(repo_root=repo_root, data_dir=data_dir, config_dir=config_dir)
+        status = audit_res["status"]
+        print(f"Audit Status: {status}")
+        print(f"Checked Policies: {', '.join(audit_res['checked_policies'])}")
+        print(f"Checked Windows: {', '.join(audit_res['checked_windows'])}")
+        print(f"Carbon Quality Label: {audit_res['carbon_data_quality']['interpretation_label']}")
+        if audit_res["failure_count"] > 0:
+            print(f"Failures ({audit_res['failure_count']}):")
+            for f in audit_res["failure_reasons"]:
+                print(f"  - {f}")
+            print("==============================================================================\n")
+            return 1
+        print("==============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[AUDIT P4 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_load_p4_results(args: argparse.Namespace) -> int:
+    """Load and print concise P4 comparison table and data caveats."""
+    import pandas as pd
+    repo_root = Path(".").resolve()
+    metrics_path = repo_root / "runs/p4_v0/comparison_metrics.csv"
+    if not metrics_path.exists():
+        print(f"\n[LOAD P4 ERROR] Results not found at {metrics_path}. Please run --run-p4 first.\n")
+        return 1
+
+    df = pd.read_csv(metrics_path)
+    print("\n======================= HeatTrace P4 Benchmark Results =======================")
+    cols = [
+        "window_id",
+        "policy_name",
+        "total_realized_cost_usd",
+        "total_realized_emissions_kg",
+        "sla_completion_rate",
+        "cvar_cost_90",
+        "cvar_emissions_90",
+        "comparator_status",
+    ]
+    display_cols = [c for c in cols if c in df.columns]
+    print(df[display_cols].to_string(index=False))
+    print("\n------------------------- Carbon Data Quality Disclosure -------------------------")
+    print("NOTE: All 240 benchmark rows carry EIA known-data-issue flags (0 primary-eligible).")
+    print("Emissions metrics are calculated for algorithmic sensitivity only ('quality_limited_sensitivity_only').")
+    print("They must not be interpreted as clean primary causal evidence.")
+    print("==============================================================================\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_p3:
+    if args.build_p4:
+        code = run_build_p4(args)
+    elif args.run_p4:
+        code = run_run_p4(args)
+    elif args.audit_p4:
+        code = run_audit_p4(args)
+    elif args.load_p4_results:
+        code = run_load_p4_results(args)
+    elif args.build_p3:
         code = run_build_p3(args)
     elif args.audit_p3:
         code = run_audit_p3(args)
