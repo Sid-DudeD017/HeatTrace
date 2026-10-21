@@ -13,6 +13,7 @@ data/events/
 data/workloads/
 data/benchmarks/
 data/manifests/
+data/forecasts/
 runs/*
 reports/generated/
 *.parquet
