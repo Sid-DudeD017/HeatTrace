@@ -1,0 +1,34 @@
+version: "1.0"
+random_seed: 20261016
+
+benchmark:
+  event_window_id: HW_20240702
+  control_window_id: CTRL_20240605
+  horizon_hours: 120
+
+forecast:
+  provider: historical_persistence_v0
+  fallback_price_usd_per_mwh: 45.0
+  fallback_carbon_g_per_kwh: 220.0
+  forbid_future_actuals: true
+
+constraints:
+  max_cluster_power_kw: 500.0
+  max_concurrent_jobs: 16
+  arrival_inclusive: true
+  deadline_exclusive: true
+
+objectives:
+  balanced_cost_weight: 0.5
+  balanced_carbon_weight: 0.5
+  normalization: horizon_min_max
+  deterministic_tie_break: earliest_hour_then_job_id
+
+risk:
+  cvar_alpha: 0.90
+  uncertainty_quantile: 0.90
+  dro_risk_penalty_lambda: 0.25
+
+comparator:
+  exact_max_jobs: 6
+  exact_max_horizon_hours: 24
