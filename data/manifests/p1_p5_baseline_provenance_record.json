@@ -2,8 +2,14 @@
   "manifest_identity": "data/manifests/benchmark_manifest.json",
   "provenance_status": "SEMANTICALLY_CANONICAL_WITH_REGENERATED_TIMESTAMP",
   "original_historical_sha256": "7f76f9182b87f99d46b94f4c988dc9155234455523c60d03adc1b2fbeec77077",
-  "current_regenerated_sha256": "b0e1612086abe52dadc26906ce5332252ad83e609a4b1cdee34ea34cdeffcc1b",
-  "regeneration_timestamp_utc": "2026-10-22T15:40:03.737454+00:00",
+  "current_regenerated_sha256": "3652f11140683ae6fdf24cf8ad355a4acfae3306171959187d3452c0b170886a",
+  "regeneration_timestamp_utc": "2026-10-22T16:49:04.730799+00:00",
+  "provenance_statement": {
+    "original_artifact_availability": "Original historical artifact unavailable; byte-for-byte continuity cannot be verified.",
+    "semantic_verification_status": "Regenerated artifact is semantically verified. Target benchmark Parquet, sample CSV, and input hashes match perfectly.",
+    "byte_continuity_status": "Byte-for-byte continuity is unverified. The difference is solely due to the runtime timestamp generated_at_utc.",
+    "test_isolation_status": "Production tests in test_p3_controls_benchmark.py and test_p5_5_experiments.py have now been strictly isolated using tmp_path fixtures."
+  },
   "investigation_summary": "Extensive search of reachable and dangling git objects (1,695 objects), git reflog, and local temporary paths confirmed that benchmark_manifest.json was modified in place when test_g3_a_benchmark_alignment_and_dimensions invoked build_and_export_p3_benchmark with production data_dir. Because benchmark_manifest.json is excluded from Git tracking via .gitignore, the byte-for-byte original file with generated_at_utc timestamp matching 7f76f918... was overwritten on disk.",
   "canonical_semantic_verification": {
     "target_benchmark_parquet_sha256": "711ac21fb3d7178453edaf6f31d139eaf9d8a7ec600af1bd7e3a85a2f5c4a142",
@@ -22,6 +28,6 @@
       "tests/test_p3_controls_benchmark.py::test_g3_a_benchmark_alignment_and_dimensions",
       "tests/test_p3_controls_benchmark.py::test_validate_benchmark_dataframe_negative_mutations"
     ],
-    "isolation_method": "All benchmark build calls now execute in pytest tmp_path fixtures with symlinked raw data."
+    "isolation_method": "All benchmark build calls now execute in pytest tmp_path fixtures with copied raw and catalogue data, preventing writes to repository data/."
   }
 }

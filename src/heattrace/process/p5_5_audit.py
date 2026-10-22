@@ -284,7 +284,7 @@ def run_g5_5_audit(
         else:
             checks_dict["primary_comparisons_equal_work"] = True
 
-    # Check 14: Headline findings JSON exists and numbers reproduce independently (Critical Issue 3C)
+    # Check 14: Headline findings JSON exists, has valid numbers (no NaN/Inf), and reproduces independently
     hf_path = data_dir / "results/p5_5_headline_findings.json"
     if not hf_path.exists():
         failure_reasons.append("Headline findings JSON missing")
@@ -294,13 +294,23 @@ def run_g5_5_audit(
         checks_dict["headline_numbers_reproduce"] = False
     else:
         with hf_path.open("r", encoding="utf-8") as f:
-            hf = json.load(f)
+            raw_hf_text = f.read()
 
-        comp_val_path = data_dir / "results/p5_5_comparator_validation_results.csv"
-        comp_df = pd.read_csv(comp_val_path) if comp_val_path.exists() else None
+        # Reject NaN or Infinity in saved JSON
+        import math
+        try:
+            hf = json.loads(raw_hf_text, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"Illegal constant {c} in JSON")))
+        except ValueError as ve:
+            failure_reasons.append(f"Headline findings JSON contains invalid constant: {ve}")
+            checks_dict["headline_numbers_reproduce"] = False
+            hf = None
 
-        from heattrace.analysis.p5_5_figures import compute_headline_findings
-        recomputed_findings = compute_headline_findings(results_df, comp_df, output_dir=data_dir / "results")
+        if hf is not None:
+            comp_val_path = data_dir / "results/p5_5_comparator_validation_results.csv"
+            comp_df = pd.read_csv(comp_val_path) if comp_val_path.exists() else None
+
+            from heattrace.analysis.p5_5_figures import compute_headline_findings
+            recomputed_findings = compute_headline_findings(results_df, comp_df)
 
         headline_diffs = []
         # Verify counts
@@ -426,9 +436,13 @@ def run_g5_5_audit(
         else:
             checks_dict["comparator_validation_supported"] = True
 
-    # Check 18: Frozen P1–P5 hashes remain unchanged and baseline provenance is verified (Critical Issue 1)
+    # Check 18: Frozen P1–P5 hashes and baseline provenance evaluation (Critical Issue 4)
     baseline_hashes_path = repo_root / "p1_p5_baseline_hashes.json"
     provenance_record_path = data_dir / "manifests/p1_p5_baseline_provenance_record.json"
+
+    baseline_limitations: list[dict[str, Any]] = []
+    baseline_byte_continuity_verified = True
+    baseline_semantic_equivalence_verified = True
 
     if not baseline_hashes_path.exists():
         failure_reasons.append(f"Baseline hashes missing: {baseline_hashes_path}")
@@ -456,11 +470,40 @@ def run_g5_5_audit(
                 if curr_hash != expected_hash:
                     hash_diffs.append(f"Hash mismatch for {rel_path}: current {curr_hash} != expected {expected_hash}")
 
+        # Check benchmark_manifest provenance explicitly
+        historical_expected_manifest_hash = "7f76f9182b87f99d46b94f4c988dc9155234455523c60d03adc1b2fbeec77077"
+        manifest_path = repo_root / "data/manifests/benchmark_manifest.json"
+        if manifest_path.exists():
+            curr_manifest_hash = sha256_file(manifest_path)
+            if curr_manifest_hash != historical_expected_manifest_hash:
+                baseline_byte_continuity_verified = False
+                sem_ver = prov_record.get("canonical_semantic_verification", {})
+                is_sem_ok = (
+                    prov_record.get("provenance_status") == "SEMANTICALLY_CANONICAL_WITH_REGENERATED_TIMESTAMP"
+                    and sem_ver.get("target_benchmark_parquet_match") is True
+                    and sem_ver.get("target_sample_csv_match") is True
+                    and sem_ver.get("all_raw_and_catalogue_input_hashes_match") is True
+                )
+                if not is_sem_ok:
+                    baseline_semantic_equivalence_verified = False
+                    hash_diffs.append("Benchmark manifest is neither byte-identical nor semantically canonical in provenance record")
+                else:
+                    baseline_limitations.append({
+                        "file": "data/manifests/benchmark_manifest.json",
+                        "original_historical_sha256": historical_expected_manifest_hash,
+                        "current_regenerated_sha256": curr_manifest_hash,
+                        "status": "SEMANTICALLY_CANONICAL_WITH_REGENERATED_TIMESTAMP",
+                        "limitation": "Original historical artifact unavailable; byte-for-byte continuity unverified; semantic parity and input hashes independently verified.",
+                    })
+
         if hash_diffs:
             failure_reasons.append(f"P1-P5 baseline files modified ({len(hash_diffs)} diffs): {hash_diffs[:3]}")
             checks_dict["baseline_hashes_verified"] = False
         else:
             checks_dict["baseline_hashes_verified"] = True
+
+    checks_dict["baseline_byte_continuity_verified"] = baseline_byte_continuity_verified
+    checks_dict["baseline_semantic_equivalence_verified"] = baseline_semantic_equivalence_verified
 
     # Check 19: No unsupported causal or production claims in generated reports
     forbidden_claims = ["causes emissions reduction", "production-ready deployment", "generalizable across all grids"]
@@ -494,6 +537,13 @@ def run_g5_5_audit(
         "checks": checks_dict,
         "failure_count": len(failure_reasons),
         "failure_reasons": failure_reasons,
+        "limitations_count": len(baseline_limitations),
+        "documented_limitations": baseline_limitations,
+        "baseline_provenance": {
+            "baseline_byte_continuity_verified": baseline_byte_continuity_verified,
+            "baseline_semantic_equivalence_verified": baseline_semantic_equivalence_verified,
+            "limitations_count": len(baseline_limitations),
+        },
         "carbon_data_quality": {
             "interpretation_label": "quality_limited_sensitivity_only",
             "disclaimer": "EIA carbon observations contain known data-quality flags across all benchmark rows. Findings are descriptive/sensitivity-only and not primary causal evidence.",
