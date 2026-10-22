@@ -73,10 +73,21 @@ def test_p3_05_deterministic_control_matching():
     assert row["anchor_date"] == "2024-06-07"
 
 
-def test_g3_a_benchmark_alignment_and_dimensions():
+def test_g3_a_benchmark_alignment_and_dimensions(tmp_path):
     """Verify G3-a benchmark table has 240 rows, 120 event and 120 control, with zero missing values."""
     base_dir = Path(__file__).resolve().parents[1]
-    res = build_and_export_p3_benchmark(data_dir=base_dir / "data", config_dir=base_dir / "configs")
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    res = build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
     df = res["df_benchmark"]
 
     assert len(df) == 240
@@ -123,10 +134,21 @@ def test_p3_06_audit_completeness():
     assert splits["test_years_2025"]["events_detected"] == []
 
 
-def test_validate_benchmark_dataframe_negative_mutations():
+def test_validate_benchmark_dataframe_negative_mutations(tmp_path):
     """Verify validate_benchmark_dataframe catches corrupted timestamps, NaNs, duplicates, and contradictions."""
     base_dir = Path(__file__).resolve().parents[1]
-    res = build_and_export_p3_benchmark(data_dir=base_dir / "data", config_dir=base_dir / "configs")
+    t_data = tmp_path / "data"
+    t_cfg = tmp_path / "configs"
+    t_data.mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(base_dir / "configs", t_cfg, dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/events", t_data / "events", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/benchmarks", t_data / "benchmarks", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/workloads", t_data / "workloads", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/manifests", t_data / "manifests", dirs_exist_ok=True)
+    shutil.copytree(base_dir / "data/raw", t_data / "raw", dirs_exist_ok=True)
+
+    res = build_and_export_p3_benchmark(data_dir=t_data, config_dir=t_cfg)
     df_valid = res["df_benchmark"]
 
     # 1. NaN in temperature

@@ -226,7 +226,7 @@ def test_p5_5_calculated_collapse_and_divergence_percentages():
 
 
 def test_p5_5_audit_fails_on_tampered_headline(tmp_path: Path):
-    """Critical Issue 3C: Audit fails closed if saved headline findings are manually edited."""
+    """Critical Issue 3C: Audit fails closed if saved headline findings are manually edited or synthetic."""
     repo_root = Path(__file__).resolve().parent.parent
     t_root = tmp_path / "repo"
     t_data = t_root / "data"
@@ -252,7 +252,7 @@ def test_p5_5_audit_fails_on_tampered_headline(tmp_path: Path):
         shutil.copy(repo_root / f"data/results/{f}", t_data / f"results/{f}")
     shutil.copy(repo_root / "p1_p5_baseline_hashes.json", t_root / "p1_p5_baseline_hashes.json")
 
-    # Copy and tamper headline findings
+    # Copy and tamper headline findings with invalid value
     shutil.copy(repo_root / "data/results/p5_5_headline_findings.json", t_data / "results/p5_5_headline_findings.json")
     with (t_data / "results/p5_5_headline_findings.json").open("r") as f:
         tampered_hf = json.load(f)
@@ -264,6 +264,225 @@ def test_p5_5_audit_fails_on_tampered_headline(tmp_path: Path):
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
     assert any("Headline 2 control_cost_first_savings_pct mismatch" in r for r in res["failure_reasons"])
+
+
+def test_p5_5_audit_fails_on_synthetic_8_row_headline(tmp_path: Path):
+    """Critical Issue 1 & 6: Audit fails closed if saved headline findings are an 8-row synthetic artifact."""
+    repo_root = Path(__file__).resolve().parent.parent
+    t_root = tmp_path / "repo"
+    t_data = t_root / "data"
+    t_cfg = t_root / "configs"
+    t_docs = t_root / "docs"
+    (t_data / "results").mkdir(parents=True, exist_ok=True)
+    (t_data / "manifests").mkdir(parents=True, exist_ok=True)
+    (t_data / "figures").mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    t_docs.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy(repo_root / "configs/p5_5.yaml", t_cfg / "p5_5.yaml")
+    shutil.copy(repo_root / "data/manifests/p5_5_experiment_grid.json", t_data / "manifests/p5_5_experiment_grid.json")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.parquet", t_data / "results/p5_5_experiment_results.parquet")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.csv", t_data / "results/p5_5_experiment_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.csv", t_data / "results/p5_5_comparator_validation_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.json", t_data / "results/p5_5_comparator_validation_results.json")
+    shutil.copytree(repo_root / "data/results/p5_5_schedules", t_data / "results/p5_5_schedules", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "data/figures", t_data / "figures", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "docs", t_docs, dirs_exist_ok=True)
+    for f in ["p5_5_policy_comparison_summary.csv", "p5_5_policy_paired_differences.csv", "p5_5_view1_primary_fair_summary.csv", "p5_5_view2_service_normalized_summary.csv", "p5_5_view3_failure_aware_summary.csv"]:
+        shutil.copy(repo_root / f"data/results/{f}", t_data / f"results/{f}")
+    shutil.copy(repo_root / "p1_p5_baseline_hashes.json", t_root / "p1_p5_baseline_hashes.json")
+
+    # Synthetic 8-row headline artifact
+    synthetic_hf = {
+        "metadata": {
+            "grid_version": "v2",
+            "total_scenarios": 4,
+            "total_runs": 8,
+            "jointly_feasible_scenarios_count": 4,
+            "primary_fair_population_pct": 100.0,
+        },
+        "headline_1_flat_forecast_collapse": {
+            "flat_forecast_scenarios_evaluated": 2,
+            "flat_forecast_schedule_identical_count": 1,
+            "flat_forecast_collapse_pct": 50.0,
+            "non_flat_scenarios_evaluated": 2,
+            "non_flat_schedule_divergence_count": 1,
+            "non_flat_divergence_pct": 50.0,
+        },
+        "headline_2_primary_fair_savings": {
+            "control_window_id": "CTRL_20240605",
+            "control_sample_size_scenarios": 1,
+            "control_cost_first_savings_pct": 10.0,
+            "event_window_id": "HW_20240702",
+            "event_sample_size_scenarios": 1,
+            "event_cost_first_savings_pct": 10.0,
+        },
+        "headline_3_noise_degradation": {
+            "common_cohort_sample_size_per_level": 0,
+            "savings_pct_by_noise_sigma": {
+                "oracle_sigma_0": 0.0,
+                "noisy_sigma_0_10": 0.0,
+                "noisy_sigma_0_25": 0.0,
+                "noisy_sigma_0_50": 0.0,
+            },
+            "noise_retention_high_sigma_pct": 0.0,
+            "secondary_descriptive_savings_pct": {
+                "oracle_sigma_0": 0.0,
+                "noisy_sigma_0_10": 0.0,
+                "noisy_sigma_0_25": 0.0,
+                "noisy_sigma_0_50": 0.0,
+            },
+            "secondary_descriptive_sample_sizes": {
+                "oracle": 2, "noisy_low": 0, "noisy_med": 0, "noisy_high": 0,
+            },
+        },
+        "headline_4_carbon_cost_tradeoff": {
+            "event_sample_size_scenarios": 1,
+            "carbon_first_emissions_reduction_pct": 0.0,
+            "carbon_first_cost_premium_vs_cost_first_pct": 0.0,
+        },
+        "headline_5_tail_risk_cvar90": {
+            "event_sample_size_scenarios": 1,
+            "cvar_cost_90_baseline_usd_h": 1.0,
+            "cvar_cost_90_cost_first_usd_h": 1.0,
+            "cvar_cost_90_dro_inspired_usd_h": 1.0,
+            "cvar_cost_first_reduction_pct": 0.0,
+        },
+        "headline_6_operational_feasibility": {
+            "unconstrained_feasibility_pct": 100.0,
+            "moderate_stress_feasibility_pct": 100.0,
+            "extreme_stress_feasibility_pct": 100.0,
+            "workload_3x_extreme_feasibility_pct": 100.0,
+        },
+        "headline_7_comparator_validation": {},
+    }
+    with (t_data / "results/p5_5_headline_findings.json").open("w", encoding="utf-8") as f:
+        json.dump(synthetic_hf, f, indent=2)
+
+    res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
+    assert res["status"] == "VERIFIED_FAIL"
+    assert res["checks"]["headline_numbers_reproduce"] is False
+    assert any("total_scenarios mismatch" in r for r in res["failure_reasons"])
+    assert any("total_runs mismatch" in r for r in res["failure_reasons"])
+
+
+def test_headline_findings_pure_calculation_and_test_isolation(tmp_path: Path):
+    """Critical Issue 2: Verify compute_headline_findings is pure and production files are unmutated."""
+    from heattrace.ingest.provenance import sha256_file
+    from heattrace.analysis.p5_5_figures import write_headline_findings
+
+    monitored_files = [
+        "data/results/p5_5_headline_findings.json",
+        "data/results/p5_5_headline_findings.csv",
+        "data/results/p5_5_experiment_results.parquet",
+        "data/results/p5_5_experiment_results.csv",
+        "data/manifests/p5_5_comprehensive_audit.json",
+    ]
+    initial_hashes = {f: sha256_file(f) for f in monitored_files}
+
+    # 1. Calling compute_headline_findings with output_dir=None creates no files
+    results_df = pd.read_parquet("data/results/p5_5_experiment_results.parquet")
+    comp_df = pd.read_csv("data/results/p5_5_comparator_validation_results.csv")
+    dummy_empty_dir = tmp_path / "empty_dir"
+    dummy_empty_dir.mkdir()
+
+    findings = compute_headline_findings(results_df, comp_df, output_dir=None)
+    assert isinstance(findings, dict)
+    assert list(dummy_empty_dir.iterdir()) == []
+
+    # 2. Synthetic calculation tests do not touch production
+    synth_df = pd.DataFrame([
+        {"scenario_id": "S1", "policy_name": "baseline_reference", "forecast_scenario_id": "flat_forecast", "schedule_digest": "d1", "window_id": "HW", "is_feasible": True, "total_realized_cost_usd": 10.0, "total_realized_emissions_kg": 5.0, "delivered_energy_kwh": 100.0, "window_type": "event", "noise_sigma": 0.0, "workload_multiplier": 1.0, "resource_scenario_id": "unconstrained", "deadline_scenario_id": "baseline", "cvar_cost_90": 1.0},
+        {"scenario_id": "S1", "policy_name": "cost_first", "forecast_scenario_id": "flat_forecast", "schedule_digest": "d1", "window_id": "HW", "is_feasible": True, "total_realized_cost_usd": 10.0, "total_realized_emissions_kg": 5.0, "delivered_energy_kwh": 100.0, "window_type": "event", "noise_sigma": 0.0, "workload_multiplier": 1.0, "resource_scenario_id": "unconstrained", "deadline_scenario_id": "baseline", "cvar_cost_90": 1.0},
+    ])
+    synth_findings = compute_headline_findings(synth_df)
+    assert synth_findings["metadata"]["total_scenarios"] == 1
+
+    # 3. Explicit writer writes to target tmp directory only
+    target_tmp = tmp_path / "written"
+    j_p, c_p = write_headline_findings(synth_findings, target_tmp)
+    assert j_p.exists()
+    assert c_p.exists()
+    assert j_p.parent == target_tmp
+
+    # Verify all monitored production hashes remain byte-for-byte identical
+    for f in monitored_files:
+        assert sha256_file(f) == initial_hashes[f], f"Production file modified by test: {f}"
+
+
+def test_forecast_versus_realized_information_leakage():
+    """Critical Issue 7: Verify scheduling policies strictly receive forecasts, workloads, and constraints.
+
+    Future realized price or carbon columns must NEVER be passed to scheduling policies.
+    """
+    from heattrace.policy.interfaces import (
+        ForecastPoint,
+        ForecastResult,
+        SchedulingConstraints,
+    )
+    from datetime import datetime, timezone
+
+    # 1. Verify ForecastResult / ForecastPoint schema only contains forecast fields
+    pt = ForecastPoint(
+        timestamp_utc=datetime.now(timezone.utc),
+        horizon_hours=1,
+        predicted_price_usd_per_mwh=50.0,
+        predicted_carbon_g_per_kwh=200.0,
+    )
+    assert not hasattr(pt, "realized_price_usd_per_mwh")
+    assert not hasattr(pt, "realized_carbon_g_per_kwh")
+    assert not hasattr(pt, "price_usd_per_mwh")
+    assert not hasattr(pt, "carbon_intensity_g_per_kwh")
+
+    fc_res = ForecastResult(
+        origin_timestamp_utc=datetime.now(timezone.utc),
+        points=[pt],
+        model_name="test_fc",
+        model_version="1.0",
+    )
+    fc_df = fc_res.to_dataframe()
+    assert "predicted_price_usd_per_mwh" in fc_df.columns
+    assert "predicted_carbon_g_per_kwh" in fc_df.columns
+    assert "realized_price_usd_per_mwh" not in fc_df.columns
+    assert "realized_carbon_g_per_kwh" not in fc_df.columns
+
+    # 2. Instrumented policy that inspects input signatures and columns
+    class LeakageDetectorPolicy:
+        policy_name = "leakage_detector"
+        policy_version = "1.0"
+
+        def __init__(self):
+            self.inspected_forecast_columns = []
+            self.inspected_workload_columns = []
+
+        def schedule(self, workload_df: pd.DataFrame, forecast: ForecastResult, constraints: SchedulingConstraints):
+            self.inspected_forecast_columns = list(forecast.to_dataframe().columns)
+            self.inspected_workload_columns = list(workload_df.columns)
+            from heattrace.policy.interfaces import ScheduleResult
+            return ScheduleResult(
+                policy_name=self.policy_name,
+                policy_version=self.policy_version,
+                workload_trace_id="test",
+                window_duration_hours=len(forecast.points),
+                allocations=[],
+                is_feasible=True,
+            )
+
+    det = LeakageDetectorPolicy()
+    workload = generate_stressed_workload_v2(job_count=5, slack_multiplier=1.0)
+    constraints = SchedulingConstraints(max_cluster_power_kw=500.0, max_concurrent_jobs=16)
+
+    det.schedule(workload, fc_res, constraints)
+
+    # Realized labels/measurements must be completely absent from policy inputs
+    forbidden_leakage_terms = ["realized", "observed", "actual_price", "actual_carbon", "temperature_c"]
+    for col in det.inspected_forecast_columns:
+        for term in forbidden_leakage_terms:
+            assert term not in col.lower(), f"Information leakage detected in forecast input: {col}"
+
+    for col in det.inspected_workload_columns:
+        for term in forbidden_leakage_terms:
+            assert term not in col.lower(), f"Information leakage detected in workload input: {col}"
 
 
 def test_frozen_baseline_hashes_unmutated_after_test_execution():
