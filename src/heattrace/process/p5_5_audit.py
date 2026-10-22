@@ -296,15 +296,83 @@ def run_g5_5_audit(
         with hf_path.open("r", encoding="utf-8") as f:
             raw_hf_text = f.read()
 
-        # Reject NaN or Infinity in saved JSON
-        import math
+        hf: dict[str, Any] | None = None
+        # 1. Parse JSON strictly, explicitly rejecting NaN, Infinity, -Infinity
         try:
-            hf = json.loads(raw_hf_text, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"Illegal constant {c} in JSON")))
-        except ValueError as ve:
-            failure_reasons.append(f"Headline findings JSON contains invalid constant: {ve}")
+            hf = json.loads(
+                raw_hf_text,
+                parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"Illegal constant '{c}' in JSON")),
+            )
+        except Exception as e:
+            failure_reasons.append(f"Headline findings JSON parsing failed: {e}")
             checks_dict["headline_numbers_reproduce"] = False
             hf = None
 
+        # 2. Schema and type validation
+        if hf is not None:
+            schema_errors = []
+            required_sections = [
+                "metadata",
+                "headline_1_flat_forecast_collapse",
+                "headline_2_primary_fair_savings",
+                "headline_3_noise_degradation",
+                "headline_4_carbon_cost_tradeoff",
+                "headline_5_tail_risk_cvar90",
+                "headline_6_operational_feasibility",
+                "headline_7_comparator_validation",
+            ]
+            for sec in required_sections:
+                if sec not in hf or not isinstance(hf[sec], dict):
+                    schema_errors.append(f"Missing or invalid required section '{sec}'")
+
+            if not schema_errors:
+                def _assert_number(val: Any, field_name: str) -> None:
+                    if isinstance(val, bool) or not isinstance(val, (int, float)):
+                        schema_errors.append(f"Field '{field_name}' must be numeric, got {type(val).__name__} ({val})")
+
+                meta = hf["metadata"]
+                for k in ["total_scenarios", "total_runs", "jointly_feasible_scenarios_count", "primary_fair_population_pct"]:
+                    if k in meta:
+                        _assert_number(meta[k], f"metadata.{k}")
+                    else:
+                        schema_errors.append(f"Missing required key 'metadata.{k}'")
+
+                h1 = hf["headline_1_flat_forecast_collapse"]
+                for k in ["flat_forecast_scenarios_evaluated", "flat_forecast_schedule_identical_count", "flat_forecast_collapse_pct",
+                          "non_flat_scenarios_evaluated", "non_flat_schedule_divergence_count", "non_flat_divergence_pct"]:
+                    if k in h1:
+                        _assert_number(h1[k], f"headline_1.{k}")
+                    else:
+                        schema_errors.append(f"Missing required key 'headline_1.{k}'")
+
+                h2 = hf["headline_2_primary_fair_savings"]
+                for k in ["control_sample_size_scenarios", "control_cost_first_savings_pct", "event_sample_size_scenarios", "event_cost_first_savings_pct"]:
+                    if k in h2:
+                        _assert_number(h2[k], f"headline_2.{k}")
+                    else:
+                        schema_errors.append(f"Missing required key 'headline_2.{k}'")
+
+                h3 = hf["headline_3_noise_degradation"]
+                if "common_cohort_sample_size_per_level" in h3:
+                    _assert_number(h3["common_cohort_sample_size_per_level"], "headline_3.common_cohort_sample_size_per_level")
+                else:
+                    schema_errors.append("Missing required key 'headline_3.common_cohort_sample_size_per_level'")
+
+                if "savings_pct_by_noise_sigma" in h3 and isinstance(h3["savings_pct_by_noise_sigma"], dict):
+                    for nk in ["oracle_sigma_0", "noisy_sigma_0_10", "noisy_sigma_0_25", "noisy_sigma_0_50"]:
+                        if nk in h3["savings_pct_by_noise_sigma"]:
+                            _assert_number(h3["savings_pct_by_noise_sigma"][nk], f"headline_3.savings_pct_by_noise_sigma.{nk}")
+                        else:
+                            schema_errors.append(f"Missing required key 'headline_3.savings_pct_by_noise_sigma.{nk}'")
+                else:
+                    schema_errors.append("Missing or invalid 'headline_3.savings_pct_by_noise_sigma'")
+
+            if schema_errors:
+                failure_reasons.append(f"Headline findings schema validation failed: {'; '.join(schema_errors)}")
+                checks_dict["headline_numbers_reproduce"] = False
+                hf = None
+
+        # 3. Independent recomputation and comparison (only if parse & schema validation succeeded)
         if hf is not None:
             comp_val_path = data_dir / "results/p5_5_comparator_validation_results.csv"
             comp_df = pd.read_csv(comp_val_path) if comp_val_path.exists() else None
@@ -312,67 +380,67 @@ def run_g5_5_audit(
             from heattrace.analysis.p5_5_figures import compute_headline_findings
             recomputed_findings = compute_headline_findings(results_df, comp_df)
 
-        headline_diffs = []
-        # Verify counts
-        if hf["metadata"]["total_scenarios"] != recomputed_findings["metadata"]["total_scenarios"]:
-            headline_diffs.append("total_scenarios mismatch")
-        if hf["metadata"]["total_runs"] != recomputed_findings["metadata"]["total_runs"]:
-            headline_diffs.append("total_runs mismatch")
-        if hf["metadata"]["jointly_feasible_scenarios_count"] != recomputed_findings["metadata"]["jointly_feasible_scenarios_count"]:
-            headline_diffs.append("jointly_feasible_scenarios_count mismatch")
+            headline_diffs = []
+            # Verify counts
+            if hf["metadata"]["total_scenarios"] != recomputed_findings["metadata"]["total_scenarios"]:
+                headline_diffs.append("total_scenarios mismatch")
+            if hf["metadata"]["total_runs"] != recomputed_findings["metadata"]["total_runs"]:
+                headline_diffs.append("total_runs mismatch")
+            if hf["metadata"]["jointly_feasible_scenarios_count"] != recomputed_findings["metadata"]["jointly_feasible_scenarios_count"]:
+                headline_diffs.append("jointly_feasible_scenarios_count mismatch")
 
-        # Verify Headline 1 (collapse / divergence)
-        h1_saved = hf["headline_1_flat_forecast_collapse"]
-        h1_recomp = recomputed_findings["headline_1_flat_forecast_collapse"]
-        for key in ["flat_forecast_scenarios_evaluated", "flat_forecast_schedule_identical_count", "flat_forecast_collapse_pct",
-                    "non_flat_scenarios_evaluated", "non_flat_schedule_divergence_count", "non_flat_divergence_pct"]:
-            if abs(h1_saved[key] - h1_recomp[key]) > 1e-2:
-                headline_diffs.append(f"Headline 1 {key} mismatch: saved {h1_saved[key]} != recomp {h1_recomp[key]}")
+            # Verify Headline 1 (collapse / divergence)
+            h1_saved = hf["headline_1_flat_forecast_collapse"]
+            h1_recomp = recomputed_findings["headline_1_flat_forecast_collapse"]
+            for key in ["flat_forecast_scenarios_evaluated", "flat_forecast_schedule_identical_count", "flat_forecast_collapse_pct",
+                        "non_flat_scenarios_evaluated", "non_flat_schedule_divergence_count", "non_flat_divergence_pct"]:
+                if abs(h1_saved[key] - h1_recomp[key]) > 1e-2:
+                    headline_diffs.append(f"Headline 1 {key} mismatch: saved {h1_saved[key]} != recomp {h1_recomp[key]}")
 
-        # Verify Headline 2 (primary fair savings)
-        h2_saved = hf["headline_2_primary_fair_savings"]
-        h2_recomp = recomputed_findings["headline_2_primary_fair_savings"]
-        for key in ["control_cost_first_savings_pct", "event_cost_first_savings_pct"]:
-            if abs(h2_saved[key] - h2_recomp[key]) > 1e-2:
-                headline_diffs.append(f"Headline 2 {key} mismatch: saved {h2_saved[key]} != recomp {h2_recomp[key]}")
+            # Verify Headline 2 (primary fair savings)
+            h2_saved = hf["headline_2_primary_fair_savings"]
+            h2_recomp = recomputed_findings["headline_2_primary_fair_savings"]
+            for key in ["control_cost_first_savings_pct", "event_cost_first_savings_pct"]:
+                if abs(h2_saved[key] - h2_recomp[key]) > 1e-2:
+                    headline_diffs.append(f"Headline 2 {key} mismatch: saved {h2_saved[key]} != recomp {h2_recomp[key]}")
 
-        # Verify Headline 3 (noise degradation)
-        h3_saved = hf["headline_3_noise_degradation"]
-        h3_recomp = recomputed_findings["headline_3_noise_degradation"]
-        if h3_saved.get("common_cohort_sample_size_per_level") != h3_recomp.get("common_cohort_sample_size_per_level"):
-            headline_diffs.append("Headline 3 common cohort sample size mismatch")
-        for k in ["oracle_sigma_0", "noisy_sigma_0_10", "noisy_sigma_0_25", "noisy_sigma_0_50"]:
-            if abs(h3_saved["savings_pct_by_noise_sigma"][k] - h3_recomp["savings_pct_by_noise_sigma"][k]) > 1e-2:
-                headline_diffs.append(f"Headline 3 savings mismatch for {k}")
-        if abs(h3_saved["noise_retention_high_sigma_pct"] - h3_recomp["noise_retention_high_sigma_pct"]) > 1e-2:
-            headline_diffs.append("Headline 3 retention mismatch")
+            # Verify Headline 3 (noise degradation)
+            h3_saved = hf["headline_3_noise_degradation"]
+            h3_recomp = recomputed_findings["headline_3_noise_degradation"]
+            if h3_saved.get("common_cohort_sample_size_per_level") != h3_recomp.get("common_cohort_sample_size_per_level"):
+                headline_diffs.append("Headline 3 common cohort sample size mismatch")
+            for k in ["oracle_sigma_0", "noisy_sigma_0_10", "noisy_sigma_0_25", "noisy_sigma_0_50"]:
+                if abs(h3_saved["savings_pct_by_noise_sigma"][k] - h3_recomp["savings_pct_by_noise_sigma"][k]) > 1e-2:
+                    headline_diffs.append(f"Headline 3 savings mismatch for {k}")
+            if abs(h3_saved["noise_retention_high_sigma_pct"] - h3_recomp["noise_retention_high_sigma_pct"]) > 1e-2:
+                headline_diffs.append("Headline 3 retention mismatch")
 
-        # Verify Headline 4 (carbon tradeoff)
-        h4_saved = hf["headline_4_carbon_cost_tradeoff"]
-        h4_recomp = recomputed_findings["headline_4_carbon_cost_tradeoff"]
-        for key in ["carbon_first_emissions_reduction_pct", "carbon_first_cost_premium_vs_cost_first_pct"]:
-            if abs(h4_saved[key] - h4_recomp[key]) > 1e-2:
-                headline_diffs.append(f"Headline 4 {key} mismatch")
+            # Verify Headline 4 (carbon tradeoff)
+            h4_saved = hf["headline_4_carbon_cost_tradeoff"]
+            h4_recomp = recomputed_findings["headline_4_carbon_cost_tradeoff"]
+            for key in ["carbon_first_emissions_reduction_pct", "carbon_first_cost_premium_vs_cost_first_pct"]:
+                if abs(h4_saved[key] - h4_recomp[key]) > 1e-2:
+                    headline_diffs.append(f"Headline 4 {key} mismatch")
 
-        # Verify Headline 5 (CVaR)
-        h5_saved = hf["headline_5_tail_risk_cvar90"]
-        h5_recomp = recomputed_findings["headline_5_tail_risk_cvar90"]
-        for key in ["cvar_cost_90_baseline_usd_h", "cvar_cost_90_cost_first_usd_h", "cvar_cost_90_dro_inspired_usd_h", "cvar_cost_first_reduction_pct"]:
-            if abs(h5_saved[key] - h5_recomp[key]) > 1e-2:
-                headline_diffs.append(f"Headline 5 {key} mismatch")
+            # Verify Headline 5 (CVaR)
+            h5_saved = hf["headline_5_tail_risk_cvar90"]
+            h5_recomp = recomputed_findings["headline_5_tail_risk_cvar90"]
+            for key in ["cvar_cost_90_baseline_usd_h", "cvar_cost_90_cost_first_usd_h", "cvar_cost_90_dro_inspired_usd_h", "cvar_cost_first_reduction_pct"]:
+                if abs(h5_saved[key] - h5_recomp[key]) > 1e-2:
+                    headline_diffs.append(f"Headline 5 {key} mismatch")
 
-        # Verify Headline 6 (feasibility)
-        h6_saved = hf["headline_6_operational_feasibility"]
-        h6_recomp = recomputed_findings["headline_6_operational_feasibility"]
-        for key in ["unconstrained_feasibility_pct", "moderate_stress_feasibility_pct", "extreme_stress_feasibility_pct", "workload_3x_extreme_feasibility_pct"]:
-            if abs(h6_saved[key] - h6_recomp[key]) > 1e-2:
-                headline_diffs.append(f"Headline 6 {key} mismatch")
+            # Verify Headline 6 (feasibility)
+            h6_saved = hf["headline_6_operational_feasibility"]
+            h6_recomp = recomputed_findings["headline_6_operational_feasibility"]
+            for key in ["unconstrained_feasibility_pct", "moderate_stress_feasibility_pct", "extreme_stress_feasibility_pct", "workload_3x_extreme_feasibility_pct"]:
+                if abs(h6_saved[key] - h6_recomp[key]) > 1e-2:
+                    headline_diffs.append(f"Headline 6 {key} mismatch")
 
-        if headline_diffs:
-            failure_reasons.append(f"Headline findings reproduction failed ({len(headline_diffs)} diffs): {', '.join(headline_diffs)}")
-            checks_dict["headline_numbers_reproduce"] = False
-        else:
-            checks_dict["headline_numbers_reproduce"] = True
+            if headline_diffs:
+                failure_reasons.append(f"Headline findings reproduction failed ({len(headline_diffs)} diffs): {', '.join(headline_diffs)}")
+                checks_dict["headline_numbers_reproduce"] = False
+            else:
+                checks_dict["headline_numbers_reproduce"] = True
 
     # Check 15 & 16: Required reports, tables, and figures exist
     required_figures = [

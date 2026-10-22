@@ -14,6 +14,7 @@ Generates:
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from heattrace.manifests import write_atomic_csv, write_atomic_figure
+from heattrace.manifests import write_atomic_csv, write_atomic_figure, write_atomic_json
 
 
 def compute_headline_findings(
@@ -241,14 +242,32 @@ def write_headline_findings(
 ) -> tuple[Path, Path]:
     """Explicit writer for headline findings JSON and CSV.
 
+    Strictly prohibits NaN, Infinity, and -Infinity via allow_nan=False.
+    Uses atomic staging to guarantee no partial or truncated files exist on failure.
     Only explicit production commands or tests targeting export should call this writer.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     json_path = out_dir / "p5_5_headline_findings.json"
-    with json_path.open("w", encoding="utf-8") as f:
-        json.dump(findings, f, indent=2, sort_keys=True)
+
+    # Pre-validate strict JSON serialization without NaN / Inf before touching disk
+    try:
+        strict_json_bytes = json.dumps(findings, indent=2, sort_keys=True, allow_nan=False).encode("utf-8")
+    except ValueError as ve:
+        raise ValueError(f"Headline findings contain invalid numerical values (NaN/Infinity): {ve}") from ve
+
+    stage_json = json_path.with_name(f"{json_path.name}.tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+    try:
+        with stage_json.open("wb") as f:
+            f.write(strict_json_bytes)
+            f.write(b"\n")
+            f.flush()
+        stage_json.replace(json_path)
+    except Exception:
+        if stage_json.exists():
+            stage_json.unlink()
+        raise
 
     # Flattened table for auditing
     flat_rows = []
@@ -258,7 +277,7 @@ def write_headline_findings(
                 flat_rows.append({"category": sec_name, "metric": k, "value": str(v)})
     flat_df = pd.DataFrame(flat_rows)
     csv_path = out_dir / "p5_5_headline_findings.csv"
-    flat_df.to_csv(csv_path, index=False)
+    write_atomic_csv(csv_path, flat_df, index=False)
 
     return json_path, csv_path
 
