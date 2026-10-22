@@ -29,11 +29,15 @@ from heattrace.manifests import write_atomic_csv, write_atomic_figure
 def compute_headline_findings(
     results_df: pd.DataFrame,
     comparator_results_df: pd.DataFrame | None = None,
-    output_dir: Path | str = "data/results",
+    output_dir: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Compute exact machine-readable headline numerical findings from the validated result table."""
-    out_dir = Path(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    """Compute exact machine-readable headline numerical findings from the validated result table.
+
+    Pure calculation: does not mutate inputs, does not create directories, and produces
+    zero filesystem writes unless output_dir is explicitly provided.
+    """
+    # Defensive copy to ensure zero mutation on inputs
+    results_df = results_df.copy()
 
     # 1. Identify jointly feasible scenarios (Primary Fair Comparison population)
     piv_feas = results_df.pivot_table(index="scenario_id", columns="policy_name", values="is_feasible")
@@ -225,6 +229,23 @@ def compute_headline_findings(
         "headline_7_comparator_validation": comp_gap_findings,
     }
 
+    if output_dir is not None:
+        write_headline_findings(findings, output_dir)
+
+    return findings
+
+
+def write_headline_findings(
+    findings: dict[str, Any],
+    output_dir: Path | str,
+) -> tuple[Path, Path]:
+    """Explicit writer for headline findings JSON and CSV.
+
+    Only explicit production commands or tests targeting export should call this writer.
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     json_path = out_dir / "p5_5_headline_findings.json"
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(findings, f, indent=2, sort_keys=True)
@@ -239,7 +260,7 @@ def compute_headline_findings(
     csv_path = out_dir / "p5_5_headline_findings.csv"
     flat_df.to_csv(csv_path, index=False)
 
-    return findings
+    return json_path, csv_path
 
 
 def generate_p5_5_summary_tables_v2(

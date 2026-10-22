@@ -1426,7 +1426,7 @@ def run_load_p5_results(args: argparse.Namespace) -> int:
 
 def run_build_p5_5(args: argparse.Namespace) -> int:
     """Execute full P5.5 pipeline: freeze grid v2, run experiment, generate tables, reports, and figures."""
-    from heattrace.analysis.p5_5_figures import compute_headline_findings, generate_p5_5_figures_v2, generate_p5_5_summary_tables_v2
+    from heattrace.analysis.p5_5_figures import compute_headline_findings, write_headline_findings, generate_p5_5_figures_v2, generate_p5_5_summary_tables_v2
     from heattrace.analysis.p5_5_reports import generate_p5_5_reports
     from heattrace.experiments.p5_5_comparator_validation import run_small_instance_comparator_validation
     from heattrace.experiments.p5_5_grid import freeze_experiment_grid_v2
@@ -1461,7 +1461,8 @@ def run_build_p5_5(args: argparse.Namespace) -> int:
         print(f"      Comparator validation: {comp_summary['status']} ({len(comp_df)} policy evaluations across {comp_summary['total_instances_evaluated']} instances).")
 
         print("[4/6] Generating summary tables across 3 result views and headline findings...")
-        findings = compute_headline_findings(results_df, comp_df, output_dir=repo_root / "data/results")
+        findings = compute_headline_findings(results_df, comp_df)
+        write_headline_findings(findings, repo_root / "data/results")
         tables = generate_p5_5_summary_tables_v2(results_df, output_dir=repo_root / "data/results")
         figs = generate_p5_5_figures_v2(results_df, comp_df, output_fig_dir=repo_root / "data/figures", output_results_dir=repo_root / "data/results")
         print(f"      Generated {len(tables)} tables and {len(figs)} figures.")
