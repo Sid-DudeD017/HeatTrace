@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from heattrace.analysis.sampling import generate_sampling_manifests
+from heattrace.analysis.sampling import generate_outcome_sampling_manifests
 from heattrace.analysis.treatments import build_treatment_variants
 from heattrace.evaluation.metrics import compute_schedule_metrics
 from heattrace.ingest.provenance import sha256_file
@@ -40,7 +40,7 @@ def get_policy_instance(name: str):
         raise ValueError(f"Unknown policy: {name}")
 
 
-def run_single_experiment_instance(
+def run_single_schedule_run(
     policy_name: str,
     workload_df: pd.DataFrame,
     forecast_df: pd.DataFrame,
@@ -49,11 +49,9 @@ def run_single_experiment_instance(
     *,
     window_id: str,
     window_type: str,
-    experiment_id: str,
     variant_name: str = "raw",
-    sampling_strategy: str = "ordinary_window",
 ) -> dict[str, Any]:
-    """Execute a single policy run on a specific window, variant, and sampling condition."""
+    """Execute policy schedule on original contiguous timeline and compute metrics & hourly outcomes."""
     policy = get_policy_instance(policy_name)
 
     # Convert forecast dataframe to ForecastResult
@@ -76,7 +74,7 @@ def run_single_experiment_instance(
     # Execute policy schedule (forecast only!)
     schedule_res = policy.schedule(workload_df, fc_res, constraints)
 
-    # Compute metrics strictly using realized dataframe post-schedule
+    # Compute aggregate metrics post-schedule
     metrics = compute_schedule_metrics(
         schedule_res,
         workload_df,
@@ -85,15 +83,46 @@ def run_single_experiment_instance(
         window_id=window_id,
         window_type=window_type,
     )
-
-    metrics["experiment_id"] = experiment_id
     metrics["variant"] = variant_name
-    metrics["sampling_strategy"] = sampling_strategy
     metrics["status"] = "success" if schedule_res.is_feasible else "infeasible"
+
+    # Compute hourly outcome profile (for sampling evaluation and hourly pairing)
+    horizon = len(realized_df)
+    hourly_pwr = np.zeros(horizon, dtype=float)
+    hourly_cost = np.zeros(horizon, dtype=float)
+    hourly_emiss = np.zeros(horizon, dtype=float)
+    hourly_jobs: list[set[str]] = [set() for _ in range(horizon)]
+
+    prices = realized_df["price_usd_per_mwh"].to_numpy()
+    carbons = realized_df["carbon_g_per_kwh"].to_numpy()
+
+    for a in schedule_res.allocations:
+        h = a.allocated_hour_offset
+        if 0 <= h < horizon:
+            hourly_pwr[h] += a.execution_power_kw
+            hourly_cost[h] += (a.allocated_energy_kwh * prices[h]) / 1000.0
+            hourly_emiss[h] += (a.allocated_energy_kwh * carbons[h]) / 1000.0
+            hourly_jobs[h].add(a.job_id)
+
+    outcome_rows = []
+    for h in range(horizon):
+        outcome_rows.append({
+            "window_id": window_id,
+            "window_type": window_type,
+            "policy_name": policy_name,
+            "hour_offset": h,
+            "timestamp_utc": realized_df["timestamp_utc"].iloc[h],
+            "phase_label": realized_df.get("phase_label", pd.Series(["control"]*horizon)).iloc[h],
+            "execution_power_kw": round(float(hourly_pwr[h]), 4),
+            "concurrent_jobs_count": len(hourly_jobs[h]),
+            "hourly_cost_usd": round(float(hourly_cost[h]), 4),
+            "hourly_emissions_kg": round(float(hourly_emiss[h]), 4),
+        })
 
     return {
         "schedule": schedule_res,
         "metrics": metrics,
+        "hourly_outcomes": pd.DataFrame(outcome_rows),
     }
 
 
@@ -103,17 +132,28 @@ def run_p5_treatment_experiments(
     forecast_df: pd.DataFrame,
     workload_df: pd.DataFrame,
     constraints: SchedulingConstraints,
+    fit_cutoff_utc: str = "2024-06-05T07:00:00+00:00",
+    source_file_hash: str = "",
 ) -> dict[str, Any]:
-    """Run E3 treatment variants (raw, clipped, causal_imputed) across all 4 policies and 2 windows."""
-    variants_res = build_treatment_variants(benchmark_df, history_df)
+    """Run E3 treatment variants across all 4 policies and 2 windows with strict cutoff enforcement."""
+    variants_res = build_treatment_variants(
+        benchmark_df=benchmark_df,
+        history_df=history_df,
+        fit_cutoff_utc=fit_cutoff_utc,
+        source_file_hash=source_file_hash,
+    )
     variants = variants_res["variants"]
+    variants_meta = variants_res["metadata"]
 
     policies = ["cost_first", "carbon_first", "balanced", "dro_inspired"]
     windows = ["CTRL_20240605", "HW_20240702"]
 
     results: list[dict[str, Any]] = []
+    hourly_outcomes_dict: dict[tuple[str, str], pd.DataFrame] = {}
 
     for v_name, v_df in variants.items():
+        v_status = variants_meta[v_name].get("status", "supported")
+
         for wid in windows:
             wtype = "event" if wid.startswith("HW") else "control"
             fc_sub = forecast_df[forecast_df["window_id"] == wid]
@@ -121,7 +161,27 @@ def run_p5_treatment_experiments(
 
             for pol in policies:
                 exp_id = f"exp_treatment_{v_name}_{wid}_{pol}"
-                run_out = run_single_experiment_instance(
+
+                if v_status != "supported":
+                    # Mark unsupported cleanly without fabricating runs
+                    unsupported_meta = {
+                        "experiment_id": exp_id,
+                        "variant": v_name,
+                        "window_id": wid,
+                        "window_type": wtype,
+                        "policy_name": pol,
+                        "policy_version": "1.0",
+                        "status": "unsupported_insufficient_pre_target_history",
+                        "reason": variants_meta[v_name].get("limitation", "Insufficient pre-target history"),
+                        "total_realized_cost_usd": None,
+                        "total_realized_emissions_kg": None,
+                        "sla_completion_rate": None,
+                        "carbon_interpretation_label": "quality_limited_sensitivity_only",
+                    }
+                    results.append(unsupported_meta)
+                    continue
+
+                run_out = run_single_schedule_run(
                     policy_name=pol,
                     workload_df=workload_df,
                     forecast_df=fc_sub,
@@ -129,73 +189,100 @@ def run_p5_treatment_experiments(
                     constraints=constraints,
                     window_id=wid,
                     window_type=wtype,
-                    experiment_id=exp_id,
                     variant_name=v_name,
-                    sampling_strategy="ordinary_window",
                 )
-                results.append(run_out["metrics"])
+                m = run_out["metrics"]
+                m["experiment_id"] = exp_id
+                results.append(m)
+
+                # Store raw hourly outcomes for downstream sampling & bootstrap
+                if v_name == "raw":
+                    hourly_outcomes_dict[(wid, pol)] = run_out["hourly_outcomes"]
 
     return {
         "metrics_df": pd.DataFrame(results),
-        "variants_metadata": variants_res["metadata"],
+        "variants_metadata": variants_meta,
+        "treatment_fit_info": variants_res["treatment_fit_info"],
+        "hourly_outcomes": hourly_outcomes_dict,
     }
 
 
 def run_p5_sampling_experiments(
-    benchmark_df: pd.DataFrame,
-    forecast_df: pd.DataFrame,
-    workload_df: pd.DataFrame,
-    constraints: SchedulingConstraints,
+    hourly_outcomes: dict[tuple[str, str], pd.DataFrame],
+    workload_digest: str = "",
+    constraint_digest: str = "",
     budget_hours: int = 120,
     seed: int = 20261016,
 ) -> dict[str, Any]:
-    """Run E4 equal-budget sampling experiments across policies."""
-    manifests = generate_sampling_manifests(benchmark_df, budget_hours=budget_hours, seed=seed)
+    """Execute E4 equal-budget sampling over already-generated hourly policy outcomes.
+
+    Never reassigns pseudo-horizons or reschedules discontinuous slices.
+    Evaluates equal 120-hour sample budgets for each policy across:
+    1. ordinary_window: 120 hours from CTRL_20240605 outcomes.
+    2. event_stratified: 60 hours CTRL + 60 hours HW outcomes.
+    3. phase_aware: 120 hours from HW_20240702 outcomes.
+    """
     policies = ["cost_first", "carbon_first", "balanced", "dro_inspired"]
+
+    # Manifests are generated from the representative hourly outcome structure
+    sample_ctrl = hourly_outcomes[("CTRL_20240605", "cost_first")]
+    sample_hw = hourly_outcomes[("HW_20240702", "cost_first")]
+
+    manifests = generate_outcome_sampling_manifests(
+        control_outcomes_df=sample_ctrl,
+        event_outcomes_df=sample_hw,
+        budget_hours=budget_hours,
+        seed=seed,
+        workload_id="trace_standard_120h_v0",
+        workload_digest=workload_digest,
+        constraint_digest=constraint_digest,
+    )
 
     results: list[dict[str, Any]] = []
 
     for strat_name, manifest in manifests.items():
-        # Evaluation uses the subset of timestamps specified by manifest
-        # Extract corresponding realized rows
-        sampled_realized = pd.merge(
-            manifest[["timestamp_utc", "sample_index", "window_id", "phase_label"]],
-            benchmark_df,
-            on=["timestamp_utc", "window_id", "phase_label"],
-            how="inner",
-        ).sort_values("sample_index").reset_index(drop=True)
-
-        # Match forecast rows for these timestamps
-        sampled_forecast = pd.merge(
-            manifest[["timestamp_utc", "sample_index", "window_id"]],
-            forecast_df,
-            left_on=["timestamp_utc", "window_id"],
-            right_on=["target_timestamp_utc", "window_id"],
-            how="inner",
-        ).sort_values("sample_index").reset_index(drop=True)
-
-        # Assign horizon hour 0..119 for the sampled window
-        sampled_forecast["horizon_hour"] = np.arange(len(sampled_forecast))
-
         for pol in policies:
             exp_id = f"exp_sampling_{strat_name}_{pol}"
-            # Workload is identical 120h workload
-            run_out = run_single_experiment_instance(
-                policy_name=pol,
-                workload_df=workload_df,
-                forecast_df=sampled_forecast,
-                realized_df=sampled_realized,
-                constraints=constraints,
-                window_id="sampled_budget_120h",
-                window_type=strat_name,
-                experiment_id=exp_id,
-                variant_name="raw",
-                sampling_strategy=strat_name,
-            )
-            res_meta = run_out["metrics"]
-            res_meta["sampling_strategy"] = strat_name
-            res_meta["budget_hours"] = len(manifest)
-            results.append(res_meta)
+
+            # Filter outcomes for pol using manifest indices
+            selected_rows = []
+            for _, m_row in manifest.iterrows():
+                target_wid = m_row["window_id"]
+                target_h = int(m_row["original_hour_offset"])
+                pol_outcomes = hourly_outcomes[(target_wid, pol)]
+                matching_h = pol_outcomes[pol_outcomes["hour_offset"] == target_h].iloc[0]
+                selected_rows.append(matching_h)
+
+            df_sampled_outcomes = pd.DataFrame(selected_rows)
+
+            tot_cost = float(df_sampled_outcomes["hourly_cost_usd"].sum())
+            tot_emiss = float(df_sampled_outcomes["hourly_emissions_kg"].sum())
+            mean_pwr = float(df_sampled_outcomes["execution_power_kw"].mean())
+            max_pwr = float(df_sampled_outcomes["execution_power_kw"].max())
+            max_concur = int(df_sampled_outcomes["concurrent_jobs_count"].max())
+
+            # Sampled CVaR 0.90
+            q_cost = float(np.quantile(df_sampled_outcomes["hourly_cost_usd"], 0.90))
+            tail_cost = df_sampled_outcomes[df_sampled_outcomes["hourly_cost_usd"] >= q_cost]["hourly_cost_usd"]
+            cvar_cost = float(tail_cost.mean()) if len(tail_cost) > 0 else q_cost
+
+            results.append({
+                "experiment_id": exp_id,
+                "sampling_strategy": strat_name,
+                "policy_name": pol,
+                "policy_version": "1.0",
+                "budget_hours": len(manifest),
+                "evaluation_mode": "sampled_hourly_outcomes",
+                "total_sampled_cost_usd": round(tot_cost, 4),
+                "total_sampled_emissions_kg": round(tot_emiss, 4),
+                "mean_sampled_power_kw": round(mean_pwr, 4),
+                "max_sampled_power_kw": round(max_pwr, 4),
+                "max_sampled_concurrency": max_concur,
+                "cvar_cost_90": round(cvar_cost, 4),
+                "status": "success",
+                "carbon_interpretation_label": "quality_limited_sensitivity_only",
+                "note": "Evaluated over authentic schedule outcomes; no discontinuous pseudo-horizon scheduling.",
+            })
 
     return {
         "metrics_df": pd.DataFrame(results),

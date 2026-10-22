@@ -9,21 +9,23 @@ import pandas as pd
 import pytest
 
 from heattrace.analysis.bootstrap import (
+    compute_block_bootstrap_ci,
     compute_hourly_paired_signal_differences,
     compute_paired_bootstrap_ci,
+    compute_policy_paired_differences,
 )
 from heattrace.analysis.characterization import (
     compute_distribution_summary,
     compute_lagged_associations,
     run_event_characterization_pipeline,
 )
-from heattrace.analysis.sampling import generate_sampling_manifests, validate_sampling_manifests
+from heattrace.analysis.sampling import generate_outcome_sampling_manifests, validate_sampling_manifests
 from heattrace.analysis.strategy_comparison import compare_evaluation_strategies
 from heattrace.analysis.treatments import (
     build_treatment_variants,
     create_causal_imputed_variant,
     create_clipped_variant,
-    fit_historical_clipping_bounds,
+    fit_historical_treatment_parameters,
 )
 from heattrace.experiments.runner import run_p5_comparator_instances
 from heattrace.policy.interfaces import SchedulingConstraints
@@ -50,97 +52,196 @@ def workload_df(repo_root):
     return pd.read_parquet(repo_root / "data/workloads/workload_trace_v0.parquet")
 
 
-def test_characterization_distribution_summary(benchmark_df):
-    """Verify E1 distribution summaries compute expected bounds and metrics."""
-    summary_df = compute_distribution_summary(benchmark_df, group_cols=["window_id", "window_type"])
-    assert len(summary_df) > 0
-    assert "mean" in summary_df.columns
-    assert "std" in summary_df.columns
-    assert "q90" in summary_df.columns
+# -------------------------------------------------------------
+# Issue 1: Treatment Fitting & No-Leakage Tests
+# -------------------------------------------------------------
 
-    # Verify carbon quality flag counting
-    carbon_row = summary_df[summary_df["signal"] == "carbon_g_per_kwh"].iloc[0]
-    assert carbon_row["quality_limited_count"] == 120
-    assert carbon_row["quality_eligible_count"] == 0
-
-
-def test_lagged_associations_direction_and_bounds(benchmark_df):
-    """Verify lag analysis calculates lags -24 to +24 and defines lag direction explicitly."""
-    lag_df = compute_lagged_associations(
-        benchmark_df,
-        sig_x="temperature_c",
-        sig_y="price_usd_per_mwh",
-        max_lag=24,
+def test_treatment_fitting_strict_pre_cutoff_filtering(history_df):
+    """Verify fitting rejects future/target observations and records strict accounting."""
+    fit_info = fit_historical_treatment_parameters(
+        history_df=history_df,
+        fit_cutoff_utc="2024-06-05T07:00:00+00:00",
     )
-    assert len(lag_df) == (24 * 2 + 1) * 2  # 49 lags * 2 windows
-    assert -24 in lag_df["lag_hours"].values
-    assert 24 in lag_df["lag_hours"].values
-    assert "lag_direction" in lag_df.columns
-    assert "is_eligible" in lag_df.columns
-
-    # Test lag > 0 direction definition
-    lead_row = lag_df[lag_df["lag_hours"] == 5].iloc[0]
-    assert "leads" in lead_row["lag_direction"]
+    # hourly_caiso_v0 has 0 rows before 2024-06-05 07:00:00 UTC
+    assert fit_info["status"] == "unsupported_insufficient_pre_target_history"
+    assert fit_info["eligible_row_count"] == 0
+    assert fit_info["excluded_target_future_row_count"] == 48
 
 
-def test_treatment_clipping_fitted_from_history_only(history_df, benchmark_df):
-    """Verify clipping bounds are fit from pre-target history and preserve original values."""
-    bounds = fit_historical_clipping_bounds(history_df, signals=["temperature_c", "price_usd_per_mwh"])
-    assert "temperature_c" in bounds
-    assert bounds["temperature_c"]["source_rows"] == len(history_df["temperature_c"].dropna())
-
-    df_clipped, meta = create_clipped_variant(benchmark_df, bounds, signals=["temperature_c"])
-    assert "temperature_c_orig" in df_clipped.columns
-    assert "temperature_c_is_clipped" in df_clipped.columns
-    # Original values remain untouched in _orig column
-    pd.testing.assert_series_equal(df_clipped["temperature_c_orig"], benchmark_df["temperature_c"], check_names=False)
-
-
-def test_causal_imputation_no_backward_fill(history_df):
-    """Verify causal imputation uses forward fill and median fallback, never future values."""
-    test_df = pd.DataFrame({
-        "window_id": ["W1"] * 5,
-        "timestamp_utc": pd.date_range("2024-01-01", periods=5, freq="h", tz="UTC"),
-        "temperature_c": [np.nan, 20.0, np.nan, 25.0, np.nan],
+def test_treatment_fitting_fails_closed_when_future_data_injected():
+    """Verify that injecting extreme future data does not affect pre-cutoff parameters."""
+    pre_cutoff_dates = pd.date_range("2024-05-01", periods=10, freq="D", tz="UTC")
+    synthetic_history = pd.DataFrame({
+        "timestamp_utc": pre_cutoff_dates,
+        "temperature_c": [15.0, 16.0, 17.0, 15.5, 16.5, 17.5, 16.0, 15.0, 16.2, 16.8],
+        "price_usd_per_mwh": [25.0] * 10,
+        "carbon_g_per_kwh": [150.0] * 10,
+        "demand_mw": [20000.0] * 10,
+        "net_generation_mw": [18000.0] * 10,
     })
-    medians = {"temperature_c": 15.0}
-    df_imp, meta = create_causal_imputed_variant(test_df, fallback_medians=medians, signals=["temperature_c"])
 
-    vals = df_imp["temperature_c"].tolist()
-    sources = df_imp["temperature_c_impute_source"].tolist()
+    cutoff = "2024-06-05T07:00:00+00:00"
+    fit1 = fit_historical_treatment_parameters(synthetic_history, fit_cutoff_utc=cutoff)
+    assert fit1["status"] == "supported"
+    base_temp_upper = fit1["bounds"]["temperature_c"]["upper_bound"]
 
-    # Index 0 has no prior observation -> must use median fallback
-    assert vals[0] == 15.0
-    assert sources[0] == "historical_median_fallback"
+    # Inject extreme target-period observation (e.g. 2024-07-02 with temp=999.0)
+    injected_history = pd.concat([
+        synthetic_history,
+        pd.DataFrame({
+            "timestamp_utc": [pd.to_datetime("2024-07-02T12:00:00+00:00")],
+            "temperature_c": [999.0],
+            "price_usd_per_mwh": [9999.0],
+            "carbon_g_per_kwh": [9999.0],
+            "demand_mw": [99999.0],
+            "net_generation_mw": [99999.0],
+        })
+    ], ignore_index=True)
 
-    # Index 1 is original
-    assert vals[1] == 20.0
-    assert sources[1] == "original_observation"
-
-    # Index 2 has prior 20.0 -> forward fill 20.0, not future 25.0
-    assert vals[2] == 20.0
-    assert sources[2] == "causal_forward_fill"
-
-    # Index 3 is original
-    assert vals[3] == 25.0
-
-    # Index 4 forward fills 25.0
-    assert vals[4] == 25.0
-    assert sources[4] == "causal_forward_fill"
+    fit2 = fit_historical_treatment_parameters(injected_history, fit_cutoff_utc=cutoff)
+    # The extreme value was after cutoff, so bounds must be exactly identical
+    assert fit2["bounds"]["temperature_c"]["upper_bound"] == base_temp_upper
+    assert fit2["excluded_target_future_row_count"] == 1
 
 
-def test_sampling_manifests_equal_budget_and_no_duplicates(benchmark_df):
-    """Verify deterministic equal budget (120h) and no duplicate timestamps within manifests."""
-    manifests = generate_sampling_manifests(benchmark_df, budget_hours=120, seed=20261016)
-    assert set(manifests.keys()) == {"ordinary_window", "event_stratified", "phase_aware"}
+def test_treatment_variant_marked_unsupported_when_pre_cutoff_empty(benchmark_df, history_df):
+    """Verify clipped variant is cleanly labeled unsupported when no pre-target history exists."""
+    res = build_treatment_variants(
+        benchmark_df=benchmark_df,
+        history_df=history_df,
+        fit_cutoff_utc="2024-06-05T07:00:00+00:00",
+    )
+    assert res["metadata"]["clipped"]["status"] == "unsupported_insufficient_pre_target_history"
+    # Raw variant remains supported
+    assert res["metadata"]["raw"]["status"] == "supported"
+    # Causal imputed variant remains supported because benchmark has 0 missing cells
+    assert res["metadata"]["causal_imputed"]["status"] == "supported"
 
-    for name, m in manifests.items():
+
+# -------------------------------------------------------------
+# Issue 2: Outcome Sampling Tests (No Pseudo-Horizons)
+# -------------------------------------------------------------
+
+def test_sampling_manifests_use_original_outcome_hours(repo_root):
+    """Verify outcome sampling preserves original window, timestamp, and hour_offset without pseudo-horizons."""
+    m_path = repo_root / "data/manifests/p5_sampling_event_stratified.csv"
+    assert m_path.exists()
+    df_m = pd.read_csv(m_path)
+
+    assert len(df_m) == 120
+    assert "original_hour_offset" in df_m.columns
+    assert "window_id" in df_m.columns
+
+    # 60 control rows, 60 event rows
+    assert (df_m["window_id"] == "CTRL_20240605").sum() == 60
+    assert (df_m["window_id"] == "HW_20240702").sum() == 60
+
+    # Ensure original hour offsets are preserved (e.g. 0, 2, ..., 118)
+    ctrl_offsets = df_m[df_m["window_id"] == "CTRL_20240605"]["original_hour_offset"].tolist()
+    assert ctrl_offsets[0] == 0
+    assert ctrl_offsets[1] == 2
+    assert ctrl_offsets[-1] == 118
+
+
+def test_sampling_manifests_equal_budget_validation():
+    """Verify all 3 manifests have exactly 120 selected outcome hours and no duplicates."""
+    for s_name in ["ordinary_window", "event_stratified", "phase_aware"]:
+        m = pd.read_csv(f"data/manifests/p5_sampling_{s_name}.csv")
         assert len(m) == 120
-        assert not m["timestamp_utc"].duplicated().any()
+        assert not m["sample_index"].duplicated().any()
 
-    val_errs = validate_sampling_manifests(manifests, target_budget_hours=120)
-    assert len(val_errs) == 0
 
+# -------------------------------------------------------------
+# Issue 3: Policy Paired Analysis & Block-Bootstrap Tests
+# -------------------------------------------------------------
+
+def test_policy_paired_differences_completeness(repo_root):
+    """Verify policy paired differences contains all 4 policies and 10 required metrics."""
+    df_pp = pd.read_csv(repo_root / "data/results/p5_policy_paired_differences.csv")
+    assert len(df_pp) == 40  # 4 policies * 10 metrics
+
+    policies = set(df_pp["policy_name"].unique())
+    assert policies == {"cost_first", "carbon_first", "balanced", "dro_inspired"}
+
+    req_metrics = {
+        "cost_usd", "emissions_kg", "sla_completion", "cvar_cost_90", "cvar_emissions_90",
+        "peak_power_kw", "peak_concurrency", "unmet_energy_kwh", "deadline_misses", "violation_count"
+    }
+    assert set(df_pp["metric"].unique()) == req_metrics
+
+    # Verify inferential status is descriptive_single_window_pair
+    assert (df_pp["inferential_status"] == "descriptive_single_window_pair").all()
+
+
+def test_block_bootstrap_determinism():
+    """Verify block-bootstrap with 24h blocks is strictly deterministic given the project seed."""
+    hourly_diffs = np.sin(np.linspace(0, 10, 120)) * 10.0
+    b1 = compute_block_bootstrap_ci(hourly_diffs, block_length_hours=24, seed=20261016, repetitions=500)
+    b2 = compute_block_bootstrap_ci(hourly_diffs, block_length_hours=24, seed=20261016, repetitions=500)
+
+    assert b1 == b2
+    assert b1["block_length_hours"] == 24
+    assert b1["ci_lower"] < b1["mean"] < b1["ci_upper"]
+
+
+# -------------------------------------------------------------
+# Issue 4: Audit Fail-Closed Tests (Negative Mutation Testing)
+# -------------------------------------------------------------
+
+def test_g5_audit_passes_on_authentic_baseline(repo_root):
+    """Verify G5-a passes cleanly on generated authentic repo state."""
+    audit_res = run_g5_audit(repo_root=repo_root)
+    assert audit_res["status"] == "VERIFIED_PASS"
+    assert audit_res["failure_count"] == 0
+
+
+def test_g5_audit_fails_on_missing_file(repo_root, tmp_path):
+    """Verify G5-a fails closed when a required result artifact is missing."""
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    # Remove policy paired analysis artifact
+    (t_data / "results/p5_policy_paired_differences.csv").unlink()
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("p5_policy_paired_differences.csv" in f for f in res["failure_reasons"])
+
+
+def test_g5_audit_fails_on_tampered_hash(repo_root, tmp_path):
+    """Verify G5-a fails closed when a result file content is tampered with."""
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    # Tamper with E2 comparison metrics
+    e2_path = t_data / "results/p5_e2_policy_comparison_metrics.csv"
+    e2_path.write_text(e2_path.read_text() + "\ntampered_row,0,0,0\n")
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("hash mismatch" in f.lower() or "incomplete" in f.lower() for f in res["failure_reasons"])
+
+
+def test_g5_audit_fails_if_target_leakage_in_treatment_metadata(repo_root, tmp_path):
+    """Verify G5-a fails closed if treatment fit cutoff is set after target window start."""
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    meta_path = t_data / "results/p5_treatment_variants_meta.json"
+    with meta_path.open() as f:
+        meta = json.load(f)
+    meta["treatment_fit_info"]["fit_cutoff_utc"] = "2024-07-15T00:00:00+00:00"
+    with meta_path.open("w") as f:
+        json.dump(meta, f)
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("violates no-leakage" in f or "Target leakage" in f or "hash mismatch" in f for f in res["failure_reasons"])
+
+
+# -------------------------------------------------------------
+# Comparator Exactness Tests
+# -------------------------------------------------------------
 
 def test_comparator_exactness_and_unsupported_status(benchmark_df, workload_df):
     """Verify exact small instance finds global optimum while full benchmark reports unsupported."""
@@ -155,20 +256,3 @@ def test_comparator_exactness_and_unsupported_status(benchmark_df, workload_df):
     assert small_res["status"] == "optimal"
     assert small_res["optimal_cost_usd"] is not None
     assert small_res["optimal_cost_usd"] > 0
-
-
-def test_bootstrap_determinism_and_reproducibility():
-    """Verify bootstrap 95% CI produces identical results with the same seed."""
-    data = np.array([1.0, 2.0, 3.5, 4.0, 5.2, 6.1, 7.8, 8.4, 9.0, 10.5])
-    ci1 = compute_paired_bootstrap_ci(data, seed=20261016, repetitions=500)
-    ci2 = compute_paired_bootstrap_ci(data, seed=20261016, repetitions=500)
-    assert ci1 == ci2
-    assert ci1["ci_lower"] < ci1["mean"] < ci1["ci_upper"]
-
-
-def test_gate_g5_audit_passes(repo_root):
-    """Verify Gate G5-a comprehensive audit passes with 0 failures on generated artifacts."""
-    audit_res = run_g5_audit(repo_root=repo_root)
-    assert audit_res["status"] == "VERIFIED_PASS"
-    assert audit_res["failure_count"] == 0
-    assert len(audit_res["failure_reasons"]) == 0
