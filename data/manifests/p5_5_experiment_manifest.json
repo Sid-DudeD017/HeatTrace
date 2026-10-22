@@ -1,5 +1,5 @@
 {
-  "execution_timestamp_utc": "2026-10-22T14:30:48Z",
+  "execution_timestamp_utc": "2026-10-22T15:49:08Z",
   "grid_version": "v2",
   "manifest_version": "2.0",
   "phase": "P5.5",
@@ -13,13 +13,13 @@
   "results_files": {
     "csv": {
       "path": "/Users/siddharthbhakta/HeatTrace/data/results/p5_5_experiment_results.csv",
-      "sha256": "519e00561eb2355ecfed19d0090f048109a927a9d5b9bfe372d634f0a3805ec2",
-      "size_bytes": 1080492
+      "sha256": "2dcdb638bc6ceda00029e3003e0c44d857682276153e722d5c8406a0f4c197c6",
+      "size_bytes": 1080448
     },
     "parquet": {
       "path": "/Users/siddharthbhakta/HeatTrace/data/results/p5_5_experiment_results.parquet",
-      "sha256": "46f9476052d010de827aad47c7a6707933d42307d3aaf7e2f73c2d7b8900ff73",
-      "size_bytes": 188281
+      "sha256": "4f30eb556a35c6329f17f1079d35df7a4d6ac6004b82d7c65d37a00b595c1282",
+      "size_bytes": 187960
     }
   },
   "summary": {
@@ -29,6 +29,6 @@
     "unique_scenarios": 270
   },
   "total_runs": 1350,
-  "total_runtime_seconds": 15.35,
+  "total_runtime_seconds": 14.57,
   "total_scenarios": 270
 }
