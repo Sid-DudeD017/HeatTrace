@@ -30,17 +30,17 @@ All primary policy comparisons are conducted strictly on **jointly feasible scen
 2. **Cost-First Captures Sizable Reductions Under Foresight**:
    - In the matched control regime (`CTRL_20240605`, N=13), `cost_first` reduced electricity costs by **45.81%** vs. baseline ASAP execution.
    - In the heatwave event regime (`HW_20240702`, N=16), `cost_first` reduced electricity costs by **24.59%** vs. baseline.
-3. **Monotonic Value Decay with Forecast Noise (Unconfounded Seeds)**:
-   - For `cost_first`, relative savings vs. baseline degraded predictably as forecast error increased:
-     * Oracle ($\sigma=0$): **34.10%** savings (N=29)
-     * Low Noise ($\sigma=0.10$): **33.18%** savings (N=28)
-     * Medium Noise ($\sigma=0.25$): **31.88%** savings (N=28)
-     * High Noise ($\sigma=0.50$): **24.02%** savings (N=33)
-   - High noise retained **70.44%** of the oracle advantage.
+3. **Monotonic Value Decay with Forecast Noise (Common Cohort, N=26 Per Level)**:
+   - Evaluated across the strictly like-for-like common cohort, relative cost savings for `cost_first` degraded predictably as forecast error increased:
+     * Oracle ($\sigma=0$, N=26): **35.00%** savings
+     * Low Noise ($\sigma=0.10$, N=26): **33.91%** savings
+     * Medium Noise ($\sigma=0.25$, N=26): **31.96%** savings
+     * High Noise ($\sigma=0.50$, N=26): **23.58%** savings
+   - High noise retained **67.37%** of the oracle advantage.
 4. **Carbon vs. Cost Pareto Trade-Off**:
    - In the heatwave event (N=16), `carbon_first` reduced the emissions proxy by **14.93%**, but incurred a **23.53%** cost premium over `cost_first`.
 5. **Operational Feasibility Limits**:
-   - Feasibility was **99.1%** unconstrained, **73.8%** under moderate stress (250 kW / 8 jobs), and collapsed to **22.7%** under extreme stress (120 kW / 3 jobs). At $3	imes$ workload under extreme stress, feasibility was **0.0%**.
+   - Feasibility was **99.1%** unconstrained, **73.8%** under moderate stress (250 kW / 8 jobs), and collapsed to **22.7%** under extreme stress (120 kW / 3 jobs). At 3× workload under extreme stress, feasibility was **0.0%**.
 6. **Small-Instance Exact Comparator Validation**:
    - On 24-hour slices, `cost_first` achieved an exact **0.00%** optimality gap (global optimum), while baseline ASAP incurred a **21.19%** gap.
 

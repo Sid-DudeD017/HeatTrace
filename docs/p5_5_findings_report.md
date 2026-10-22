@@ -37,13 +37,14 @@ In addition to the primary fair view, the complete repository outputs include:
    - In the matched control regime (`CTRL_20240605`) under oracle foresight (N=13 jointly feasible scenarios), `cost_first` reduced electricity costs by **45.81%** relative to `baseline_reference`.
    - In the heatwave event regime (`HW_20240702`) under oracle foresight (N=16 jointly feasible scenarios), `cost_first` reduced electricity costs by **24.59%** relative to baseline. The smaller percentage reduction during heatwaves reflects the elevated baseload cost floor ($26.42/MWh minimum during heatwave vs. -$10.51/MWh solar curtailment trough during control).
 
-3. **Forecast Noise Sensitivity (Unconfounded Matched Seeds)**:
-   - With isolated forecast noise seeds, relative cost savings for `cost_first` on the primary fair set degraded monotonically with noise magnitude:
-     * Oracle ($\sigma=0.00$, N=29): **34.10%** savings
-     * Low Noise ($\sigma=0.10$, N=28): **33.18%** savings
-     * Medium Noise ($\sigma=0.25$, N=28): **31.88%** savings
-     * High Noise ($\sigma=0.50$, N=33): **24.02%** savings
-   - At high noise ($\sigma=0.50$), policies retained **70.44%** of the oracle foresight advantage.
+3. **Forecast Noise Sensitivity (Common Cohort, N=26 Per Level)**:
+   - Evaluated strictly across the common like-for-like cohort of stress cells (identical window, workload, capacity, and deadline settings that are jointly feasible with equal work at every forecast level), relative cost savings for `cost_first` degraded monotonically:
+     * Oracle ($\sigma=0.00$, N=26): **35.00%** savings
+     * Low Noise ($\sigma=0.10$, N=26): **33.91%** savings
+     * Medium Noise ($\sigma=0.25$, N=26): **31.96%** savings
+     * High Noise ($\sigma=0.50$, N=26): **23.58%** savings
+   - At high noise ($\sigma=0.50$), `cost_first` retained **67.37%** of the oracle foresight advantage.
+   - *(Secondary descriptive unconstrained set: Oracle 34.10%, Low 33.18%, Med 31.88%, High 24.02%)*
 
 4. **Cost vs. Quality-Limited Carbon Pareto Trade-Off**:
    - In the heatwave event under oracle foresight (N=16), `carbon_first` achieved a **14.93%** reduction in the quality-limited emissions proxy relative to baseline, but incurred a **23.53%** cost premium over `cost_first`.
@@ -54,7 +55,7 @@ In addition to the primary fair view, the complete repository outputs include:
 
 6. **Operational Feasibility Stress Boundary**:
    - Schedule feasibility was **99.11%** under unconstrained cluster limits, **73.78%** under moderate stress (250 kW / 8 jobs), and collapsed to **22.67%** under extreme stress (120 kW / 3 jobs).
-   - At $3	imes$ workload pressure under extreme resource stress, feasibility dropped to **0.00%**, mapping the physical saturation boundary.
+   - At 3× workload pressure under extreme resource stress, feasibility dropped to **0.00%**, mapping the physical saturation boundary.
 
 7. **Exact Small-Instance Comparator Validation**:
    - On 24-hour / 4-job slices of the authentic signals, exact branch-and-bound verified that `cost_first` achieved an exact **0.00%** optimality gap (finding the global optimum), whereas `baseline_reference` incurred a **21.19%** suboptimality gap.
