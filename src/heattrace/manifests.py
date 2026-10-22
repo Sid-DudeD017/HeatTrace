@@ -325,7 +325,8 @@ def write_atomic_figure(filepath: Path, fig: Any, **savefig_kwargs: Any) -> None
     """Save matplotlib figure atomically using a sibling staging file and atomic rename."""
     filepath = filepath.resolve()
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    stage_path = filepath.with_name(f"{filepath.name}.tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+    suffix = filepath.suffix
+    stage_path = filepath.with_name(f"{filepath.stem}_tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}{suffix}")
 
     try:
         fig.savefig(stage_path, **savefig_kwargs)
