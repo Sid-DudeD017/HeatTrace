@@ -1,0 +1,65 @@
+{
+  "headline_1_flat_forecast_collapse": {
+    "flat_forecast_collapse_pct": 100.0,
+    "flat_forecast_scenarios_evaluated": 54,
+    "flat_forecast_schedule_identical_count": 54,
+    "non_flat_divergence_pct": 100.0,
+    "non_flat_scenarios_evaluated": 216,
+    "non_flat_schedule_divergence_count": 216
+  },
+  "headline_2_primary_fair_savings": {
+    "control_cost_first_savings_pct": 45.81,
+    "control_sample_size_scenarios": 13,
+    "control_window_id": "CTRL_20240605",
+    "event_cost_first_savings_pct": 24.59,
+    "event_sample_size_scenarios": 16,
+    "event_window_id": "HW_20240702"
+  },
+  "headline_3_noise_degradation": {
+    "noise_retention_high_sigma_pct": 70.44,
+    "primary_fair_sample_sizes": {
+      "noisy_high": 33,
+      "noisy_low": 28,
+      "noisy_med": 28,
+      "oracle": 29
+    },
+    "savings_pct_by_noise_sigma": {
+      "noisy_sigma_0_10": 33.18,
+      "noisy_sigma_0_25": 31.88,
+      "noisy_sigma_0_50": 24.02,
+      "oracle_sigma_0": 34.1
+    }
+  },
+  "headline_4_carbon_cost_tradeoff": {
+    "carbon_first_cost_premium_vs_cost_first_pct": 23.53,
+    "carbon_first_emissions_reduction_pct": 14.93,
+    "event_sample_size_scenarios": 16
+  },
+  "headline_5_tail_risk_cvar90": {
+    "cvar_cost_90_baseline_usd_h": 12.94,
+    "cvar_cost_90_cost_first_usd_h": 9.68,
+    "cvar_cost_90_dro_inspired_usd_h": 10.82,
+    "cvar_cost_first_reduction_pct": 25.19,
+    "event_sample_size_scenarios": 16
+  },
+  "headline_6_operational_feasibility": {
+    "extreme_stress_feasibility_pct": 22.67,
+    "moderate_stress_feasibility_pct": 73.78,
+    "unconstrained_feasibility_pct": 99.11,
+    "workload_3x_extreme_feasibility_pct": 0.0
+  },
+  "headline_7_comparator_validation": {
+    "all_comparator_optimal": true,
+    "baseline_mean_gap_pct": 21.19,
+    "cost_first_mean_gap_pct": 0.0,
+    "cost_first_mean_gap_usd": 0.0,
+    "instances_evaluated": 2
+  },
+  "metadata": {
+    "grid_version": "v2",
+    "jointly_feasible_scenarios_count": 158,
+    "primary_fair_population_pct": 58.52,
+    "total_runs": 1350,
+    "total_scenarios": 270
+  }
+}

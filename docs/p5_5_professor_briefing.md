@@ -2,69 +2,59 @@
 
 **Meeting Briefing for Faculty Advisory Committee**  
 **Date**: October 23, 2026  
-**Phase**: P5.5 Completion & Gate G5.5-a Sign-Off (`VERIFIED_PASS`)  
+**Evidence Classification**: Preliminary Controlled Simulation & Hindsight Upper Bounds  
+**Audit Gate**: Gate G5.5-a Sign-Off (`VERIFIED_PASS`)  
 
 ---
 
-## 1. Project Objective & Context
-HeatTrace investigates how extreme weather regimes—specifically multi-day heatwaves—impact energy market dynamics, carbon intensity, and workload scheduling in computational data centers.
+## 1. Project Context & Objectives
+HeatTrace investigates how extreme weather regimes impact electricity prices, carbon intensity, and workload scheduling in computational data centers.
 
 ### What P0–P5 Established
-- **P0–P2**: High-integrity ingest, QC, and timestamp alignment of NOAA weather, CAISO LMP prices, and EIA-930 grid data.
-- **P3**: Robust heatwave detection (90th-percentile temperature thresholds) and matched-control sampling.
-- **P4**: Formal contract for workload execution, scheduling heuristics (Cost-First, Carbon-First, Balanced, DRO-inspired), and strict evaluation metrics.
-- **P5**: Authentic empirical finding: 2024 heatwave conditions elevated temperatures (+8.78°C), demand (+18.4%), electricity prices (+107.8%), and execution cost (+127.1%). However, **all scheduling policies produced identical schedules and identical costs**.
+- **P0–P3**: Validated ingest of NOAA weather, CAISO prices, and EIA-930 grid data; formal heatwave detection (90th-percentile thresholds) and control matching.
+- **P4**: Formal workload contract and scheduling policies (`cost_first`, `carbon_first`, `balanced`, `dro_inspired`).
+- **P5 Authentic Baseline**: Empirical heatwave conditions elevated temperatures (+8.78°C), demand (+18.4%), and electricity prices (+107.8%). However, all scheduling policies produced identical schedules because forecasts were static persistence projections ($45/MWh, 220 g/kWh) and cluster capacity was unconstrained.
 
 ### Why P5.5 Was Added
-The P5 diagnostic revealed that identical policy outcomes were an artifact of flat persistence forecasts ($45/MWh, 220 g/kWh) and unconstrained capacity (500 kW / 16 jobs for 30 jobs). P5.5 was added to systematically determine the precise conditions under which policies become distinguishable across forecast fidelity, workload pressure, capacity limits, and deadline flexibility.
+P5.5 systematically maps the exact operational and informational conditions under which policies become distinguishable, determining the sensitivity of policy performance to forecast noise, workload pressure, capacity limits, and deadline flexibility.
 
 ---
 
-## 2. Strongest Numerical Findings (From 1,350 Evaluated Runs)
+## 2. Strongest Numerical Findings (Primary Fair Comparison Population)
 
-1. **Information Gradients are the Primary Policy Separator**:
-   - Under flat forecasts, **100% of scenarios (54/54)** collapsed into identical policy results.
-   - When non-flat forecast information was present, **100% of scenarios (216/216)** separated distinctly.
-2. **Cost-First Captures Sizable Savings Under Foresight**:
-   - In the matched control regime, `cost_first` reduced electricity costs by **43.86%** relative to the baseline ASAP schedule (\$113.14 vs. \$197.40).
-   - In the heatwave event regime, `cost_first` reduced electricity costs by **19.38%** relative to baseline (\$346.55 vs. \$430.79), demonstrating that heatwaves compress flexible optimization margins due to higher baseload prices.
-3. **Monotonic Value Decay with Forecast Noise**:
-   - Relative cost savings degraded predictably as forecast error increased:
-     - Oracle ($\sigma=0$): **31.62%** savings
-     - Low noise ($\sigma=0.10$): **31.51%** savings
-     - Medium noise ($\sigma=0.25$): **29.26%** savings
-     - High noise ($\sigma=0.50$): **25.54%** savings
-   - A $50\%$ relative noise level degraded only $\sim 19.2\%$ of the total oracle benefit, showing robust residual value in directional price forecasts.
-4. **Feasibility and Operational Stress Limits**:
-   - System feasibility dropped from **99.33%** (unconstrained) to **88.00%** (moderate stress: 250 kW / 8 jobs) and **32.22%** (extreme stress: 120 kW / 3 jobs).
-   - At $3\times$ workload pressure under extreme bottlenecking, feasibility dropped to **0.00%**, mapping the exact physical collapse envelope.
+All primary policy comparisons are conducted strictly on **jointly feasible scenarios with equal delivered energy** (N=158 scenarios):
 
----
-
-## 3. Central Figures for Review
-
-1. **Cost–Carbon Pareto Frontier**:
-   - File: `data/figures/p5_5_fig1_cost_carbon_pareto.png` (also `.svg`)
-   - Demonstrates the trade-off: `carbon_first` achieves lowest emissions (-14.9%) but incurs +19.5% cost vs. `cost_first`. `balanced` provides an optimal compromise.
-2. **Forecast Error Sensitivity**:
-   - File: `data/figures/p5_5_fig2_forecast_error_sensitivity.png` (also `.svg`)
-   - Highlights the monotonic degradation of policy efficacy as forecast noise increases from $\sigma=0$ to $\sigma=0.50$.
-3. **Feasibility and SLA Stress Envelope Heatmap**:
-   - File: `data/figures/p5_5_fig4_feasibility_sla_heatmap.png` (also `.svg`)
-   - Quantifies the joint impact of workload multiplier ($1\times, 2\times, 3\times$) and cluster limits (unconstrained, 250 kW, 120 kW) on deadline compliance.
+1. **Information Gradients are the Primary Discriminability Prerequisite**:
+   - Under flat forecasts, **100% of scenarios (54 of 54)** collapsed into identical schedules.
+   - Non-flat forecasts produced **100% schedule differentiation (216 of 216)**, confirmed by canonical schedule digests.
+2. **Cost-First Captures Sizable Reductions Under Foresight**:
+   - In the matched control regime (`CTRL_20240605`, N=13), `cost_first` reduced electricity costs by **45.81%** vs. baseline ASAP execution.
+   - In the heatwave event regime (`HW_20240702`, N=16), `cost_first` reduced electricity costs by **24.59%** vs. baseline.
+3. **Monotonic Value Decay with Forecast Noise (Unconfounded Seeds)**:
+   - For `cost_first`, relative savings vs. baseline degraded predictably as forecast error increased:
+     * Oracle ($\sigma=0$): **34.10%** savings (N=29)
+     * Low Noise ($\sigma=0.10$): **33.18%** savings (N=28)
+     * Medium Noise ($\sigma=0.25$): **31.88%** savings (N=28)
+     * High Noise ($\sigma=0.50$): **24.02%** savings (N=33)
+   - High noise retained **70.44%** of the oracle advantage.
+4. **Carbon vs. Cost Pareto Trade-Off**:
+   - In the heatwave event (N=16), `carbon_first` reduced the emissions proxy by **14.93%**, but incurred a **23.53%** cost premium over `cost_first`.
+5. **Operational Feasibility Limits**:
+   - Feasibility was **99.1%** unconstrained, **73.8%** under moderate stress (250 kW / 8 jobs), and collapsed to **22.7%** under extreme stress (120 kW / 3 jobs). At $3	imes$ workload under extreme stress, feasibility was **0.0%**.
+6. **Small-Instance Exact Comparator Validation**:
+   - On 24-hour slices, `cost_first` achieved an exact **0.00%** optimality gap (global optimum), while baseline ASAP incurred a **21.19%** gap.
 
 ---
 
-## 4. Methodological Limitations & Evidence Boundaries
+## 3. Central Figures for Meeting Discussion
 
-- **Carbon Data**: EIA-930 hourly carbon observations carry known data-quality flags across all benchmark rows. All carbon metrics are strictly **quality-limited sensitivity evidence**.
-- **Oracle vs. Deployable**: Oracle evaluations represent theoretical hindsight upper bounds, not deployable forecasters.
-- **No Causal / Production Claims**: Results are deterministic simulation benchmarks establishing mathematical discriminability.
+1. **Cost–Carbon Pareto Frontier**: `data/figures/p5_5_fig1_cost_carbon_pareto.png`
+2. **Forecast Error Sensitivity**: `data/figures/p5_5_fig2_forecast_error_sensitivity.png`
+3. **Exact Small-Instance Comparator Gaps**: `data/figures/p5_5_fig6_comparator_optimality_gaps.png`
 
 ---
 
-## 5. Next Steps for Phase P6
-With policy discriminability and stress boundaries rigorously proven and Gate G5.5-a passed:
-1. Integrate realistic machine-learning time-series forecasters (e.g., gradient boosted or neural quantile forecasters trained on 2022–2023 data).
-2. Execute rolling-horizon online scheduling over 2025 out-of-sample test windows.
-3. Finalize paper manuscript and reproducible dissertation replication archive.
+## 4. Key Limitations
+- **Single Event/Control Pair**: Evaluated across 270 controlled combinations of one 120-hour heatwave event and one control window.
+- **Carbon Disclaimer**: All carbon intensity observations carry EIA Known Data Issue flags; findings are quality-limited sensitivity evidence only.
+- **No Causal / Production Claims**: Oracle and noisy-oracle runs are controlled simulations.

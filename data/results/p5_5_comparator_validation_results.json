@@ -1,0 +1,15 @@
+{
+  "all_instances_optimal": true,
+  "csv_path": "data/results/p5_5_comparator_validation_results.csv",
+  "csv_sha256": "38ac78bcee9ecb116a699a2ca5c08079f2719129efdc3eb90d87c9149bb6039f",
+  "mean_gap_usd_by_policy": {
+    "balanced": 0.50735,
+    "baseline_reference": 2.8446,
+    "carbon_first": 1.3586,
+    "cost_first": 0.0,
+    "dro_inspired": 0.50735
+  },
+  "status": "VERIFIED_SUPPORTED",
+  "total_instances_evaluated": 2,
+  "total_policy_evaluations": 10
+}

@@ -1,0 +1,11 @@
+validation_id,window_id,window_type,horizon_hours,job_count,policy_name,policy_version,is_feasible,realized_cost_usd,optimal_cost_usd,cost_optimality_gap_usd,cost_optimality_gap_pct,realized_emissions_kg,optimal_emissions_kg,comparator_status,comparator_reason
+comp_val_ctrl_24h,CTRL_20240605,control,24,4,baseline_reference,1.0,True,16.0853,11.681,4.4043,37.7,111.6675,98.1811,optimal,Global optimum found via exact branch-and-bound
+comp_val_ctrl_24h,CTRL_20240605,control,24,4,cost_first,1.0,True,11.681,11.681,0.0,0.0,98.1811,98.1811,optimal,Global optimum found via exact branch-and-bound
+comp_val_ctrl_24h,CTRL_20240605,control,24,4,carbon_first,1.0,True,12.0138,11.681,0.3328,2.85,97.8812,98.1811,optimal,Global optimum found via exact branch-and-bound
+comp_val_ctrl_24h,CTRL_20240605,control,24,4,balanced,1.0,True,11.681,11.681,0.0,0.0,98.1811,98.1811,optimal,Global optimum found via exact branch-and-bound
+comp_val_ctrl_24h,CTRL_20240605,control,24,4,dro_inspired,1.0,True,11.681,11.681,0.0,0.0,98.1811,98.1811,optimal,Global optimum found via exact branch-and-bound
+comp_val_hw_24h,HW_20240702,event,24,4,baseline_reference,1.0,True,28.7683,27.4834,1.2849,4.68,104.8548,100.2906,optimal,Global optimum found via exact branch-and-bound
+comp_val_hw_24h,HW_20240702,event,24,4,cost_first,1.0,True,27.4834,27.4834,0.0,0.0,100.2906,100.2906,optimal,Global optimum found via exact branch-and-bound
+comp_val_hw_24h,HW_20240702,event,24,4,carbon_first,1.0,True,29.8678,27.4834,2.3844,8.68,92.3986,100.2906,optimal,Global optimum found via exact branch-and-bound
+comp_val_hw_24h,HW_20240702,event,24,4,balanced,1.0,True,28.4981,27.4834,1.0147,3.69,93.7502,100.2906,optimal,Global optimum found via exact branch-and-bound
+comp_val_hw_24h,HW_20240702,event,24,4,dro_inspired,1.0,True,28.4981,27.4834,1.0147,3.69,93.7502,100.2906,optimal,Global optimum found via exact branch-and-bound
