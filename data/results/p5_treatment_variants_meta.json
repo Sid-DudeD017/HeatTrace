@@ -1,86 +1,56 @@
 {
-  "raw": {
-    "variant": "raw",
-    "row_count": 240,
-    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
-    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
-    "modified_cell_count": 0,
-    "clipped_cell_count": 0,
-    "imputed_cell_count": 0,
-    "remaining_missing_count": 0,
-    "carbon_quality_label": "quality_limited_sensitivity_only",
-    "treatment_description": "Unmodified original benchmark data."
+  "treatment_fit_info": {
+    "status": "unsupported_insufficient_pre_target_history",
+    "fit_cutoff_utc": "2024-06-05T07:00:00+00:00",
+    "eligible_row_count": 0,
+    "excluded_target_future_row_count": 48,
+    "source_min_timestamp_utc": null,
+    "source_max_timestamp_utc": null,
+    "source_file_hash": "c41e2c26f1e350f78458910c6dddf9ec3004caaaafc2a961b5c7367a31f0eefe",
+    "reason": "Zero or insufficient pre-cutoff observations (0 eligible rows before 2024-06-05T07:00:00+00:00; 48 rows excluded as target/future). Historical clipping and median imputation unsupported.",
+    "bounds": {},
+    "medians": {}
   },
-  "clipped": {
-    "variant": "clipped",
-    "row_count": 240,
-    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
-    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
-    "modified_cell_count": 150,
-    "clipped_cell_count": 150,
-    "imputed_cell_count": 0,
-    "per_column_clipped_count": {
-      "temperature_c": 1,
-      "demand_mw": 39,
-      "net_generation_mw": 36,
-      "price_usd_per_mwh": 34,
-      "carbon_g_per_kwh": 40
+  "variants_metadata": {
+    "raw": {
+      "variant": "raw",
+      "status": "supported",
+      "row_count": 240,
+      "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+      "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+      "modified_cell_count": 0,
+      "clipped_cell_count": 0,
+      "imputed_cell_count": 0,
+      "remaining_missing_count": 0,
+      "carbon_quality_label": "quality_limited_sensitivity_only",
+      "treatment_description": "Unmodified original benchmark data."
     },
-    "fitted_bounds": {
-      "temperature_c": {
-        "lower_bound": 11.7,
-        "upper_bound": 30.865,
-        "source_rows": 48
-      },
-      "demand_mw": {
-        "lower_bound": 23267.12,
-        "upper_bound": 41256.45,
-        "source_rows": 48
-      },
-      "net_generation_mw": {
-        "lower_bound": 16218.88,
-        "upper_bound": 36459.97,
-        "source_rows": 48
-      },
-      "price_usd_per_mwh": {
-        "lower_bound": 10.1201,
-        "upper_bound": 88.9037,
-        "source_rows": 48
-      },
-      "carbon_g_per_kwh": {
-        "lower_bound": 97.7815,
-        "upper_bound": 247.2493,
-        "source_rows": 48
-      }
+    "clipped": {
+      "variant": "clipped",
+      "status": "unsupported_insufficient_pre_target_history",
+      "row_count": 240,
+      "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+      "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+      "modified_cell_count": 0,
+      "clipped_cell_count": 0,
+      "imputed_cell_count": 0,
+      "remaining_missing_count": 0,
+      "carbon_quality_label": "quality_limited_sensitivity_only",
+      "limitation": "Zero or insufficient pre-cutoff observations (0 eligible rows before 2024-06-05T07:00:00+00:00; 48 rows excluded as target/future). Historical clipping and median imputation unsupported.",
+      "treatment_description": "Historical clipping bounds unsupported due to zero pre-target observations."
     },
-    "remaining_missing_count": 0,
-    "carbon_quality_label": "quality_limited_sensitivity_only",
-    "treatment_description": "Values outside 1st/99th percentiles clipped using historical bounds."
-  },
-  "causal_imputed": {
-    "variant": "causal_imputed",
-    "row_count": 240,
-    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
-    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
-    "modified_cell_count": 0,
-    "clipped_cell_count": 0,
-    "imputed_cell_count": 0,
-    "per_column_imputed_count": {
-      "temperature_c": 0,
-      "demand_mw": 0,
-      "net_generation_mw": 0,
-      "price_usd_per_mwh": 0,
-      "carbon_g_per_kwh": 0
-    },
-    "fallback_medians": {
-      "temperature_c": 18.075,
-      "demand_mw": 28654.5,
-      "net_generation_mw": 27214.0,
-      "price_usd_per_mwh": 32.0101,
-      "carbon_g_per_kwh": 145.3426
-    },
-    "remaining_missing_count": 0,
-    "carbon_quality_label": "quality_limited_sensitivity_only",
-    "treatment_description": "Causal forward fill within window; frozen historical median fallback."
+    "causal_imputed": {
+      "variant": "causal_imputed",
+      "status": "supported",
+      "row_count": 240,
+      "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+      "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+      "modified_cell_count": 0,
+      "clipped_cell_count": 0,
+      "imputed_cell_count": 0,
+      "remaining_missing_count": 0,
+      "carbon_quality_label": "quality_limited_sensitivity_only",
+      "treatment_description": "Causal forward fill (0 missing values in benchmark table; 100% complete observations)."
+    }
   }
 }
