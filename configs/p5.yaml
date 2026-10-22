@@ -1,0 +1,48 @@
+version: "1.0"
+random_seed: 20261016
+
+benchmark:
+  event_window_id: HW_20240702
+  control_window_id: CTRL_20240605
+  horizon_hours: 120
+
+policies:
+  - cost_first
+  - carbon_first
+  - balanced
+  - dro_inspired
+
+workload:
+  trace_id: trace_standard_120h_v0
+  job_count: 30
+
+constraints:
+  max_cluster_power_kw: 500.0
+  max_concurrent_jobs: 16
+  arrival_inclusive: true
+  deadline_exclusive: true
+
+treatment_variants:
+  - raw
+  - clipped
+  - causal_imputed
+
+sampling_strategies:
+  - ordinary_window
+  - event_stratified
+  - phase_aware
+
+evaluation_budget_hours: 120
+
+bootstrap:
+  seed: 20261016
+  repetitions: 2000
+  confidence_level: 0.95
+
+comparator:
+  exact_max_jobs: 6
+  exact_max_horizon_hours: 24
+
+carbon_quality:
+  interpretation_label: quality_limited_sensitivity_only
+  disclaimer: "EIA carbon observations contain known data-quality flags across all benchmark rows. Findings are descriptive/sensitivity-only and not primary causal evidence."

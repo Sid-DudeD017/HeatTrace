@@ -193,6 +193,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load and print P4 policy comparison metrics and carbon data-quality caveats",
     )
     parser.add_argument(
+        "--build-p5",
+        action="store_true",
+        help="Execute full P5 pipeline: characterization, treatments, sampling, and experiment runners",
+    )
+    parser.add_argument(
+        "--run-p5",
+        action="store_true",
+        help="Execute P5 experiments and produce results package",
+    )
+    parser.add_argument(
+        "--audit-p5",
+        action="store_true",
+        help="Execute Gate G5-a comprehensive verification audit",
+    )
+    parser.add_argument(
+        "--load-p5-results",
+        action="store_true",
+        help="Load, summarize, and display P5 experiment findings",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1307,9 +1327,87 @@ def run_load_p4_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_p5(args: argparse.Namespace) -> int:
+    """Execute full P5 pipeline."""
+    from heattrace.experiments.pipeline import run_complete_p5_pipeline
+
+    repo_root = Path(".").resolve()
+    print("\n======================= HeatTrace P5 Pipeline Runner =======================")
+    try:
+        res = run_complete_p5_pipeline(repo_root=repo_root)
+        print(f"Success! Generated P5 experimental outputs and manifest at {res['manifest_path']}.")
+        print(f"Total tracked output files generated: {res['results_generated']}.")
+        print("============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD P5 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_audit_p5(args: argparse.Namespace) -> int:
+    """Execute Gate G5-a comprehensive audit."""
+    from heattrace.process.p5_audit import run_g5_audit
+
+    repo_root = Path(".").resolve()
+    print("\n======================= Gate G5-a Comprehensive Audit =======================")
+    try:
+        audit_res = run_g5_audit(repo_root=repo_root)
+        status = audit_res["status"]
+        print(f"Audit Status: {status}")
+        print(f"Checked Experiments: {', '.join(audit_res['checked_experiments'])}")
+        print(f"Full Benchmark Comparator Status: {audit_res['comparator_audit']['full_benchmark_status']}")
+        print(f"Carbon Quality Label: {audit_res['carbon_data_quality']['interpretation_label']}")
+        if audit_res["failure_count"] > 0:
+            print(f"Failures ({audit_res['failure_count']}):")
+            for f in audit_res["failure_reasons"]:
+                print(f"  - {f}")
+            print("============================================================================\n")
+            return 1
+        print("============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[AUDIT P5 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_load_p5_results(args: argparse.Namespace) -> int:
+    """Load and summarize P5 experimental results."""
+    import pandas as pd
+    repo_root = Path(".").resolve()
+    results_dir = repo_root / "data/results"
+
+    e2_path = results_dir / "p5_e2_policy_comparison_metrics.csv"
+    if not e2_path.exists():
+        print(f"\n[LOAD P5 ERROR] Results not found at {e2_path}. Please run --build-p5 first.\n")
+        return 1
+
+    df_e2 = pd.read_csv(e2_path)
+    print("\n======================= HeatTrace P5-E2 Benchmark Results =======================")
+    cols = ["window_id", "policy_name", "total_realized_cost_usd", "total_realized_emissions_kg", "cvar_cost_90", "comparator_status"]
+    print(df_e2[[c for c in cols if c in df_e2.columns]].to_string(index=False))
+
+    strat_path = results_dir / "p5_e4_strategy_comparison_summary.csv"
+    if strat_path.exists():
+        df_strat = pd.read_csv(strat_path)
+        print("\n================== HeatTrace P5-E4 Equal-Budget Sampling Summary =================")
+        print(df_strat[["sampling_strategy", "target_budget_hours", "achieved_budget_hours", "ranking_identical_across_policies"]].to_string(index=False))
+
+    print("\n------------------------- Carbon Data Quality Disclosure -------------------------")
+    print("NOTE: Carbon intensity data contains EIA Known Data Issue flags across all rows.")
+    print("Carbon results are strictly 'quality_limited_sensitivity_only'.")
+    print("=================================================================================\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_p4:
+    if args.build_p5 or args.run_p5:
+        code = run_build_p5(args)
+    elif args.audit_p5:
+        code = run_audit_p5(args)
+    elif args.load_p5_results:
+        code = run_load_p5_results(args)
+    elif args.build_p4:
         code = run_build_p4(args)
     elif args.run_p4:
         code = run_run_p4(args)
