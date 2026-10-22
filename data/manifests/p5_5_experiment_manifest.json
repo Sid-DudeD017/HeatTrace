@@ -1,0 +1,32 @@
+{
+  "execution_timestamp_utc": "2026-10-22T12:27:36Z",
+  "manifest_version": "1.0",
+  "phase": "P5.5",
+  "policies": [
+    "baseline_reference",
+    "cost_first",
+    "carbon_first",
+    "balanced",
+    "dro_inspired"
+  ],
+  "results_files": {
+    "csv": {
+      "path": "data/results/p5_5_experiment_results.csv",
+      "sha256": "6f3bcdb820770b416fe89aa9f28d703873f3f46a4170127ee489ce7c27615c0e",
+      "size_bytes": 573684
+    },
+    "parquet": {
+      "path": "data/results/p5_5_experiment_results.parquet",
+      "sha256": "47028cd89af07d25231fcb3e632d29c2661c9c11bd9f629d522658f807c653fd",
+      "size_bytes": 88328
+    }
+  },
+  "summary": {
+    "feasible_runs": 988,
+    "infeasible_runs": 362,
+    "unique_scenarios": 270
+  },
+  "total_runs": 1350,
+  "total_runtime_seconds": 13.16,
+  "total_scenarios": 270
+}
