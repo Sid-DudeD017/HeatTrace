@@ -26,6 +26,13 @@ def generate_outcome_sampling_manifests(
     workload_id: str = "trace_standard_120h_v0",
     workload_digest: str = "",
     constraint_digest: str = "",
+    source_outcome_paths: dict[str, str] | None = None,
+    source_outcome_digests: dict[str, str] | None = None,
+    schedule_paths: dict[str, str] | None = None,
+    schedule_digests: dict[str, str] | None = None,
+    forecast_digest: str = "",
+    realized_scoring_digest: str = "",
+    selection_rule_version: str = "1.0",
 ) -> dict[str, pd.DataFrame]:
     """Generate deterministic sampling manifests selecting outcome hours from authentic runs."""
     manifests: dict[str, pd.DataFrame] = {}
@@ -33,26 +40,43 @@ def generate_outcome_sampling_manifests(
     ctrl_sorted = control_outcomes_df.sort_values("hour_offset").reset_index(drop=True)
     hw_sorted = event_outcomes_df.sort_values("hour_offset").reset_index(drop=True)
 
+    src_paths = source_outcome_paths or {}
+    src_digests = source_outcome_digests or {}
+    sched_paths = schedule_paths or {}
+    sched_digests = schedule_digests or {}
+
     # 1. Ordinary-window strategy (120 control outcome hours)
     ord_rows: list[dict[str, Any]] = []
+    ctrl_wid = "CTRL_20240605"
     for idx, row in ctrl_sorted.head(budget_hours).iterrows():
         ord_rows.append({
             "sampling_strategy": "ordinary_window",
             "sample_index": int(idx),
-            "window_id": str(row["window_id"]),
+            "window_id": ctrl_wid,
             "window_type": "control",
             "phase_label": str(row.get("phase_label", "control")),
             "timestamp_utc": row["timestamp_utc"],
+            "original_window_id": ctrl_wid,
+            "original_timestamp_utc": row["timestamp_utc"],
             "original_hour_offset": int(row["hour_offset"]),
             "workload_trace_id": workload_id,
-            "workload_digest": workload_digest,
-            "constraint_digest": constraint_digest,
+            "workload_sha256": workload_digest,
+            "constraint_sha256": constraint_digest,
+            "schedule_path": sched_paths.get(ctrl_wid, ""),
+            "schedule_sha256": sched_digests.get(ctrl_wid, ""),
+            "source_outcome_path": src_paths.get(ctrl_wid, ""),
+            "source_outcome_sha256": src_digests.get(ctrl_wid, ""),
+            "forecast_sha256": forecast_digest,
+            "realized_scoring_sha256": realized_scoring_digest,
+            "seed": seed,
+            "selection_rule_version": selection_rule_version,
             "inclusion_reason": "Chronological ordinary control outcome hour (100% control budget)",
         })
     manifests["ordinary_window"] = pd.DataFrame(ord_rows)
 
     # 2. Event-stratified strategy (60 control outcome hours + 60 event outcome hours = 120h)
     strat_rows: list[dict[str, Any]] = []
+    hw_wid = "HW_20240702"
     # 60 control hours (even offsets 0, 2, ..., 118)
     ctrl_indices = np.arange(0, len(ctrl_sorted), 2)[:budget_hours // 2]
     for s_idx, orig_idx in enumerate(ctrl_indices):
@@ -60,15 +84,25 @@ def generate_outcome_sampling_manifests(
         strat_rows.append({
             "sampling_strategy": "event_stratified",
             "sample_index": s_idx,
-            "window_id": str(row["window_id"]),
+            "window_id": ctrl_wid,
             "window_type": "control",
             "phase_label": str(row.get("phase_label", "control")),
             "timestamp_utc": row["timestamp_utc"],
+            "original_window_id": ctrl_wid,
+            "original_timestamp_utc": row["timestamp_utc"],
             "original_hour_offset": int(row["hour_offset"]),
             "workload_trace_id": workload_id,
-            "workload_digest": workload_digest,
-            "constraint_digest": constraint_digest,
-            "inclusion_reason": "Stratified non-event control outcome stratum (50% budget)",
+            "workload_sha256": workload_digest,
+            "constraint_sha256": constraint_digest,
+            "schedule_path": sched_paths.get(ctrl_wid, ""),
+            "schedule_sha256": sched_digests.get(ctrl_wid, ""),
+            "source_outcome_path": src_paths.get(ctrl_wid, ""),
+            "source_outcome_sha256": src_digests.get(ctrl_wid, ""),
+            "forecast_sha256": forecast_digest,
+            "realized_scoring_sha256": realized_scoring_digest,
+            "seed": seed,
+            "selection_rule_version": selection_rule_version,
+            "inclusion_reason": "Stratified non-event control outcome stratum (50% budget) [evaluation_only_outcome_sampling]",
         })
     # 60 event hours (even offsets 0, 2, ..., 118)
     hw_indices = np.arange(0, len(hw_sorted), 2)[:budget_hours // 2]
@@ -77,15 +111,25 @@ def generate_outcome_sampling_manifests(
         strat_rows.append({
             "sampling_strategy": "event_stratified",
             "sample_index": (budget_hours // 2) + s_idx,
-            "window_id": str(row["window_id"]),
+            "window_id": hw_wid,
             "window_type": "event",
             "phase_label": str(row.get("phase_label", "sustained")),
             "timestamp_utc": row["timestamp_utc"],
+            "original_window_id": hw_wid,
+            "original_timestamp_utc": row["timestamp_utc"],
             "original_hour_offset": int(row["hour_offset"]),
             "workload_trace_id": workload_id,
-            "workload_digest": workload_digest,
-            "constraint_digest": constraint_digest,
-            "inclusion_reason": "Stratified heatwave event outcome stratum (50% budget)",
+            "workload_sha256": workload_digest,
+            "constraint_sha256": constraint_digest,
+            "schedule_path": sched_paths.get(hw_wid, ""),
+            "schedule_sha256": sched_digests.get(hw_wid, ""),
+            "source_outcome_path": src_paths.get(hw_wid, ""),
+            "source_outcome_sha256": src_digests.get(hw_wid, ""),
+            "forecast_sha256": forecast_digest,
+            "realized_scoring_sha256": realized_scoring_digest,
+            "seed": seed,
+            "selection_rule_version": selection_rule_version,
+            "inclusion_reason": "Stratified heatwave event outcome stratum (50% budget) [evaluation_only_outcome_sampling]",
         })
     manifests["event_stratified"] = pd.DataFrame(strat_rows)
 
@@ -95,14 +139,24 @@ def generate_outcome_sampling_manifests(
         phase_rows.append({
             "sampling_strategy": "phase_aware",
             "sample_index": int(idx),
-            "window_id": str(row["window_id"]),
+            "window_id": hw_wid,
             "window_type": "event",
             "phase_label": str(row.get("phase_label", "sustained")),
             "timestamp_utc": row["timestamp_utc"],
+            "original_window_id": hw_wid,
+            "original_timestamp_utc": row["timestamp_utc"],
             "original_hour_offset": int(row["hour_offset"]),
             "workload_trace_id": workload_id,
-            "workload_digest": workload_digest,
-            "constraint_digest": constraint_digest,
+            "workload_sha256": workload_digest,
+            "constraint_sha256": constraint_digest,
+            "schedule_path": sched_paths.get(hw_wid, ""),
+            "schedule_sha256": sched_digests.get(hw_wid, ""),
+            "source_outcome_path": src_paths.get(hw_wid, ""),
+            "source_outcome_sha256": src_digests.get(hw_wid, ""),
+            "forecast_sha256": forecast_digest,
+            "realized_scoring_sha256": realized_scoring_digest,
+            "seed": seed,
+            "selection_rule_version": selection_rule_version,
             "inclusion_reason": f"Phase-aware event outcome partition: {row.get('phase_label', 'sustained')}",
         })
     manifests["phase_aware"] = pd.DataFrame(phase_rows)
@@ -132,10 +186,20 @@ def validate_sampling_manifests(
             "window_type",
             "phase_label",
             "timestamp_utc",
+            "original_window_id",
+            "original_timestamp_utc",
             "original_hour_offset",
             "workload_trace_id",
-            "workload_digest",
-            "constraint_digest",
+            "workload_sha256",
+            "constraint_sha256",
+            "schedule_path",
+            "schedule_sha256",
+            "source_outcome_path",
+            "source_outcome_sha256",
+            "forecast_sha256",
+            "realized_scoring_sha256",
+            "seed",
+            "selection_rule_version",
             "inclusion_reason",
         ]
         for c in req_cols:

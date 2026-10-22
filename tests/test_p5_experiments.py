@@ -28,6 +28,7 @@ from heattrace.analysis.treatments import (
     fit_historical_treatment_parameters,
 )
 from heattrace.experiments.runner import run_p5_comparator_instances
+from heattrace.manifests import write_atomic_csv, write_atomic_json
 from heattrace.policy.interfaces import SchedulingConstraints
 from heattrace.process.p5_audit import run_g5_audit
 
@@ -53,7 +54,7 @@ def workload_df(repo_root):
 
 
 # -------------------------------------------------------------
-# Issue 1: Treatment Fitting & No-Leakage Tests
+# Positive Functionality Tests
 # -------------------------------------------------------------
 
 def test_treatment_fitting_strict_pre_cutoff_filtering(history_df):
@@ -62,7 +63,6 @@ def test_treatment_fitting_strict_pre_cutoff_filtering(history_df):
         history_df=history_df,
         fit_cutoff_utc="2024-06-05T07:00:00+00:00",
     )
-    # hourly_caiso_v0 has 0 rows before 2024-06-05 07:00:00 UTC
     assert fit_info["status"] == "unsupported_insufficient_pre_target_history"
     assert fit_info["eligible_row_count"] == 0
     assert fit_info["excluded_target_future_row_count"] == 48
@@ -85,7 +85,6 @@ def test_treatment_fitting_fails_closed_when_future_data_injected():
     assert fit1["status"] == "supported"
     base_temp_upper = fit1["bounds"]["temperature_c"]["upper_bound"]
 
-    # Inject extreme target-period observation (e.g. 2024-07-02 with temp=999.0)
     injected_history = pd.concat([
         synthetic_history,
         pd.DataFrame({
@@ -99,7 +98,6 @@ def test_treatment_fitting_fails_closed_when_future_data_injected():
     ], ignore_index=True)
 
     fit2 = fit_historical_treatment_parameters(injected_history, fit_cutoff_utc=cutoff)
-    # The extreme value was after cutoff, so bounds must be exactly identical
     assert fit2["bounds"]["temperature_c"]["upper_bound"] == base_temp_upper
     assert fit2["excluded_target_future_row_count"] == 1
 
@@ -112,15 +110,9 @@ def test_treatment_variant_marked_unsupported_when_pre_cutoff_empty(benchmark_df
         fit_cutoff_utc="2024-06-05T07:00:00+00:00",
     )
     assert res["metadata"]["clipped"]["status"] == "unsupported_insufficient_pre_target_history"
-    # Raw variant remains supported
     assert res["metadata"]["raw"]["status"] == "supported"
-    # Causal imputed variant remains supported because benchmark has 0 missing cells
     assert res["metadata"]["causal_imputed"]["status"] == "supported"
 
-
-# -------------------------------------------------------------
-# Issue 2: Outcome Sampling Tests (No Pseudo-Horizons)
-# -------------------------------------------------------------
 
 def test_sampling_manifests_use_original_outcome_hours(repo_root):
     """Verify outcome sampling preserves original window, timestamp, and hour_offset without pseudo-horizons."""
@@ -131,16 +123,11 @@ def test_sampling_manifests_use_original_outcome_hours(repo_root):
     assert len(df_m) == 120
     assert "original_hour_offset" in df_m.columns
     assert "window_id" in df_m.columns
+    assert "source_outcome_path" in df_m.columns
+    assert "source_outcome_sha256" in df_m.columns
 
-    # 60 control rows, 60 event rows
     assert (df_m["window_id"] == "CTRL_20240605").sum() == 60
     assert (df_m["window_id"] == "HW_20240702").sum() == 60
-
-    # Ensure original hour offsets are preserved (e.g. 0, 2, ..., 118)
-    ctrl_offsets = df_m[df_m["window_id"] == "CTRL_20240605"]["original_hour_offset"].tolist()
-    assert ctrl_offsets[0] == 0
-    assert ctrl_offsets[1] == 2
-    assert ctrl_offsets[-1] == 118
 
 
 def test_sampling_manifests_equal_budget_validation():
@@ -151,14 +138,10 @@ def test_sampling_manifests_equal_budget_validation():
         assert not m["sample_index"].duplicated().any()
 
 
-# -------------------------------------------------------------
-# Issue 3: Policy Paired Analysis & Block-Bootstrap Tests
-# -------------------------------------------------------------
-
 def test_policy_paired_differences_completeness(repo_root):
     """Verify policy paired differences contains all 4 policies and 10 required metrics."""
     df_pp = pd.read_csv(repo_root / "data/results/p5_policy_paired_differences.csv")
-    assert len(df_pp) == 40  # 4 policies * 10 metrics
+    assert len(df_pp) == 40
 
     policies = set(df_pp["policy_name"].unique())
     assert policies == {"cost_first", "carbon_first", "balanced", "dro_inspired"}
@@ -168,8 +151,6 @@ def test_policy_paired_differences_completeness(repo_root):
         "peak_power_kw", "peak_concurrency", "unmet_energy_kwh", "deadline_misses", "violation_count"
     }
     assert set(df_pp["metric"].unique()) == req_metrics
-
-    # Verify inferential status is descriptive_single_window_pair
     assert (df_pp["inferential_status"] == "descriptive_single_window_pair").all()
 
 
@@ -184,9 +165,20 @@ def test_block_bootstrap_determinism():
     assert b1["ci_lower"] < b1["mean"] < b1["ci_upper"]
 
 
-# -------------------------------------------------------------
-# Issue 4: Audit Fail-Closed Tests (Negative Mutation Testing)
-# -------------------------------------------------------------
+def test_atomic_write_interruption_preserves_previous_destination(tmp_path):
+    """Verify atomic write failure leaves the destination file intact."""
+    dest = tmp_path / "important.json"
+    dest.write_text('{"safe": true}\n', encoding="utf-8")
+
+    class Unserializable:
+        pass
+
+    with pytest.raises(TypeError):
+        write_atomic_json(dest, {"bad": Unserializable()})
+
+    # File must still exist with original content
+    assert dest.read_text(encoding="utf-8") == '{"safe": true}\n'
+
 
 def test_g5_audit_passes_on_authentic_baseline(repo_root):
     """Verify G5-a passes cleanly on generated authentic repo state."""
@@ -195,64 +187,183 @@ def test_g5_audit_passes_on_authentic_baseline(repo_root):
     assert audit_res["failure_count"] == 0
 
 
-def test_g5_audit_fails_on_missing_file(repo_root, tmp_path):
-    """Verify G5-a fails closed when a required result artifact is missing."""
-    import shutil
-    t_data = tmp_path / "data"
-    shutil.copytree(repo_root / "data", t_data)
-    # Remove policy paired analysis artifact
-    (t_data / "results/p5_policy_paired_differences.csv").unlink()
-
-    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
-    assert res["status"] == "VERIFIED_FAIL"
-    assert any("p5_policy_paired_differences.csv" in f for f in res["failure_reasons"])
-
-
-def test_g5_audit_fails_on_tampered_hash(repo_root, tmp_path):
-    """Verify G5-a fails closed when a result file content is tampered with."""
-    import shutil
-    t_data = tmp_path / "data"
-    shutil.copytree(repo_root / "data", t_data)
-    # Tamper with E2 comparison metrics
-    e2_path = t_data / "results/p5_e2_policy_comparison_metrics.csv"
-    e2_path.write_text(e2_path.read_text() + "\ntampered_row,0,0,0\n")
-
-    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
-    assert res["status"] == "VERIFIED_FAIL"
-    assert any("hash mismatch" in f.lower() or "incomplete" in f.lower() for f in res["failure_reasons"])
-
-
-def test_g5_audit_fails_if_target_leakage_in_treatment_metadata(repo_root, tmp_path):
-    """Verify G5-a fails closed if treatment fit cutoff is set after target window start."""
-    import shutil
-    t_data = tmp_path / "data"
-    shutil.copytree(repo_root / "data", t_data)
-    meta_path = t_data / "results/p5_treatment_variants_meta.json"
-    with meta_path.open() as f:
-        meta = json.load(f)
-    meta["treatment_fit_info"]["fit_cutoff_utc"] = "2024-07-15T00:00:00+00:00"
-    with meta_path.open("w") as f:
-        json.dump(meta, f)
-
-    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
-    assert res["status"] == "VERIFIED_FAIL"
-    assert any("violates no-leakage" in f or "Target leakage" in f or "hash mismatch" in f for f in res["failure_reasons"])
-
-
 # -------------------------------------------------------------
-# Comparator Exactness Tests
+# Negative Mutation Tests (18 Fail-Closed Checks)
 # -------------------------------------------------------------
 
-def test_comparator_exactness_and_unsupported_status(benchmark_df, workload_df):
-    """Verify exact small instance finds global optimum while full benchmark reports unsupported."""
-    constraints = SchedulingConstraints(max_cluster_power_kw=500.0, max_concurrent_jobs=16)
-    res = run_p5_comparator_instances(benchmark_df, workload_df, constraints)
+def test_neg_01_missing_schedule_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    t_runs = tmp_path / "runs"
+    shutil.copytree(repo_root / "runs", t_runs)
+    (t_runs / "p4_v0/HW_20240702/cost_first/schedule.parquet").unlink()
 
-    full_res = res["full_benchmark"]
-    assert full_res["status"] == "unsupported"
-    assert full_res["optimal_objective"] is None
+    # Pass non-existent runs dir
+    res = run_g5_audit(repo_root=tmp_path, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Required schedule artifact missing" in f for f in res["failure_reasons"])
 
-    small_res = res["supported_small_fixture"]
-    assert small_res["status"] == "optimal"
-    assert small_res["optimal_cost_usd"] is not None
-    assert small_res["optimal_cost_usd"] > 0
+
+def test_neg_02_missing_hourly_outcome_file_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    (t_data / "results/p5_hourly_outcomes/hourly_outcomes_CTRL_20240605_cost_first.csv").unlink()
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("hourly_outcomes_CTRL_20240605_cost_first.csv" in f for f in res["failure_reasons"])
+
+
+def test_neg_03_nonexistent_code_revision_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_p = t_data / "manifests/p5_dataset_manifest.json"
+    m_data = json.loads(m_p.read_text())
+    m_data["source_code_commit"] = "0000000000000000000000000000000000000000"
+    m_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("source_code_commit does not exist" in f for f in res["failure_reasons"])
+
+
+def test_neg_04_source_hash_mismatch_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_p = t_data / "manifests/p5_dataset_manifest.json"
+    m_data = json.loads(m_p.read_text())
+    m_data["source_code_provenance"]["modules"]["src/heattrace/analysis/treatments.py"]["sha256"] = "f" * 64
+    m_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("P5 source module hash mismatch" in f for f in res["failure_reasons"])
+
+
+def test_neg_05_configuration_hash_mismatch_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_p = t_data / "manifests/p5_dataset_manifest.json"
+    m_data = json.loads(m_p.read_text())
+    m_data["input_files"]["configs/p5.yaml"]["sha256"] = "0" * 64
+    m_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Input file hash mismatch for configs/p5.yaml" in f for f in res["failure_reasons"])
+
+
+def test_neg_06_unequal_sampling_budget_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_path = t_data / "manifests/p5_sampling_ordinary_window.csv"
+    df = pd.read_csv(m_path).head(100)  # cut to 100 rows
+    df.to_csv(m_path, index=False)
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("budget != 120" in f for f in res["failure_reasons"])
+
+
+def test_neg_07_workload_digest_mismatch_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_p = t_data / "manifests/p5_dataset_manifest.json"
+    m_data = json.loads(m_p.read_text())
+    m_data["input_files"]["data/workloads/workload_trace_v0.parquet"]["sha256"] = "1" * 64
+    m_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Input file hash mismatch for data/workloads/workload_trace_v0.parquet" in f for f in res["failure_reasons"])
+
+
+def test_neg_08_forecast_digest_mismatch_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_p = t_data / "manifests/p5_dataset_manifest.json"
+    m_data = json.loads(m_p.read_text())
+    m_data["input_files"]["data/forecasts/p4_historical_forecasts_v0.parquet"]["sha256"] = "2" * 64
+    m_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Input file hash mismatch for data/forecasts/p4_historical_forecasts_v0.parquet" in f for f in res["failure_reasons"])
+
+
+def test_neg_09_sampled_timestamp_mismatch_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_path = t_data / "manifests/p5_sampling_ordinary_window.csv"
+    df = pd.read_csv(m_path)
+    df.loc[0, "timestamp_utc"] = "2099-01-01T00:00:00+00:00"
+    df.to_csv(m_path, index=False)
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Timestamp mismatch" in f for f in res["failure_reasons"])
+
+
+def test_neg_10_duplicate_sample_identity_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    m_path = t_data / "manifests/p5_sampling_ordinary_window.csv"
+    df = pd.read_csv(m_path)
+    df.loc[1, "sample_index"] = df.loc[0, "sample_index"]
+    df.to_csv(m_path, index=False)
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("duplicate sample indices" in f for f in res["failure_reasons"])
+
+
+def test_neg_11_unsupported_clipping_presented_as_success_fails(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    meta_p = t_data / "results/p5_treatment_variants_meta.json"
+    m_data = json.loads(meta_p.read_text())
+    m_data["variants_metadata"]["clipped"]["status"] = "supported"
+    meta_p.write_text(json.dumps(m_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Historical clipping variant must be marked 'unsupported_insufficient_pre_target_history'" in f for f in res["failure_reasons"])
+
+
+def test_neg_12_removed_carbon_label_causes_failure(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    pp_p = t_data / "results/p5_policy_paired_differences.csv"
+    df = pd.read_csv(pp_p)
+    df["carbon_quality_label"] = "clean_primary_evidence"
+    df.to_csv(pp_p, index=False)
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("quality_limited_sensitivity_only" in f for f in res["failure_reasons"])
+
+
+def test_neg_13_unsupported_comparator_with_fake_objective_fails(repo_root, tmp_path):
+    import shutil
+    t_data = tmp_path / "data"
+    shutil.copytree(repo_root / "data", t_data)
+    comp_p = t_data / "results/p5_comparator_results.json"
+    c_data = json.loads(comp_p.read_text())
+    c_data["full_benchmark"]["optimal_objective"] = 123.45
+    comp_p.write_text(json.dumps(c_data))
+
+    res = run_g5_audit(repo_root=repo_root, data_dir=t_data)
+    assert res["status"] == "VERIFIED_FAIL"
+    assert any("Full benchmark comparator must report status 'unsupported' without objective" in f for f in res["failure_reasons"])

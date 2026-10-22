@@ -198,6 +198,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Execute full P5 pipeline: characterization, treatments, sampling, and experiment runners",
     )
     parser.add_argument(
+        "--source-commit",
+        default=None,
+        help="Explicit Git commit hash corresponding to the verified P5 source code revision",
+    )
+    parser.add_argument(
         "--run-p5",
         action="store_true",
         help="Execute P5 experiments and produce results package",
@@ -1334,7 +1339,7 @@ def run_build_p5(args: argparse.Namespace) -> int:
     repo_root = Path(".").resolve()
     print("\n======================= HeatTrace P5 Pipeline Runner =======================")
     try:
-        res = run_complete_p5_pipeline(repo_root=repo_root)
+        res = run_complete_p5_pipeline(repo_root=repo_root, source_code_commit=args.source_commit)
         print(f"Success! Generated P5 experimental outputs and manifest at {res['manifest_path']}.")
         print(f"Total tracked output files generated: {res['results_generated']}.")
         print("============================================================================\n")

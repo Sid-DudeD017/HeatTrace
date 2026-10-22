@@ -50,6 +50,11 @@ def run_single_schedule_run(
     window_id: str,
     window_type: str,
     variant_name: str = "raw",
+    forecast_digest: str = "",
+    realized_digest: str = "",
+    workload_digest: str = "",
+    constraint_digest: str = "",
+    schedule_digest: str = "",
 ) -> dict[str, Any]:
     """Execute policy schedule on original contiguous timeline and compute metrics & hourly outcomes."""
     policy = get_policy_instance(policy_name)
@@ -110,6 +115,7 @@ def run_single_schedule_run(
             "window_id": window_id,
             "window_type": window_type,
             "policy_name": policy_name,
+            "policy_version": "1.0",
             "hour_offset": h,
             "timestamp_utc": realized_df["timestamp_utc"].iloc[h],
             "phase_label": realized_df.get("phase_label", pd.Series(["control"]*horizon)).iloc[h],
@@ -117,6 +123,13 @@ def run_single_schedule_run(
             "concurrent_jobs_count": len(hourly_jobs[h]),
             "hourly_cost_usd": round(float(hourly_cost[h]), 4),
             "hourly_emissions_kg": round(float(hourly_emiss[h]), 4),
+            "workload_trace_id": str(workload_df["workload_trace_id"].iloc[0]),
+            "workload_digest": workload_digest,
+            "constraint_digest": constraint_digest,
+            "schedule_digest": schedule_digest,
+            "forecast_digest": forecast_digest,
+            "realized_scoring_digest": realized_digest,
+            "carbon_quality_label": "quality_limited_sensitivity_only",
         })
 
     return {
@@ -134,6 +147,11 @@ def run_p5_treatment_experiments(
     constraints: SchedulingConstraints,
     fit_cutoff_utc: str = "2024-06-05T07:00:00+00:00",
     source_file_hash: str = "",
+    forecast_digest: str = "",
+    realized_digest: str = "",
+    workload_digest: str = "",
+    constraint_digest: str = "",
+    schedule_digests: dict[tuple[str, str], str] | None = None,
 ) -> dict[str, Any]:
     """Run E3 treatment variants across all 4 policies and 2 windows with strict cutoff enforcement."""
     variants_res = build_treatment_variants(
@@ -163,7 +181,6 @@ def run_p5_treatment_experiments(
                 exp_id = f"exp_treatment_{v_name}_{wid}_{pol}"
 
                 if v_status != "supported":
-                    # Mark unsupported cleanly without fabricating runs
                     unsupported_meta = {
                         "experiment_id": exp_id,
                         "variant": v_name,
@@ -181,6 +198,8 @@ def run_p5_treatment_experiments(
                     results.append(unsupported_meta)
                     continue
 
+                sched_sha = schedule_digests.get((wid, pol), "") if schedule_digests else ""
+
                 run_out = run_single_schedule_run(
                     policy_name=pol,
                     workload_df=workload_df,
@@ -190,6 +209,11 @@ def run_p5_treatment_experiments(
                     window_id=wid,
                     window_type=wtype,
                     variant_name=v_name,
+                    forecast_digest=forecast_digest,
+                    realized_digest=realized_digest,
+                    workload_digest=workload_digest,
+                    constraint_digest=constraint_digest,
+                    schedule_digest=sched_sha,
                 )
                 m = run_out["metrics"]
                 m["experiment_id"] = exp_id
@@ -213,6 +237,12 @@ def run_p5_sampling_experiments(
     constraint_digest: str = "",
     budget_hours: int = 120,
     seed: int = 20261016,
+    source_outcome_paths: dict[str, str] | None = None,
+    source_outcome_digests: dict[str, str] | None = None,
+    schedule_paths: dict[str, str] | None = None,
+    schedule_digests: dict[str, str] | None = None,
+    forecast_digest: str = "",
+    realized_scoring_digest: str = "",
 ) -> dict[str, Any]:
     """Execute E4 equal-budget sampling over already-generated hourly policy outcomes.
 
@@ -236,6 +266,12 @@ def run_p5_sampling_experiments(
         workload_id="trace_standard_120h_v0",
         workload_digest=workload_digest,
         constraint_digest=constraint_digest,
+        source_outcome_paths=source_outcome_paths,
+        source_outcome_digests=source_outcome_digests,
+        schedule_paths=schedule_paths,
+        schedule_digests=schedule_digests,
+        forecast_digest=forecast_digest,
+        realized_scoring_digest=realized_scoring_digest,
     )
 
     results: list[dict[str, Any]] = []

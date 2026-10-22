@@ -292,12 +292,43 @@ def write_atomic_json(filepath: Path, data: dict[str, Any]) -> None:
     """Write JSON data atomically using a staging file and atomic rename."""
     filepath = filepath.resolve()
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    stage_path = filepath.with_suffix(f".tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+    stage_path = filepath.with_name(f"{filepath.name}.tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
 
     try:
         with stage_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, sort_keys=True)
             f.write("\n")
+            f.flush()
+        stage_path.replace(filepath)
+    except Exception:
+        if stage_path.exists():
+            stage_path.unlink()
+        raise
+
+
+def write_atomic_csv(filepath: Path, df: pd.DataFrame, **to_csv_kwargs: Any) -> None:
+    """Write DataFrame to CSV atomically using a sibling staging file and atomic rename."""
+    filepath = filepath.resolve()
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    stage_path = filepath.with_name(f"{filepath.name}.tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+
+    try:
+        df.to_csv(stage_path, **to_csv_kwargs)
+        stage_path.replace(filepath)
+    except Exception:
+        if stage_path.exists():
+            stage_path.unlink()
+        raise
+
+
+def write_atomic_figure(filepath: Path, fig: Any, **savefig_kwargs: Any) -> None:
+    """Save matplotlib figure atomically using a sibling staging file and atomic rename."""
+    filepath = filepath.resolve()
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    stage_path = filepath.with_name(f"{filepath.name}.tmp_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+
+    try:
+        fig.savefig(stage_path, **savefig_kwargs)
         stage_path.replace(filepath)
     except Exception:
         if stage_path.exists():

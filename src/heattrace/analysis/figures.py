@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
+from heattrace.manifests import write_atomic_csv, write_atomic_figure
+
+
 def generate_p5_figures_and_tables(
     benchmark_df: pd.DataFrame,
     characterization_results: dict[str, pd.DataFrame],
@@ -43,13 +46,13 @@ def generate_p5_figures_and_tables(
     plt.suptitle("HeatTrace P5-E1: Event vs Control Signal Distributions (N=120h each, *Quality-Limited)", fontsize=13)
     plt.tight_layout()
     fig1_path = output_fig_dir / "p5_fig1_signal_distributions.png"
-    plt.savefig(fig1_path, dpi=200)
+    write_atomic_figure(fig1_path, fig, dpi=200)
     plt.close()
     generated_paths["fig1"] = fig1_path
 
     # Source table for Fig 1
     src1_path = output_results_dir / "p5_source_table_fig1_distributions.csv"
-    characterization_results["window_summary_table"].to_csv(src1_path, index=False)
+    write_atomic_csv(src1_path, characterization_results["window_summary_table"], index=False)
     generated_paths["src1"] = src1_path
 
     # -------------------------------------------------------------
@@ -84,12 +87,12 @@ def generate_p5_figures_and_tables(
 
     plt.tight_layout()
     fig2_path = output_fig_dir / "p5_fig2_signals_time_series.png"
-    plt.savefig(fig2_path, dpi=200)
+    write_atomic_figure(fig2_path, fig, dpi=200)
     plt.close()
     generated_paths["fig2"] = fig2_path
 
     src2_path = output_results_dir / "p5_source_table_fig2_time_series.csv"
-    benchmark_df.to_csv(src2_path, index=False)
+    write_atomic_csv(src2_path, benchmark_df, index=False)
     generated_paths["src2"] = src2_path
 
     # -------------------------------------------------------------
@@ -112,12 +115,12 @@ def generate_p5_figures_and_tables(
     plt.suptitle("HeatTrace P5-E1: Event-Phase Breakdown (Onset, Peak, Sustained, Recovery)", fontsize=12)
     plt.tight_layout()
     fig3_path = output_fig_dir / "p5_fig3_phase_behavior.png"
-    plt.savefig(fig3_path, dpi=200)
+    write_atomic_figure(fig3_path, fig, dpi=200)
     plt.close()
     generated_paths["fig3"] = fig3_path
 
     src3_path = output_results_dir / "p5_source_table_fig3_phase_behavior.csv"
-    characterization_results["phase_summary_table"].to_csv(src3_path, index=False)
+    write_atomic_csv(src3_path, characterization_results["phase_summary_table"], index=False)
     generated_paths["src3"] = src3_path
 
     # -------------------------------------------------------------
@@ -140,12 +143,12 @@ def generate_p5_figures_and_tables(
 
     plt.tight_layout()
     fig4_path = output_fig_dir / "p5_fig4_lag_relationships.png"
-    plt.savefig(fig4_path, dpi=200)
+    write_atomic_figure(fig4_path, fig, dpi=200)
     plt.close()
     generated_paths["fig4"] = fig4_path
 
     src4_path = output_results_dir / "p5_source_table_fig4_lag_relationships.csv"
-    lag_df.to_csv(src4_path, index=False)
+    write_atomic_csv(src4_path, lag_df, index=False)
     generated_paths["src4"] = src4_path
 
     # -------------------------------------------------------------
@@ -181,12 +184,12 @@ def generate_p5_figures_and_tables(
     plt.suptitle("HeatTrace P5-E2: Policy Performance Across Event & Control Windows", fontsize=12)
     plt.tight_layout()
     fig5_path = output_fig_dir / "p5_fig5_policy_performance.png"
-    plt.savefig(fig5_path, dpi=200)
+    write_atomic_figure(fig5_path, fig, dpi=200)
     plt.close()
     generated_paths["fig5"] = fig5_path
 
     src5_path = output_results_dir / "p5_source_table_fig5_policy_performance.csv"
-    comparison_metrics_df.to_csv(src5_path, index=False)
+    write_atomic_csv(src5_path, comparison_metrics_df, index=False)
     generated_paths["src5"] = src5_path
 
     return generated_paths

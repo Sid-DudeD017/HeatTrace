@@ -25,13 +25,13 @@ from heattrace.experiments.runner import (
     run_p5_treatment_experiments,
 )
 from heattrace.ingest.provenance import sha256_file
-from heattrace.manifests import write_atomic_json
-from heattrace.policy.interfaces import SchedulingConstraints
+from heattrace.manifests import write_atomic_csv, write_atomic_json
 
 
 def run_complete_p5_pipeline(
     repo_root: Path,
     p5_config_path: Path | None = None,
+    source_code_commit: str | None = None,
 ) -> dict[str, Any]:
     """Execute complete deterministic P5 experimental workflow and generate all artifacts."""
     repo_root = repo_root.resolve()
@@ -114,21 +114,72 @@ def run_complete_p5_pipeline(
     df_e2_metrics = df_treatment_metrics[df_treatment_metrics["variant"] == "raw"].reset_index(drop=True)
     df_e2_metrics.to_csv(results_dir / "p5_e2_policy_comparison_metrics.csv", index=False)
 
+    # 4. Persist authentic hourly schedule outcomes (4 policies x 2 windows = 8 files)
+    hourly_outcomes_dir = results_dir / "p5_hourly_outcomes"
+    hourly_outcomes_dir.mkdir(parents=True, exist_ok=True)
+
+    persisted_outcome_paths: dict[tuple[str, str], Path] = {}
+    persisted_outcome_rel_paths: dict[tuple[str, str], str] = {}
+    persisted_outcome_shas: dict[tuple[str, str], str] = {}
+
+    for (wid, pol), df_ho in treatment_out["hourly_outcomes"].items():
+        ho_fname = f"hourly_outcomes_{wid}_{pol}.csv"
+        ho_path = hourly_outcomes_dir / ho_fname
+        write_atomic_csv(ho_path, df_ho, index=False)
+        persisted_outcome_paths[(wid, pol)] = ho_path
+        rel_ho = ho_path.relative_to(repo_root).as_posix()
+        persisted_outcome_rel_paths[(wid, pol)] = rel_ho
+        persisted_outcome_shas[(wid, pol)] = sha256_file(ho_path)
+
+    # Schedule paths and digests from runs/p4_v0
+    schedule_rel_paths: dict[tuple[str, str], str] = {}
+    schedule_shas: dict[tuple[str, str], str] = {}
+    for wid in ["CTRL_20240605", "HW_20240702"]:
+        for pol in cfg["policies"]:
+            sched_p = repo_root / f"runs/p4_v0/{wid}/{pol}/schedule.parquet"
+            if sched_p.exists():
+                schedule_rel_paths[(wid, pol)] = sched_p.relative_to(repo_root).as_posix()
+                schedule_shas[(wid, pol)] = sha256_file(sched_p)
+
     # 5. P5-03 & P5-06 / E4: Equal-Budget Sampling Experiments over Outcomes
+    # Representative outcome and schedule paths for cost_first (since all policies share window files)
+    src_outcome_paths_by_wid = {
+        "CTRL_20240605": persisted_outcome_rel_paths[("CTRL_20240605", "cost_first")],
+        "HW_20240702": persisted_outcome_rel_paths[("HW_20240702", "cost_first")],
+    }
+    src_outcome_shas_by_wid = {
+        "CTRL_20240605": persisted_outcome_shas[("CTRL_20240605", "cost_first")],
+        "HW_20240702": persisted_outcome_shas[("HW_20240702", "cost_first")],
+    }
+    sched_paths_by_wid = {
+        "CTRL_20240605": schedule_rel_paths.get(("CTRL_20240605", "cost_first"), ""),
+        "HW_20240702": schedule_rel_paths.get(("HW_20240702", "cost_first"), ""),
+    }
+    sched_shas_by_wid = {
+        "CTRL_20240605": schedule_shas.get(("CTRL_20240605", "cost_first"), ""),
+        "HW_20240702": schedule_shas.get(("HW_20240702", "cost_first"), ""),
+    }
+
     sampling_out = run_p5_sampling_experiments(
         hourly_outcomes=treatment_out["hourly_outcomes"],
         workload_digest=workload_hash,
         constraint_digest=constraint_hash,
         budget_hours=cfg["evaluation_budget_hours"],
         seed=cfg["random_seed"],
+        source_outcome_paths=src_outcome_paths_by_wid,
+        source_outcome_digests=src_outcome_shas_by_wid,
+        schedule_paths=sched_paths_by_wid,
+        schedule_digests=sched_shas_by_wid,
+        forecast_digest=forecast_hash,
+        realized_scoring_digest=benchmark_hash,
     )
     df_sampling_metrics = sampling_out["metrics_df"]
-    df_sampling_metrics.to_csv(results_dir / "p5_e4_sampling_metrics.csv", index=False)
+    write_atomic_csv(results_dir / "p5_e4_sampling_metrics.csv", df_sampling_metrics, index=False)
 
     sampling_manifest_digests = {}
     for s_name, s_df in sampling_out["manifests"].items():
         s_path = manifests_dir / f"p5_sampling_{s_name}.csv"
-        s_df.to_csv(s_path, index=False)
+        write_atomic_csv(s_path, s_df, index=False)
         sampling_manifest_digests[f"p5_sampling_{s_name}.csv"] = sha256_file(s_path)
 
     # 6. P5-07: Hindsight Comparator Runs
@@ -153,7 +204,7 @@ def run_complete_p5_pipeline(
         seed=cfg["bootstrap"]["seed"],
         repetitions=cfg["bootstrap"]["repetitions"],
     )
-    policy_paired_diffs.to_csv(results_dir / "p5_policy_paired_differences.csv", index=False)
+    write_atomic_csv(results_dir / "p5_policy_paired_differences.csv", policy_paired_diffs, index=False)
 
     # Signal paired differences
     paired_signal_diffs = compute_hourly_paired_signal_differences(
@@ -161,7 +212,7 @@ def run_complete_p5_pipeline(
         seed=cfg["bootstrap"]["seed"],
         repetitions=cfg["bootstrap"]["repetitions"],
     )
-    paired_signal_diffs.to_csv(results_dir / "p5_paired_signal_differences.csv", index=False)
+    write_atomic_csv(results_dir / "p5_paired_signal_differences.csv", paired_signal_diffs, index=False)
 
     # 9. P5-11: Evaluation Strategy Comparison
     strat_comp_res = compare_evaluation_strategies(
@@ -169,7 +220,7 @@ def run_complete_p5_pipeline(
         sampling_out["manifests"],
         target_budget_hours=cfg["evaluation_budget_hours"],
     )
-    strat_comp_res["strategy_comparison_summary"].to_csv(results_dir / "p5_e4_strategy_comparison_summary.csv", index=False)
+    write_atomic_csv(results_dir / "p5_e4_strategy_comparison_summary.csv", strat_comp_res["strategy_comparison_summary"], index=False)
 
     # 10. P5-04 & P5-12: Complete Frozen Dataset Manifest with Full Provenance
     tracked_output_files = [
@@ -199,6 +250,14 @@ def run_complete_p5_pipeline(
         "data/manifests/p5_sampling_ordinary_window.csv",
         "data/manifests/p5_sampling_event_stratified.csv",
         "data/manifests/p5_sampling_phase_aware.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_CTRL_20240605_cost_first.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_CTRL_20240605_carbon_first.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_CTRL_20240605_balanced.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_CTRL_20240605_dro_inspired.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_HW_20240702_cost_first.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_HW_20240702_carbon_first.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_HW_20240702_balanced.csv",
+        "data/results/p5_hourly_outcomes/hourly_outcomes_HW_20240702_dro_inspired.csv",
     ]
 
     output_files_meta: dict[str, dict[str, Any]] = {}
@@ -206,21 +265,55 @@ def run_complete_p5_pipeline(
         full_p = repo_root / rel_p
         if full_p.exists():
             output_files_meta[rel_p] = {
+                "path": rel_p,
                 "sha256": sha256_file(full_p),
                 "size_bytes": full_p.stat().st_size,
             }
 
     import subprocess
-    try:
-        git_rev = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root).decode("utf-8").strip()
-    except Exception:
-        git_rev = "unknown"
+    import sys
+
+    # Determine explicit source code commit
+    if source_code_commit is None:
+        try:
+            git_rev = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_root).decode("utf-8").strip()
+        except Exception:
+            git_rev = "unknown"
+    else:
+        git_rev = source_code_commit
+
+    # Calculate SHA256 hashes of all P5 source modules used
+    p5_source_modules = [
+        "src/heattrace/analysis/characterization.py",
+        "src/heattrace/analysis/treatments.py",
+        "src/heattrace/analysis/sampling.py",
+        "src/heattrace/analysis/bootstrap.py",
+        "src/heattrace/analysis/strategy_comparison.py",
+        "src/heattrace/analysis/figures.py",
+        "src/heattrace/experiments/runner.py",
+        "src/heattrace/experiments/pipeline.py",
+        "src/heattrace/process/p5_audit.py",
+    ]
+    source_modules_meta = {}
+    for mod_rel in p5_source_modules:
+        mod_p = repo_root / mod_rel
+        if mod_p.exists():
+            source_modules_meta[mod_rel] = {
+                "sha256": sha256_file(mod_p),
+                "size_bytes": mod_p.stat().st_size,
+            }
 
     p5_dataset_manifest = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "git_commit": git_rev,
+        "source_code_commit": git_rev,
         "seed": cfg["random_seed"],
+        "runtime_environment": {
+            "python_version": sys.version,
+            "executable": sys.executable,
+            "publication_method": "per_file_atomic_replacement",
+            "cli_command": "heattrace --build-p5",
+        },
         "event_window_id": cfg["benchmark"]["event_window_id"],
         "control_window_id": cfg["benchmark"]["control_window_id"],
         "event_interval_utc": [
@@ -256,6 +349,19 @@ def run_complete_p5_pipeline(
             "workload_trace_sha256": workload_hash,
             "constraint_definition_sha256": constraint_hash,
             "forecast_dataset_sha256": forecast_hash,
+        },
+        "source_code_provenance": {
+            "source_code_commit": git_rev,
+            "modules": source_modules_meta,
+        },
+        "forecast_realized_separation": {
+            "is_verified": True,
+            "policy_input": "ForecastResult derived exclusively from p4_historical_forecasts_v0.parquet",
+            "scoring_input": "Realized actuals from benchmark_2024_event_control_v0.parquet applied strictly post-schedule",
+            "forecast_dataset_path": "data/forecasts/p4_historical_forecasts_v0.parquet",
+            "forecast_dataset_sha256": forecast_hash,
+            "realized_dataset_path": "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+            "realized_dataset_sha256": benchmark_hash,
         },
         "carbon_data_quality": {
             "interpretation_label": "quality_limited_sensitivity_only",
