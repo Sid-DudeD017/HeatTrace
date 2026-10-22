@@ -1,0 +1,68 @@
+version: "1.0"
+random_seed: 20261016
+
+benchmark:
+  event_window_id: HW_20240702
+  control_window_id: CTRL_20240605
+  horizon_hours: 120
+
+policies:
+  - baseline_reference
+  - cost_first
+  - carbon_first
+  - balanced
+  - dro_inspired
+
+forecast_scenarios:
+  - id: flat_forecast
+    type: flat
+    evidence_class: authentic_baseline
+    noise_sigma: 0.0
+  - id: oracle_forecast
+    type: oracle
+    evidence_class: controlled_hindsight_upper_bound
+    noise_sigma: 0.0
+  - id: noisy_oracle_low
+    type: noisy_oracle
+    evidence_class: controlled_simulation
+    noise_sigma: 0.10
+  - id: noisy_oracle_medium
+    type: noisy_oracle
+    evidence_class: controlled_simulation
+    noise_sigma: 0.25
+  - id: noisy_oracle_high
+    type: noisy_oracle
+    evidence_class: controlled_simulation
+    noise_sigma: 0.50
+
+workload_multipliers:
+  - 1.0
+  - 2.0
+  - 3.0
+
+resource_pressure:
+  - id: unconstrained
+    max_cluster_power_kw: 500.0
+    max_concurrent_jobs: 16
+  - id: moderate_stress
+    max_cluster_power_kw: 250.0
+    max_concurrent_jobs: 8
+  - id: extreme_stress
+    max_cluster_power_kw: 120.0
+    max_concurrent_jobs: 3
+
+deadline_flexibility:
+  - id: baseline
+    slack_multiplier: 1.0
+  - id: tight
+    slack_multiplier: 0.5
+  - id: flexible
+    slack_multiplier: 1.5
+
+comparator:
+  exact_max_jobs: 6
+  exact_max_horizon_hours: 24
+
+carbon_quality:
+  interpretation_label: quality_limited_sensitivity_only
+  disclaimer: "EIA carbon observations contain known data-quality flags across all benchmark rows. Findings are descriptive/sensitivity-only and not primary causal evidence."

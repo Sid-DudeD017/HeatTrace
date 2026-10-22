@@ -218,6 +218,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load, summarize, and display P5 experiment findings",
     )
     parser.add_argument(
+        "--build-p5-5",
+        action="store_true",
+        help="Execute full P5.5 pipeline: freeze grid, run experiment, generate tables, and figures",
+    )
+    parser.add_argument(
+        "--run-p5-5",
+        action="store_true",
+        help="Execute P5.5 experiment grid and write result artifacts",
+    )
+    parser.add_argument(
+        "--audit-p5-5",
+        action="store_true",
+        help="Execute Gate G5.5-a comprehensive verification audit",
+    )
+    parser.add_argument(
+        "--load-p5-5-results",
+        action="store_true",
+        help="Load, summarize, and display P5.5 experiment findings and stress testing results",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1404,9 +1424,127 @@ def run_load_p5_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build_p5_5(args: argparse.Namespace) -> int:
+    """Execute full P5.5 pipeline: freeze grid, run experiment, generate tables, and figures."""
+    from heattrace.analysis.p5_5_figures import generate_p5_5_figures, generate_p5_5_summary_tables
+    from heattrace.experiments.p5_5_grid import freeze_experiment_grid
+    from heattrace.experiments.p5_5_runner import run_full_p5_5_experiment
+    from heattrace.process.p5_5_audit import run_g5_5_audit
+
+    repo_root = Path(".").resolve()
+    print("\n======================= HeatTrace P5.5 Pipeline Runner =======================")
+    try:
+        print("[1/4] Freezing preregistered experiment grid...")
+        freeze_experiment_grid(
+            config_path=repo_root / "configs/p5_5.yaml",
+            output_path=repo_root / "data/manifests/p5_5_experiment_grid.json",
+        )
+
+        print("[2/4] Executing 270 scenarios across 5 policies (1,350 total runs)...")
+        results_df, manifest = run_full_p5_5_experiment(
+            benchmark_parquet_path=repo_root / "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+            config_path=repo_root / "configs/p5_5.yaml",
+            output_dir=repo_root / "data/results",
+            manifest_dir=repo_root / "data/manifests",
+        )
+        print(f"      Completed {len(results_df)} runs in {manifest['total_runtime_seconds']}s.")
+        print(f"      Feasible runs: {manifest['summary']['feasible_runs']}, Infeasible runs: {manifest['summary']['infeasible_runs']}.")
+
+        print("[3/4] Generating summary comparison tables and publication figures...")
+        tables = generate_p5_5_summary_tables(results_df, output_dir=repo_root / "data/results")
+        figs = generate_p5_5_figures(results_df, output_fig_dir=repo_root / "data/figures", output_results_dir=repo_root / "data/results")
+        print(f"      Generated {len(tables)} tables and {len(figs)} figures (PNG + SVG).")
+
+        print("[4/4] Running Gate G5.5-a verification audit...")
+        audit_res = run_g5_5_audit(repo_root=repo_root)
+        print(f"      Gate G5.5-a status: {audit_res['status']}.")
+        if audit_res["status"] != "VERIFIED_PASS":
+            print(f"      Failures: {audit_res['failure_reasons']}")
+            return 1
+
+        print("==============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[BUILD P5.5 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_run_p5_5(args: argparse.Namespace) -> int:
+    """Execute P5.5 experiment grid and record results."""
+    from heattrace.experiments.p5_5_runner import run_full_p5_5_experiment
+    repo_root = Path(".").resolve()
+    print("\n======================= HeatTrace P5.5 Experiment Runner =======================")
+    try:
+        results_df, manifest = run_full_p5_5_experiment(
+            benchmark_parquet_path=repo_root / "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+            config_path=repo_root / "configs/p5_5.yaml",
+            output_dir=repo_root / "data/results",
+            manifest_dir=repo_root / "data/manifests",
+        )
+        print(f"Success! Evaluated {len(results_df)} runs across {manifest['total_scenarios']} scenarios.")
+        print("=================================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[RUN P5.5 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_audit_p5_5(args: argparse.Namespace) -> int:
+    """Execute Gate G5.5-a comprehensive verification audit."""
+    from heattrace.process.p5_5_audit import run_g5_5_audit
+    repo_root = Path(".").resolve()
+    print("\n======================= Gate G5.5-a Comprehensive Audit =======================")
+    try:
+        audit_res = run_g5_5_audit(repo_root=repo_root)
+        status = audit_res["status"]
+        print(f"Audit Status: {status}")
+        print(f"Total Scenarios Evaluated: {audit_res['total_scenarios_evaluated']}")
+        print(f"Total Runs Evaluated:      {audit_res['total_runs_evaluated']}")
+        print(f"Feasible Runs:             {audit_res['feasible_runs_count']}")
+        print(f"Infeasible Runs:           {audit_res['infeasible_runs_count']}")
+        print(f"Checks Passed:             {sum(1 for v in audit_res['checks'].values() if v)} / {len(audit_res['checks'])}")
+        print(f"Carbon Quality Label:      {audit_res['carbon_data_quality']['interpretation_label']}")
+        if audit_res["failure_reasons"]:
+            print(f"Failure Reasons:           {audit_res['failure_reasons']}")
+        print("===============================================================================\n")
+        return 0 if status == "VERIFIED_PASS" else 1
+    except Exception as e:
+        print(f"\n[AUDIT P5.5 ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_load_p5_5_results(args: argparse.Namespace) -> int:
+    """Load, summarize, and display P5.5 experiment findings."""
+    import pandas as pd
+    repo_root = Path(".").resolve()
+    summary_path = repo_root / "data/results/p5_5_policy_comparison_summary.csv"
+    if not summary_path.exists():
+        print(f"\n[LOAD P5.5 ERROR] Results summary not found at {summary_path}. Run --build-p5-5 first.\n")
+        return 1
+
+    df = pd.read_csv(summary_path)
+    print("\n======================= HeatTrace P5.5 Policy Performance Summary =======================")
+    key_cols = ["window_type", "policy_name", "forecast_scenario_id", "total_realized_cost_usd_mean", "total_realized_emissions_kg_mean", "is_feasible_mean"]
+    print(df[[c for c in key_cols if c in df.columns]].head(20).to_string(index=False))
+
+    print("\n------------------------- Carbon Data Quality Disclosure -------------------------")
+    print("NOTE: Carbon intensity data contains EIA Known Data Issue flags across all rows.")
+    print("Carbon results are strictly 'quality_limited_sensitivity_only'.")
+    print("==================================================================================\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_p5 or args.run_p5:
+    if args.build_p5_5:
+        code = run_build_p5_5(args)
+    elif args.run_p5_5:
+        code = run_run_p5_5(args)
+    elif args.audit_p5_5:
+        code = run_audit_p5_5(args)
+    elif args.load_p5_5_results:
+        code = run_load_p5_5_results(args)
+    elif args.build_p5 or args.run_p5:
         code = run_build_p5(args)
     elif args.audit_p5:
         code = run_audit_p5(args)

@@ -1,5 +1,6 @@
 """Policy module package exports."""
 
+from heattrace.policy.baseline import BaselineReferencePolicy
 from heattrace.policy.common import (
     ClusterState,
     normalize_series_min_max,
@@ -33,6 +34,7 @@ from heattrace.policy.robust import RiskPenalizedDROInspiredPolicy
 
 __all__ = [
     "BalancedGreedyPolicy",
+    "BaselineReferencePolicy",
     "CarbonFirstGreedyPolicy",
     "ClusterState",
     "ComparatorResult",
