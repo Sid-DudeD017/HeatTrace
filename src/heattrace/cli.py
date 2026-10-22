@@ -1425,23 +1425,25 @@ def run_load_p5_results(args: argparse.Namespace) -> int:
 
 
 def run_build_p5_5(args: argparse.Namespace) -> int:
-    """Execute full P5.5 pipeline: freeze grid, run experiment, generate tables, and figures."""
-    from heattrace.analysis.p5_5_figures import generate_p5_5_figures, generate_p5_5_summary_tables
-    from heattrace.experiments.p5_5_grid import freeze_experiment_grid
-    from heattrace.experiments.p5_5_runner import run_full_p5_5_experiment
+    """Execute full P5.5 pipeline: freeze grid v2, run experiment, generate tables, reports, and figures."""
+    from heattrace.analysis.p5_5_figures import compute_headline_findings, generate_p5_5_figures_v2, generate_p5_5_summary_tables_v2
+    from heattrace.analysis.p5_5_reports import generate_p5_5_reports
+    from heattrace.experiments.p5_5_comparator_validation import run_small_instance_comparator_validation
+    from heattrace.experiments.p5_5_grid import freeze_experiment_grid_v2
+    from heattrace.experiments.p5_5_runner import run_full_p5_5_experiment_v2
     from heattrace.process.p5_5_audit import run_g5_5_audit
 
     repo_root = Path(".").resolve()
-    print("\n======================= HeatTrace P5.5 Pipeline Runner =======================")
+    print("\n======================= HeatTrace P5.5 Pipeline Runner (v2) =======================")
     try:
-        print("[1/4] Freezing preregistered experiment grid...")
-        freeze_experiment_grid(
+        print("[1/6] Freezing preregistered experiment grid v2...")
+        freeze_experiment_grid_v2(
             config_path=repo_root / "configs/p5_5.yaml",
             output_path=repo_root / "data/manifests/p5_5_experiment_grid.json",
         )
 
-        print("[2/4] Executing 270 scenarios across 5 policies (1,350 total runs)...")
-        results_df, manifest = run_full_p5_5_experiment(
+        print("[2/6] Executing 270 scenarios across 5 policies (1,350 total runs with schedule artifacts)...")
+        results_df, manifest = run_full_p5_5_experiment_v2(
             benchmark_parquet_path=repo_root / "data/benchmarks/benchmark_2024_event_control_v0.parquet",
             config_path=repo_root / "configs/p5_5.yaml",
             output_dir=repo_root / "data/results",
@@ -1450,19 +1452,35 @@ def run_build_p5_5(args: argparse.Namespace) -> int:
         print(f"      Completed {len(results_df)} runs in {manifest['total_runtime_seconds']}s.")
         print(f"      Feasible runs: {manifest['summary']['feasible_runs']}, Infeasible runs: {manifest['summary']['infeasible_runs']}.")
 
-        print("[3/4] Generating summary comparison tables and publication figures...")
-        tables = generate_p5_5_summary_tables(results_df, output_dir=repo_root / "data/results")
-        figs = generate_p5_5_figures(results_df, output_fig_dir=repo_root / "data/figures", output_results_dir=repo_root / "data/results")
-        print(f"      Generated {len(tables)} tables and {len(figs)} figures (PNG + SVG).")
+        print("[3/6] Running exact small-instance comparator validation...")
+        comp_df, comp_summary = run_small_instance_comparator_validation(
+            benchmark_parquet_path=repo_root / "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+            config_path=repo_root / "configs/p5_5.yaml",
+            output_dir=repo_root / "data/results",
+        )
+        print(f"      Comparator validation: {comp_summary['status']} ({len(comp_df)} policy evaluations across {comp_summary['total_instances_evaluated']} instances).")
 
-        print("[4/4] Running Gate G5.5-a verification audit...")
+        print("[4/6] Generating summary tables across 3 result views and headline findings...")
+        findings = compute_headline_findings(results_df, comp_df, output_dir=repo_root / "data/results")
+        tables = generate_p5_5_summary_tables_v2(results_df, output_dir=repo_root / "data/results")
+        figs = generate_p5_5_figures_v2(results_df, comp_df, output_fig_dir=repo_root / "data/figures", output_results_dir=repo_root / "data/results")
+        print(f"      Generated {len(tables)} tables and {len(figs)} figures.")
+
+        print("[5/6] Generating findings report and professor briefing from machine-readable findings...")
+        rep_path, brief_path = generate_p5_5_reports(
+            headline_findings_path=repo_root / "data/results/p5_5_headline_findings.json",
+            docs_dir=repo_root / "docs",
+        )
+        print(f"      Reports written to {rep_path} and {brief_path}.")
+
+        print("[6/6] Running Gate G5.5-a verification audit (23 fail-closed checks)...")
         audit_res = run_g5_5_audit(repo_root=repo_root)
         print(f"      Gate G5.5-a status: {audit_res['status']}.")
         if audit_res["status"] != "VERIFIED_PASS":
             print(f"      Failures: {audit_res['failure_reasons']}")
             return 1
 
-        print("==============================================================================\n")
+        print("====================================================================================\n")
         return 0
     except Exception as e:
         print(f"\n[BUILD P5.5 ERROR] Failed: {e}\n")

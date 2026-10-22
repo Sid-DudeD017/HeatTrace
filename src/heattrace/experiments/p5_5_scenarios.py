@@ -1,16 +1,17 @@
 """Forecast scenarios for P5.5: Flat authentic baseline, Perfect oracle, and Seeded noisy oracle.
 
 LABELS & METHODOLOGICAL CONTRACT:
-- Flat forecast: authentic baseline forecast setup.
-- Perfect-information oracle: controlled hindsight upper bound (never a deployable forecast).
-- Seeded noisy oracle: controlled simulation.
+- Flat forecast (original 1x, unconstrained, baseline deadline): authentic_historical_baseline
+- Flat forecast (stressed settings): controlled_simulation_flat_forecast
+- Perfect-information oracle: controlled_hindsight_upper_bound (never a deployable forecast)
+- Seeded noisy oracle: controlled_simulation_noisy_oracle
 - Forecast inputs and realized scoring fields remain structurally separate.
+- Forecast noise seed is strictly isolated from workload/capacity/deadline stress parameters.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+import hashlib
 from typing import Any
 import numpy as np
 import pandas as pd
@@ -26,21 +27,18 @@ def generate_flat_forecast(
 ) -> ForecastResult:
     """Generate flat persistence forecast matching authentic P5 baseline.
     
-    LABEL: authentic_baseline
+    Produces static projections across the horizon.
     """
     sorted_df = realized_window_df.sort_values("timestamp_utc").reset_index(drop=True)
     origin_ts = pd.to_datetime(sorted_df["timestamp_utc"].iloc[0], utc=True).to_pydatetime()
     horizon = len(sorted_df)
 
-    # For CTRL, pre-origin history is empty -> 45.0, 220.0
-    # For HW, pre-origin last value from CTRL is ~28.98, ~87.19 if following P4
-    # To precisely reproduce the existing forecast table if available, or flat values:
     wid = sorted_df["window_id"].iloc[0]
     if wid == "CTRL_20240605":
         p_val = fallback_price
         c_val = fallback_carbon
     else:
-        # Pre-origin persistence from control window
+        # Pre-origin persistence from control window (matching P4/P5 authentic baseline)
         p_val = 28.98081
         c_val = 87.18878487
 
@@ -61,7 +59,7 @@ def generate_flat_forecast(
         origin_timestamp_utc=origin_ts,
         points=pts,
         model_name="flat_forecast",
-        model_version="1.0-authentic-baseline",
+        model_version="2.0-persistence",
     )
 
 
@@ -82,7 +80,7 @@ def generate_oracle_forecast(
         target_ts = pd.to_datetime(row["timestamp_utc"], utc=True).to_pydatetime()
         pts.append(
             ForecastPoint(
-                timestamp_utc=target_dt if (target_dt := target_ts) else target_ts,
+                timestamp_utc=target_ts,
                 horizon_hours=h,
                 predicted_price_usd_per_mwh=float(row["price_usd_per_mwh"]),
                 predicted_carbon_g_per_kwh=float(row["carbon_g_per_kwh"]),
@@ -93,8 +91,23 @@ def generate_oracle_forecast(
         origin_timestamp_utc=origin_ts,
         points=pts,
         model_name="oracle_forecast",
-        model_version="1.0-controlled-hindsight",
+        model_version="2.0-controlled-hindsight",
     )
+
+
+def compute_forecast_seed(
+    base_seed: int,
+    window_id: str,
+    forecast_scenario_id: str,
+    replicate_id: int = 0,
+) -> int:
+    """Derive isolated deterministic forecast seed dependent ONLY on base seed, window, and forecast scenario.
+
+    Strictly independent of workload, capacity, and deadline settings.
+    """
+    key = f"{base_seed}_{window_id}_{forecast_scenario_id}_rep{replicate_id}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16)
 
 
 def generate_noisy_oracle_forecast(
@@ -103,16 +116,17 @@ def generate_noisy_oracle_forecast(
     noise_sigma: float,
     seed: int,
     noise_scenario_id: str = "noisy_oracle",
-) -> tuple[ForecastResult, dict[str, float]]:
+) -> tuple[ForecastResult, dict[str, float], str]:
     """Generate deterministic seeded perturbation of the realized signal.
     
-    LABEL: controlled_simulation
+    LABEL: controlled_simulation_noisy_oracle
     Model:
       predicted_price = actual_price * (1 + N(0, noise_sigma))
       predicted_carbon = actual_carbon * (1 + N(0, noise_sigma))
-      Clipped to prevent impossible non-physical values:
-      price is unclipped on lower side if actual is negative, but bounded below at min(actual_min, -50.0).
-      carbon is strictly clipped >= 0.0 g/kWh.
+      Clipping:
+      carbon >= 0.0 g/kWh.
+      price bounded below at min(-100.0, actual_min - 10.0).
+    Returns (forecast_result, error_metrics, forecast_points_sha256).
     """
     if noise_sigma < 0:
         raise ValueError(f"noise_sigma must be >= 0, got {noise_sigma}")
@@ -121,7 +135,6 @@ def generate_noisy_oracle_forecast(
     origin_ts = pd.to_datetime(sorted_df["timestamp_utc"].iloc[0], utc=True).to_pydatetime()
     horizon = len(sorted_df)
 
-    # Deterministic RNG derived from seed and noise_sigma
     rng = np.random.default_rng(seed)
 
     actual_prices = sorted_df["price_usd_per_mwh"].to_numpy(dtype=float)
@@ -131,33 +144,35 @@ def generate_noisy_oracle_forecast(
         price_noise = np.zeros(horizon)
         carbon_noise = np.zeros(horizon)
     else:
-        # Multiplicative relative error
         price_noise = rng.normal(0.0, noise_sigma, horizon)
         carbon_noise = rng.normal(0.0, noise_sigma, horizon)
 
     pred_prices = actual_prices * (1.0 + price_noise)
     pred_carbons = actual_carbons * (1.0 + carbon_noise)
 
-    # Documented clipping:
-    # Carbon must be non-negative
+    # Physical clipping
     pred_carbons = np.maximum(0.0, pred_carbons)
-    # Price lower bound at min(-100.0, np.min(actual_prices) - 10.0)
     min_price_bound = min(-100.0, float(np.min(actual_prices)) - 10.0)
     pred_prices = np.maximum(min_price_bound, pred_prices)
 
     pts = []
+    points_repr = []
     for h, row in sorted_df.iterrows():
         target_ts = pd.to_datetime(row["timestamp_utc"], utc=True).to_pydatetime()
+        p_val = float(round(pred_prices[h], 4))
+        c_val = float(round(pred_carbons[h], 4))
         pts.append(
             ForecastPoint(
                 timestamp_utc=target_ts,
                 horizon_hours=h,
-                predicted_price_usd_per_mwh=float(round(pred_prices[h], 4)),
-                predicted_carbon_g_per_kwh=float(round(pred_carbons[h], 4)),
+                predicted_price_usd_per_mwh=p_val,
+                predicted_carbon_g_per_kwh=c_val,
             )
         )
+        points_repr.append(f"{h}:{p_val:.4f}:{c_val:.4f}")
 
-    # Realized forecast error metrics for this noise instance
+    forecast_hash = hashlib.sha256(",".join(points_repr).encode("utf-8")).hexdigest()
+
     mae_price = float(np.mean(np.abs(pred_prices - actual_prices)))
     mae_carbon = float(np.mean(np.abs(pred_carbons - actual_carbons)))
     bias_price = float(np.mean(pred_prices - actual_prices))
@@ -175,6 +190,6 @@ def generate_noisy_oracle_forecast(
         origin_timestamp_utc=origin_ts,
         points=pts,
         model_name=f"{noise_scenario_id}_sigma_{noise_sigma:.2f}",
-        model_version="1.0-controlled-simulation",
+        model_version="2.0-controlled-simulation",
     )
-    return result, error_metrics
+    return result, error_metrics, forecast_hash

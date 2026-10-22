@@ -1,4 +1,5 @@
-version: "1.0"
+version: "2.0"
+grid_version: "v2"
 random_seed: 20261016
 
 benchmark:
@@ -16,7 +17,6 @@ policies:
 forecast_scenarios:
   - id: flat_forecast
     type: flat
-    evidence_class: authentic_baseline
     noise_sigma: 0.0
   - id: oracle_forecast
     type: oracle
@@ -24,15 +24,15 @@ forecast_scenarios:
     noise_sigma: 0.0
   - id: noisy_oracle_low
     type: noisy_oracle
-    evidence_class: controlled_simulation
+    evidence_class: controlled_simulation_noisy_oracle
     noise_sigma: 0.10
   - id: noisy_oracle_medium
     type: noisy_oracle
-    evidence_class: controlled_simulation
+    evidence_class: controlled_simulation_noisy_oracle
     noise_sigma: 0.25
   - id: noisy_oracle_high
     type: noisy_oracle
-    evidence_class: controlled_simulation
+    evidence_class: controlled_simulation_noisy_oracle
     noise_sigma: 0.50
 
 workload_multipliers:
@@ -59,9 +59,31 @@ deadline_flexibility:
   - id: flexible
     slack_multiplier: 1.5
 
-comparator:
+comparator_validation:
+  enabled: true
+  scenarios:
+    - id: comp_val_ctrl_24h
+      window_id: CTRL_20240605
+      window_type: control
+      horizon_hours: 24
+      job_count: 4
+      max_cluster_power_kw: 500.0
+      max_concurrent_jobs: 16
+      random_seed: 20261016
+    - id: comp_val_hw_24h
+      window_id: HW_20240702
+      window_type: event
+      horizon_hours: 24
+      job_count: 4
+      max_cluster_power_kw: 500.0
+      max_concurrent_jobs: 16
+      random_seed: 20261016
   exact_max_jobs: 6
   exact_max_horizon_hours: 24
+
+failure_aware_penalties:
+  unmet_energy_penalty_usd_per_kwh: 1.00  # $1,000/MWh penalty for unmet delivered energy
+  unmet_deadline_penalty_usd_per_job: 50.00  # $50 penalty per incomplete job
 
 carbon_quality:
   interpretation_label: quality_limited_sensitivity_only
