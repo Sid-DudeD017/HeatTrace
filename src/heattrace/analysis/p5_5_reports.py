@@ -76,13 +76,14 @@ In addition to the primary fair view, the complete repository outputs include:
    - In the matched control regime (`{h2['control_window_id']}`) under oracle foresight (N={h2['control_sample_size_scenarios']} jointly feasible scenarios), `cost_first` reduced electricity costs by **{h2['control_cost_first_savings_pct']:.2f}%** relative to `baseline_reference`.
    - In the heatwave event regime (`{h2['event_window_id']}`) under oracle foresight (N={h2['event_sample_size_scenarios']} jointly feasible scenarios), `cost_first` reduced electricity costs by **{h2['event_cost_first_savings_pct']:.2f}%** relative to baseline. The smaller percentage reduction during heatwaves reflects the elevated baseload cost floor ($26.42/MWh minimum during heatwave vs. -$10.51/MWh solar curtailment trough during control).
 
-3. **Forecast Noise Sensitivity (Unconfounded Matched Seeds)**:
-   - With isolated forecast noise seeds, relative cost savings for `cost_first` on the primary fair set degraded monotonically with noise magnitude:
-     * Oracle ($\\sigma=0.00$, N={h3['primary_fair_sample_sizes']['oracle']}): **{h3['savings_pct_by_noise_sigma']['oracle_sigma_0']:.2f}%** savings
-     * Low Noise ($\\sigma=0.10$, N={h3['primary_fair_sample_sizes']['noisy_low']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_10']:.2f}%** savings
-     * Medium Noise ($\\sigma=0.25$, N={h3['primary_fair_sample_sizes']['noisy_med']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_25']:.2f}%** savings
-     * High Noise ($\\sigma=0.50$, N={h3['primary_fair_sample_sizes']['noisy_high']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_50']:.2f}%** savings
-   - At high noise ($\\sigma=0.50$), policies retained **{h3['noise_retention_high_sigma_pct']:.2f}%** of the oracle foresight advantage.
+3. **Forecast Noise Sensitivity (Common Cohort, N={h3['common_cohort_sample_size_per_level']} Per Level)**:
+   - Evaluated strictly across the common like-for-like cohort of stress cells (identical window, workload, capacity, and deadline settings that are jointly feasible with equal work at every forecast level), relative cost savings for `cost_first` degraded monotonically:
+     * Oracle ($\\sigma=0.00$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['oracle_sigma_0']:.2f}%** savings
+     * Low Noise ($\\sigma=0.10$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_10']:.2f}%** savings
+     * Medium Noise ($\\sigma=0.25$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_25']:.2f}%** savings
+     * High Noise ($\\sigma=0.50$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_50']:.2f}%** savings
+   - At high noise ($\\sigma=0.50$), `cost_first` retained **{h3['noise_retention_high_sigma_pct']:.2f}%** of the oracle foresight advantage.
+   - *(Secondary descriptive unconstrained set: Oracle {h3['secondary_descriptive_savings_pct']['oracle_sigma_0']:.2f}%, Low {h3['secondary_descriptive_savings_pct']['noisy_sigma_0_10']:.2f}%, Med {h3['secondary_descriptive_savings_pct']['noisy_sigma_0_25']:.2f}%, High {h3['secondary_descriptive_savings_pct']['noisy_sigma_0_50']:.2f}%)*
 
 4. **Cost vs. Quality-Limited Carbon Pareto Trade-Off**:
    - In the heatwave event under oracle foresight (N={h4['event_sample_size_scenarios']}), `carbon_first` achieved a **{h4['carbon_first_emissions_reduction_pct']:.2f}%** reduction in the quality-limited emissions proxy relative to baseline, but incurred a **{h4['carbon_first_cost_premium_vs_cost_first_pct']:.2f}%** cost premium over `cost_first`.
@@ -93,7 +94,7 @@ In addition to the primary fair view, the complete repository outputs include:
 
 6. **Operational Feasibility Stress Boundary**:
    - Schedule feasibility was **{h6['unconstrained_feasibility_pct']:.2f}%** under unconstrained cluster limits, **{h6['moderate_stress_feasibility_pct']:.2f}%** under moderate stress (250 kW / 8 jobs), and collapsed to **{h6['extreme_stress_feasibility_pct']:.2f}%** under extreme stress (120 kW / 3 jobs).
-   - At $3\times$ workload pressure under extreme resource stress, feasibility dropped to **{h6['workload_3x_extreme_feasibility_pct']:.2f}%**, mapping the physical saturation boundary.
+   - At 3× workload pressure under extreme resource stress, feasibility dropped to **{h6['workload_3x_extreme_feasibility_pct']:.2f}%**, mapping the physical saturation boundary.
 
 7. **Exact Small-Instance Comparator Validation**:
    - On 24-hour / 4-job slices of the authentic signals, exact branch-and-bound verified that `cost_first` achieved an exact **{h7.get('cost_first_mean_gap_pct', 0.0):.2f}%** optimality gap (finding the global optimum), whereas `baseline_reference` incurred a **{h7.get('baseline_mean_gap_pct', 21.19):.2f}%** suboptimality gap.
@@ -167,17 +168,17 @@ All primary policy comparisons are conducted strictly on **jointly feasible scen
 2. **Cost-First Captures Sizable Reductions Under Foresight**:
    - In the matched control regime (`{h2['control_window_id']}`, N={h2['control_sample_size_scenarios']}), `cost_first` reduced electricity costs by **{h2['control_cost_first_savings_pct']:.2f}%** vs. baseline ASAP execution.
    - In the heatwave event regime (`{h2['event_window_id']}`, N={h2['event_sample_size_scenarios']}), `cost_first` reduced electricity costs by **{h2['event_cost_first_savings_pct']:.2f}%** vs. baseline.
-3. **Monotonic Value Decay with Forecast Noise (Unconfounded Seeds)**:
-   - For `cost_first`, relative savings vs. baseline degraded predictably as forecast error increased:
-     * Oracle ($\\sigma=0$): **{h3['savings_pct_by_noise_sigma']['oracle_sigma_0']:.2f}%** savings (N={h3['primary_fair_sample_sizes']['oracle']})
-     * Low Noise ($\\sigma=0.10$): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_10']:.2f}%** savings (N={h3['primary_fair_sample_sizes']['noisy_low']})
-     * Medium Noise ($\\sigma=0.25$): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_25']:.2f}%** savings (N={h3['primary_fair_sample_sizes']['noisy_med']})
-     * High Noise ($\\sigma=0.50$): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_50']:.2f}%** savings (N={h3['primary_fair_sample_sizes']['noisy_high']})
+3. **Monotonic Value Decay with Forecast Noise (Common Cohort, N={h3['common_cohort_sample_size_per_level']} Per Level)**:
+   - Evaluated across the strictly like-for-like common cohort, relative cost savings for `cost_first` degraded predictably as forecast error increased:
+     * Oracle ($\\sigma=0$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['oracle_sigma_0']:.2f}%** savings
+     * Low Noise ($\\sigma=0.10$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_10']:.2f}%** savings
+     * Medium Noise ($\\sigma=0.25$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_25']:.2f}%** savings
+     * High Noise ($\\sigma=0.50$, N={h3['common_cohort_sample_size_per_level']}): **{h3['savings_pct_by_noise_sigma']['noisy_sigma_0_50']:.2f}%** savings
    - High noise retained **{h3['noise_retention_high_sigma_pct']:.2f}%** of the oracle advantage.
 4. **Carbon vs. Cost Pareto Trade-Off**:
    - In the heatwave event (N={h4['event_sample_size_scenarios']}), `carbon_first` reduced the emissions proxy by **{h4['carbon_first_emissions_reduction_pct']:.2f}%**, but incurred a **{h4['carbon_first_cost_premium_vs_cost_first_pct']:.2f}%** cost premium over `cost_first`.
 5. **Operational Feasibility Limits**:
-   - Feasibility was **{h6['unconstrained_feasibility_pct']:.1f}%** unconstrained, **{h6['moderate_stress_feasibility_pct']:.1f}%** under moderate stress (250 kW / 8 jobs), and collapsed to **{h6['extreme_stress_feasibility_pct']:.1f}%** under extreme stress (120 kW / 3 jobs). At $3\times$ workload under extreme stress, feasibility was **{h6['workload_3x_extreme_feasibility_pct']:.1f}%**.
+   - Feasibility was **{h6['unconstrained_feasibility_pct']:.1f}%** unconstrained, **{h6['moderate_stress_feasibility_pct']:.1f}%** under moderate stress (250 kW / 8 jobs), and collapsed to **{h6['extreme_stress_feasibility_pct']:.1f}%** under extreme stress (120 kW / 3 jobs). At 3× workload under extreme stress, feasibility was **{h6['workload_3x_extreme_feasibility_pct']:.1f}%**.
 6. **Small-Instance Exact Comparator Validation**:
    - On 24-hour slices, `cost_first` achieved an exact **{h7.get('cost_first_mean_gap_pct', 0.0):.2f}%** optimality gap (global optimum), while baseline ASAP incurred a **{h7.get('baseline_mean_gap_pct', 21.19):.2f}%** gap.
 

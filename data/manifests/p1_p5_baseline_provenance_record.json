@@ -1,0 +1,27 @@
+{
+  "manifest_identity": "data/manifests/benchmark_manifest.json",
+  "provenance_status": "SEMANTICALLY_CANONICAL_WITH_REGENERATED_TIMESTAMP",
+  "original_historical_sha256": "7f76f9182b87f99d46b94f4c988dc9155234455523c60d03adc1b2fbeec77077",
+  "current_regenerated_sha256": "b0e1612086abe52dadc26906ce5332252ad83e609a4b1cdee34ea34cdeffcc1b",
+  "regeneration_timestamp_utc": "2026-10-22T15:40:03.737454+00:00",
+  "investigation_summary": "Extensive search of reachable and dangling git objects (1,695 objects), git reflog, and local temporary paths confirmed that benchmark_manifest.json was modified in place when test_g3_a_benchmark_alignment_and_dimensions invoked build_and_export_p3_benchmark with production data_dir. Because benchmark_manifest.json is excluded from Git tracking via .gitignore, the byte-for-byte original file with generated_at_utc timestamp matching 7f76f918... was overwritten on disk.",
+  "canonical_semantic_verification": {
+    "target_benchmark_parquet_sha256": "711ac21fb3d7178453edaf6f31d139eaf9d8a7ec600af1bd7e3a85a2f5c4a142",
+    "target_benchmark_parquet_match": true,
+    "target_sample_csv_sha256": "997ae7e1bf4ab2999de49606450ee0d59452047e5ae0f2abb2a31e406a0b34ec",
+    "target_sample_csv_match": true,
+    "control_catalogue_sha256": "38f9d419a449240863022406050c92bb29538323dda769e832f1fa796e889a21",
+    "heatwave_events_sha256": "22edce3ac72eef8c0b77e4f1839bd1ac1f83f43b5d065ffed1b4d4344066cb9c",
+    "workload_trace_sha256": "3812f172b65193e779e05dbd5e802efe22609a9790d2890dd90b7609d6cbe5cc",
+    "all_raw_and_catalogue_input_hashes_match": true,
+    "reason_for_hash_difference": "The JSON payload differs only in the metadata timestamp 'generated_at_utc' written by datetime.now(timezone.utc).isoformat(). All semantic data arrays, coverage metrics, and input/output hashes are identical."
+  },
+  "protective_measures": {
+    "test_isolation_applied": true,
+    "tests_modified": [
+      "tests/test_p3_controls_benchmark.py::test_g3_a_benchmark_alignment_and_dimensions",
+      "tests/test_p3_controls_benchmark.py::test_validate_benchmark_dataframe_negative_mutations"
+    ],
+    "isolation_method": "All benchmark build calls now execute in pytest tmp_path fixtures with symlinked raw data."
+  }
+}

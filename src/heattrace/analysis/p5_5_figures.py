@@ -44,9 +44,14 @@ def compute_headline_findings(
     # 2. Check flat forecast collapse on schedule digests
     piv_digest = results_df.pivot_table(index="scenario_id", columns="policy_name", values="schedule_digest", aggfunc="first")
     flat_scens = results_df[results_df["forecast_scenario_id"] == "flat_forecast"]["scenario_id"].unique()
+    flat_scens_count = len(flat_scens)
     flat_collapse_count = sum(len(set(piv_digest.loc[s])) == 1 for s in flat_scens)
+    flat_collapse_pct = round(100.0 * flat_collapse_count / flat_scens_count, 2) if flat_scens_count > 0 else 0.0
+
     non_flat_scens = results_df[results_df["forecast_scenario_id"] != "flat_forecast"]["scenario_id"].unique()
+    non_flat_scens_count = len(non_flat_scens)
     non_flat_divergence_count = sum(len(set(piv_digest.loc[s])) > 1 for s in non_flat_scens)
+    non_flat_divergence_pct = round(100.0 * non_flat_divergence_count / non_flat_scens_count, 2) if non_flat_scens_count > 0 else 0.0
 
     # 3. Paired differences on the Primary Fair Comparison set
     df_fair = results_df[results_df["scenario_id"].isin(jointly_feasible_scens)].copy()
@@ -93,17 +98,52 @@ def compute_headline_findings(
         2
     ))
 
-    # Noise degradation on primary fair set
+    # Common cohort noise sensitivity (Critical Issue 4)
+    # Define stress cells: (window_id, workload_multiplier, resource_scenario_id, deadline_scenario_id)
+    scen_cell_map = {}
+    for scen_id, group in results_df.groupby("scenario_id"):
+        first_row = group.iloc[0]
+        scen_cell_map[scen_id] = (
+            first_row["window_id"],
+            float(first_row["workload_multiplier"]),
+            first_row["resource_scenario_id"],
+            first_row["deadline_scenario_id"],
+        )
+
+    noise_levels = ["oracle_forecast", "noisy_oracle_low", "noisy_oracle_medium", "noisy_oracle_high"]
+    cell_noise_feas = {}
+    for scen_id in jointly_feasible_scens:
+        sub_scen = results_df[results_df["scenario_id"] == scen_id].iloc[0]
+        fc_id = sub_scen["forecast_scenario_id"]
+        if fc_id in noise_levels:
+            cell = scen_cell_map[scen_id]
+            cell_noise_feas.setdefault(cell, set()).add(fc_id)
+
+    common_cohort_cells = {cell for cell, fcs in cell_noise_feas.items() if len(fcs) == 4}
+    common_cohort_sample_size = len(common_cohort_cells)
+
+    # Calculate like-for-like common cohort cost-first savings vs baseline_reference
+    cohort_scens = [s for s in jointly_feasible_scens if scen_cell_map[s] in common_cohort_cells]
+    pdf_cohort = pdf_fair[pdf_fair["scenario_id"].isin(cohort_scens) & (pdf_fair["policy_name"] == "cost_first")]
+
+    common_cohort_noise_savings = {
+        "oracle_sigma_0": float(round(-pdf_cohort[pdf_cohort["forecast_scenario_id"] == "oracle_forecast"]["cost_pct_change"].mean(), 2)),
+        "noisy_sigma_0_10": float(round(-pdf_cohort[pdf_cohort["forecast_scenario_id"] == "noisy_oracle_low"]["cost_pct_change"].mean(), 2)),
+        "noisy_sigma_0_25": float(round(-pdf_cohort[pdf_cohort["forecast_scenario_id"] == "noisy_oracle_medium"]["cost_pct_change"].mean(), 2)),
+        "noisy_sigma_0_50": float(round(-pdf_cohort[pdf_cohort["forecast_scenario_id"] == "noisy_oracle_high"]["cost_pct_change"].mean(), 2)),
+    }
+    common_cohort_retention_pct = float(round(
+        (common_cohort_noise_savings["noisy_sigma_0_50"] / common_cohort_noise_savings["oracle_sigma_0"]) * 100.0, 2
+    )) if common_cohort_noise_savings["oracle_sigma_0"] != 0 else 0.0
+
+    # Secondary descriptive (all primary fair, varying N)
     cf_fair = pdf_fair[pdf_fair["policy_name"] == "cost_first"]
-    noise_savings = {
+    secondary_noise_savings = {
         "oracle_sigma_0": float(round(-cf_fair[cf_fair["forecast_scenario_id"] == "oracle_forecast"]["cost_pct_change"].mean(), 2)),
         "noisy_sigma_0_10": float(round(-cf_fair[cf_fair["forecast_scenario_id"] == "noisy_oracle_low"]["cost_pct_change"].mean(), 2)),
         "noisy_sigma_0_25": float(round(-cf_fair[cf_fair["forecast_scenario_id"] == "noisy_oracle_medium"]["cost_pct_change"].mean(), 2)),
         "noisy_sigma_0_50": float(round(-cf_fair[cf_fair["forecast_scenario_id"] == "noisy_oracle_high"]["cost_pct_change"].mean(), 2)),
     }
-    oracle_noise_retention_pct = float(round(
-        (noise_savings["noisy_sigma_0_50"] / noise_savings["oracle_sigma_0"]) * 100.0, 2
-    ))
 
     # Feasibility by resource stress
     feas_unconstrained = float(round(results_df[results_df["resource_scenario_id"] == "unconstrained"]["is_feasible"].mean() * 100.0, 2))
@@ -137,12 +177,12 @@ def compute_headline_findings(
             "primary_fair_population_pct": round((jointly_feasible_count / total_scenarios) * 100.0, 2),
         },
         "headline_1_flat_forecast_collapse": {
-            "flat_forecast_scenarios_evaluated": len(flat_scens),
+            "flat_forecast_scenarios_evaluated": flat_scens_count,
             "flat_forecast_schedule_identical_count": flat_collapse_count,
-            "flat_forecast_collapse_pct": 100.0,
-            "non_flat_scenarios_evaluated": len(non_flat_scens),
+            "flat_forecast_collapse_pct": flat_collapse_pct,
+            "non_flat_scenarios_evaluated": non_flat_scens_count,
             "non_flat_schedule_divergence_count": non_flat_divergence_count,
-            "non_flat_divergence_pct": 100.0,
+            "non_flat_divergence_pct": non_flat_divergence_pct,
         },
         "headline_2_primary_fair_savings": {
             "control_window_id": "CTRL_20240605",
@@ -153,14 +193,16 @@ def compute_headline_findings(
             "event_cost_first_savings_pct": hw_oracle_savings_pct,
         },
         "headline_3_noise_degradation": {
-            "primary_fair_sample_sizes": {k: int(len(cf_fair[cf_fair["forecast_scenario_id"] == sc])) for k, sc in [
+            "common_cohort_sample_size_per_level": common_cohort_sample_size,
+            "savings_pct_by_noise_sigma": common_cohort_noise_savings,
+            "noise_retention_high_sigma_pct": common_cohort_retention_pct,
+            "secondary_descriptive_savings_pct": secondary_noise_savings,
+            "secondary_descriptive_sample_sizes": {k: int(len(cf_fair[cf_fair["forecast_scenario_id"] == sc])) for k, sc in [
                 ("oracle", "oracle_forecast"),
                 ("noisy_low", "noisy_oracle_low"),
                 ("noisy_med", "noisy_oracle_medium"),
                 ("noisy_high", "noisy_oracle_high"),
             ]},
-            "savings_pct_by_noise_sigma": noise_savings,
-            "noise_retention_high_sigma_pct": oracle_noise_retention_pct,
         },
         "headline_4_carbon_cost_tradeoff": {
             "event_sample_size_scenarios": hw_oracle_sample_size,
@@ -403,36 +445,63 @@ def generate_p5_5_figures_v2(
     generated["fig1_pareto_svg"] = f1_svg
 
     # -----------------------------------------------------------------
-    # Figure 2: Forecast-Error Sensitivity Plot (Unconfounded Matched Trajectories)
+    # Figure 2: Forecast-Error Sensitivity Plot (Common-Cohort Matched Trajectories)
     # -----------------------------------------------------------------
+    # Build common cohort for like-for-like comparison across noise levels
+    scen_cell_map = {}
+    for scen_id, group in results_df.groupby("scenario_id"):
+        first_row = group.iloc[0]
+        scen_cell_map[scen_id] = (
+            first_row["window_id"],
+            float(first_row["workload_multiplier"]),
+            first_row["resource_scenario_id"],
+            first_row["deadline_scenario_id"],
+        )
+
+    noise_levels_sub = ["oracle_forecast", "noisy_oracle_low", "noisy_oracle_medium", "noisy_oracle_high"]
+    cell_noise_feas = {}
+    for scen_id in jointly_feas_scens:
+        sub_scen = results_df[results_df["scenario_id"] == scen_id].iloc[0]
+        fc_id = sub_scen["forecast_scenario_id"]
+        if fc_id in noise_levels_sub:
+            cell = scen_cell_map[scen_id]
+            cell_noise_feas.setdefault(cell, set()).add(fc_id)
+
+    common_cohort_cells = {cell for cell, fcs in cell_noise_feas.items() if len(fcs) == 4}
+    cohort_scens = [s for s in jointly_feas_scens if scen_cell_map[s] in common_cohort_cells]
+    df_cohort = df_fair[df_fair["scenario_id"].isin(cohort_scens)].copy()
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    fc_order = ["oracle_forecast", "noisy_oracle_low", "noisy_oracle_medium", "noisy_oracle_high", "flat_forecast"]
-    fc_xlabels = ["Oracle\n(σ=0)", "Noisy Low\n(σ=0.10)", "Noisy Med\n(σ=0.25)", "Noisy High\n(σ=0.50)", "Flat Baseline\n(Static)"]
+    fc_order = ["oracle_forecast", "noisy_oracle_low", "noisy_oracle_medium", "noisy_oracle_high"]
+    fc_xlabels = ["Oracle\n(σ=0)", "Noisy Low\n(σ=0.10)", "Noisy Med\n(σ=0.25)", "Noisy High\n(σ=0.50)"]
     x = np.arange(len(fc_order))
 
     for pol, color in policy_colors.items():
-        sub_p = df_fair[df_fair["policy_name"] == pol]
+        sub_p = df_cohort[df_cohort["policy_name"] == pol]
         hw_costs = [sub_p[(sub_p["window_type"] == "event") & (sub_p["forecast_scenario_id"] == fid)]["total_realized_cost_usd"].mean() for fid in fc_order]
         ctrl_costs = [sub_p[(sub_p["window_type"] == "control") & (sub_p["forecast_scenario_id"] == fid)]["total_realized_cost_usd"].mean() for fid in fc_order]
 
         ax1.plot(x, hw_costs, marker="o", linewidth=2.0, color=color, label=policy_labels[pol])
         ax2.plot(x, ctrl_costs, marker="s", linewidth=2.0, color=color, label=policy_labels[pol])
 
-    ax1.set_title("Heatwave Event (HW_20240702): Cost vs Forecast Noise", fontweight="bold", fontsize=11)
+    n_cohort_hw = df_cohort[df_cohort["window_type"] == "event"]["scenario_id"].nunique() // 4
+    n_cohort_ctrl = df_cohort[df_cohort["window_type"] == "control"]["scenario_id"].nunique() // 4
+
+    ax1.set_title(f"Heatwave Event (HW_20240702, N={n_cohort_hw} Common Cohort)\nMean Realized Cost vs Forecast Noise", fontweight="bold", fontsize=11)
     ax1.set_xticks(x)
     ax1.set_xticklabels(fc_xlabels)
     ax1.set_ylabel("Mean Total Realized Cost ($)", fontsize=10)
     ax1.grid(True, linestyle="--", alpha=0.5)
     ax1.legend(loc="upper left", fontsize=8)
 
-    ax2.set_title("Matched Control (CTRL_20240605): Cost vs Forecast Noise", fontweight="bold", fontsize=11)
+    ax2.set_title(f"Matched Control (CTRL_20240605, N={n_cohort_ctrl} Common Cohort)\nMean Realized Cost vs Forecast Noise", fontweight="bold", fontsize=11)
     ax2.set_xticks(x)
     ax2.set_xticklabels(fc_xlabels)
     ax2.set_ylabel("Mean Total Realized Cost ($)", fontsize=10)
     ax2.grid(True, linestyle="--", alpha=0.5)
     ax2.legend(loc="upper left", fontsize=8)
 
-    plt.suptitle("HeatTrace P5.5: Policy Sensitivity to Forecast Error Degradation (Unconfounded Noise)", fontsize=13, fontweight="bold")
+    plt.suptitle("HeatTrace P5.5: Policy Sensitivity to Forecast Error Degradation (Common Cohort)", fontsize=13, fontweight="bold")
     plt.tight_layout()
 
     f2_png = fig_dir / "p5_5_fig2_forecast_error_sensitivity.png"

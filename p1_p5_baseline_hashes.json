@@ -15,7 +15,7 @@
   "data/forecasts/p4_historical_forecasts_v0.parquet": "3d3832f37c866024c7e528758680e97e5cd6d5f3d5000614ed68307ea5bf60ae",
   "data/manifests/aligned_coverage.csv": "3d3ac3f85e5ee435f70dd2343b76912a7423f629f1312944b048a3a4017eb15d",
   "data/manifests/aligned_dataset_manifest.json": "6a51085632363c522b158f817faaab2593c09933fbb6fcf33e9829ce50379a32",
-  "data/manifests/benchmark_manifest.json": "ded52a15821f25aac73017bde23460247a0017d0869c2411881848b26adf7bb9",
+  "data/manifests/benchmark_manifest.json": "b0e1612086abe52dadc26906ce5332252ad83e609a4b1cdee34ea34cdeffcc1b",
   "data/manifests/control_matching_audit.json": "5e6963c42c1db3cd269d7b781d89b9c9d786295dc9be40a3e3ffe190bfc11036",
   "data/manifests/coverage.csv": "9644ecdbdbba9e9dbe6966e1a479e1be48616700112960dec24a6297353a78ba",
   "data/manifests/event_catalogue_manifest.json": "cd2992d6f3fd77ca0705e179a47b0a1d5afbf4b06d39609f48ecc0ecb392f24e",

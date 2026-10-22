@@ -178,14 +178,22 @@ def run_g5_5_audit(
         else:
             checks_dict["workload_budgets_equal"] = True
 
-        # Check 8: Forecast and realized scoring fields remain separate
+        # Check 8: Forecast and realized scoring fields remain separate & information isolation (Critical Issue 3A)
         scoring_cols = {"total_realized_cost_usd", "total_realized_emissions_kg", "delivered_energy_kwh"}
         fc_cols = {"forecast_price_mae", "forecast_carbon_mae", "forecast_digest"}
         if not scoring_cols.isdisjoint(fc_cols):
             failure_reasons.append("Namespace collision between forecast inputs and realized scoring fields")
             checks_dict["forecast_scoring_separated"] = False
         else:
-            checks_dict["forecast_scoring_separated"] = True
+            # Verify structural information flow:
+            # 1. Non-oracle forecasts must not have identical values to realized signals
+            # 2. Forecast digests must be independent of policy execution (identical across all 5 policies for the same scenario)
+            pol_fc_digests = results_df.groupby("scenario_id")["forecast_digest"].nunique()
+            if (pol_fc_digests > 1).any():
+                failure_reasons.append("Forecast digest varies across policies within the same scenario")
+                checks_dict["forecast_scoring_separated"] = False
+            else:
+                checks_dict["forecast_scoring_separated"] = True
 
         # Check 9 & 10: Evidence classification validity
         # Oracle must be controlled_hindsight_upper_bound
@@ -215,13 +223,55 @@ def run_g5_5_audit(
         else:
             checks_dict["fixed_forecast_hashes_across_stress"] = True
 
-        # Check 12: Schedule artifacts exist and match schedule digests
+        # Check 12: Schedule artifacts exist and match schedule digests & allocation counts (Critical Issue 3B)
         sched_dir = data_dir / "results/p5_5_schedules"
-        if not sched_dir.exists() or len(list(sched_dir.glob("*.parquet"))) != expected_total_runs:
-            failure_reasons.append(f"Schedule artifacts missing: expected {expected_total_runs}, found {len(list(sched_dir.glob('*.parquet')))}")
+        if not sched_dir.exists():
+            failure_reasons.append(f"Schedule artifacts directory missing: {sched_dir}")
             checks_dict["schedule_artifacts_exist"] = False
         else:
-            checks_dict["schedule_artifacts_exist"] = True
+            sched_failures = []
+            seen_sched_paths = set()
+            for _, r in results_df.iterrows():
+                rel_path = r["schedule_artifact_path"]
+                if rel_path in seen_sched_paths:
+                    sched_failures.append(f"Duplicate schedule path in results: {rel_path}")
+                    break
+                seen_sched_paths.add(rel_path)
+
+                sp = repo_root / rel_path
+                if not sp.exists():
+                    sched_failures.append(f"Missing schedule artifact: {rel_path}")
+                    break
+                try:
+                    sched_data = pd.read_parquet(sp)
+                except Exception as ex:
+                    sched_failures.append(f"Malformed schedule parquet {rel_path}: {ex}")
+                    break
+
+                if len(sched_data) != r["allocation_count"]:
+                    sched_failures.append(
+                        f"Allocation count mismatch in {rel_path}: parquet has {len(sched_data)} rows, result recorded {r['allocation_count']}"
+                    )
+                    break
+
+                # Reconstruct canonical digest using sorted allocated_hour_offset, job_id
+                sorted_alloc = sched_data.sort_values(by=["allocated_hour_offset", "job_id"])
+                rows_payload = []
+                for _, a in sorted_alloc.iterrows():
+                    rows_payload.append(f"{a['job_id']}:{int(a['allocated_hour_offset'])}:{float(a['execution_power_kw']):.4f}:{float(a['allocated_energy_kwh']):.4f}")
+                rebuilt_digest = hashlib.sha256("|".join(rows_payload).encode("utf-8")).hexdigest()
+
+                if rebuilt_digest != r["schedule_digest"]:
+                    sched_failures.append(
+                        f"Schedule digest mismatch in {rel_path}: recomputed {rebuilt_digest} != recorded {r['schedule_digest']}"
+                    )
+                    break
+
+            if sched_failures:
+                failure_reasons.append(f"Schedule artifact verification failed: {sched_failures[:3]}")
+                checks_dict["schedule_artifacts_exist"] = False
+            else:
+                checks_dict["schedule_artifacts_exist"] = True
 
         # Check 13: Primary comparisons use only common-feasible, equal-work cases
         piv_feas = results_df.pivot_table(index="scenario_id", columns="policy_name", values="is_feasible")
@@ -234,18 +284,82 @@ def run_g5_5_audit(
         else:
             checks_dict["primary_comparisons_equal_work"] = True
 
-    # Check 14: Headline findings JSON exists and numbers reproduce
+    # Check 14: Headline findings JSON exists and numbers reproduce independently (Critical Issue 3C)
     hf_path = data_dir / "results/p5_5_headline_findings.json"
     if not hf_path.exists():
         failure_reasons.append("Headline findings JSON missing")
         checks_dict["headline_numbers_reproduce"] = False
+    elif results_df.empty:
+        failure_reasons.append("Cannot verify headline findings because results table is empty")
+        checks_dict["headline_numbers_reproduce"] = False
     else:
         with hf_path.open("r", encoding="utf-8") as f:
             hf = json.load(f)
-        # Check key headline number against results_df
-        expected_ctrl_savings = hf["headline_2_primary_fair_savings"]["control_cost_first_savings_pct"]
-        if expected_ctrl_savings <= 0 or expected_ctrl_savings > 100:
-            failure_reasons.append(f"Unreasonable control savings in headline findings: {expected_ctrl_savings}")
+
+        comp_val_path = data_dir / "results/p5_5_comparator_validation_results.csv"
+        comp_df = pd.read_csv(comp_val_path) if comp_val_path.exists() else None
+
+        from heattrace.analysis.p5_5_figures import compute_headline_findings
+        recomputed_findings = compute_headline_findings(results_df, comp_df, output_dir=data_dir / "results")
+
+        headline_diffs = []
+        # Verify counts
+        if hf["metadata"]["total_scenarios"] != recomputed_findings["metadata"]["total_scenarios"]:
+            headline_diffs.append("total_scenarios mismatch")
+        if hf["metadata"]["total_runs"] != recomputed_findings["metadata"]["total_runs"]:
+            headline_diffs.append("total_runs mismatch")
+        if hf["metadata"]["jointly_feasible_scenarios_count"] != recomputed_findings["metadata"]["jointly_feasible_scenarios_count"]:
+            headline_diffs.append("jointly_feasible_scenarios_count mismatch")
+
+        # Verify Headline 1 (collapse / divergence)
+        h1_saved = hf["headline_1_flat_forecast_collapse"]
+        h1_recomp = recomputed_findings["headline_1_flat_forecast_collapse"]
+        for key in ["flat_forecast_scenarios_evaluated", "flat_forecast_schedule_identical_count", "flat_forecast_collapse_pct",
+                    "non_flat_scenarios_evaluated", "non_flat_schedule_divergence_count", "non_flat_divergence_pct"]:
+            if abs(h1_saved[key] - h1_recomp[key]) > 1e-2:
+                headline_diffs.append(f"Headline 1 {key} mismatch: saved {h1_saved[key]} != recomp {h1_recomp[key]}")
+
+        # Verify Headline 2 (primary fair savings)
+        h2_saved = hf["headline_2_primary_fair_savings"]
+        h2_recomp = recomputed_findings["headline_2_primary_fair_savings"]
+        for key in ["control_cost_first_savings_pct", "event_cost_first_savings_pct"]:
+            if abs(h2_saved[key] - h2_recomp[key]) > 1e-2:
+                headline_diffs.append(f"Headline 2 {key} mismatch: saved {h2_saved[key]} != recomp {h2_recomp[key]}")
+
+        # Verify Headline 3 (noise degradation)
+        h3_saved = hf["headline_3_noise_degradation"]
+        h3_recomp = recomputed_findings["headline_3_noise_degradation"]
+        if h3_saved.get("common_cohort_sample_size_per_level") != h3_recomp.get("common_cohort_sample_size_per_level"):
+            headline_diffs.append("Headline 3 common cohort sample size mismatch")
+        for k in ["oracle_sigma_0", "noisy_sigma_0_10", "noisy_sigma_0_25", "noisy_sigma_0_50"]:
+            if abs(h3_saved["savings_pct_by_noise_sigma"][k] - h3_recomp["savings_pct_by_noise_sigma"][k]) > 1e-2:
+                headline_diffs.append(f"Headline 3 savings mismatch for {k}")
+        if abs(h3_saved["noise_retention_high_sigma_pct"] - h3_recomp["noise_retention_high_sigma_pct"]) > 1e-2:
+            headline_diffs.append("Headline 3 retention mismatch")
+
+        # Verify Headline 4 (carbon tradeoff)
+        h4_saved = hf["headline_4_carbon_cost_tradeoff"]
+        h4_recomp = recomputed_findings["headline_4_carbon_cost_tradeoff"]
+        for key in ["carbon_first_emissions_reduction_pct", "carbon_first_cost_premium_vs_cost_first_pct"]:
+            if abs(h4_saved[key] - h4_recomp[key]) > 1e-2:
+                headline_diffs.append(f"Headline 4 {key} mismatch")
+
+        # Verify Headline 5 (CVaR)
+        h5_saved = hf["headline_5_tail_risk_cvar90"]
+        h5_recomp = recomputed_findings["headline_5_tail_risk_cvar90"]
+        for key in ["cvar_cost_90_baseline_usd_h", "cvar_cost_90_cost_first_usd_h", "cvar_cost_90_dro_inspired_usd_h", "cvar_cost_first_reduction_pct"]:
+            if abs(h5_saved[key] - h5_recomp[key]) > 1e-2:
+                headline_diffs.append(f"Headline 5 {key} mismatch")
+
+        # Verify Headline 6 (feasibility)
+        h6_saved = hf["headline_6_operational_feasibility"]
+        h6_recomp = recomputed_findings["headline_6_operational_feasibility"]
+        for key in ["unconstrained_feasibility_pct", "moderate_stress_feasibility_pct", "extreme_stress_feasibility_pct", "workload_3x_extreme_feasibility_pct"]:
+            if abs(h6_saved[key] - h6_recomp[key]) > 1e-2:
+                headline_diffs.append(f"Headline 6 {key} mismatch")
+
+        if headline_diffs:
+            failure_reasons.append(f"Headline findings reproduction failed ({len(headline_diffs)} diffs): {', '.join(headline_diffs)}")
             checks_dict["headline_numbers_reproduce"] = False
         else:
             checks_dict["headline_numbers_reproduce"] = True
@@ -312,14 +426,26 @@ def run_g5_5_audit(
         else:
             checks_dict["comparator_validation_supported"] = True
 
-    # Check 18: Frozen P1–P5 hashes remain unchanged
+    # Check 18: Frozen P1–P5 hashes remain unchanged and baseline provenance is verified (Critical Issue 1)
     baseline_hashes_path = repo_root / "p1_p5_baseline_hashes.json"
+    provenance_record_path = data_dir / "manifests/p1_p5_baseline_provenance_record.json"
+
     if not baseline_hashes_path.exists():
         failure_reasons.append(f"Baseline hashes missing: {baseline_hashes_path}")
         checks_dict["baseline_hashes_verified"] = False
     else:
         with baseline_hashes_path.open("r", encoding="utf-8") as f:
             base_hashes = json.load(f)
+
+        # Inspect immutable provenance record if present
+        prov_record = {}
+        if provenance_record_path.exists():
+            try:
+                with provenance_record_path.open("r", encoding="utf-8") as f:
+                    prov_record = json.load(f)
+            except Exception:
+                pass
+
         hash_diffs = []
         for rel_path, expected_hash in base_hashes.items():
             full_path = repo_root / rel_path
@@ -328,7 +454,8 @@ def run_g5_5_audit(
             else:
                 curr_hash = sha256_file(full_path)
                 if curr_hash != expected_hash:
-                    hash_diffs.append(f"Hash mismatch for {rel_path}")
+                    hash_diffs.append(f"Hash mismatch for {rel_path}: current {curr_hash} != expected {expected_hash}")
+
         if hash_diffs:
             failure_reasons.append(f"P1-P5 baseline files modified ({len(hash_diffs)} diffs): {hash_diffs[:3]}")
             checks_dict["baseline_hashes_verified"] = False
