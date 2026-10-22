@@ -19,6 +19,8 @@ from heattrace.policy.greedy import (
     CostFirstGreedyPolicy,
 )
 from heattrace.policy.interfaces import (
+    FixtureEarliestDeadlineFirstPolicy,
+    FixturePersistenceForecastProvider,
     ForecastPoint,
     ForecastProvider,
     ForecastResult,
@@ -37,6 +39,8 @@ __all__ = [
     "CostFirstGreedyPolicy",
     "ExactSmallInstanceHindsightComparator",
     "FeasibilityReport",
+    "FixtureEarliestDeadlineFirstPolicy",
+    "FixturePersistenceForecastProvider",
     "ForecastPoint",
     "ForecastProvider",
     "ForecastResult",

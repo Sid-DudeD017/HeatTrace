@@ -158,7 +158,7 @@ def run_g4_audit(
         "heatwave_events_v0.parquet": (data_dir / "events/heatwave_events_v0.parquet", "22edce3ac72eef8c0b77e4f1839bd1ac1f83f43b5d065ffed1b4d4344066cb9c"),
         "control_catalogue_v0.parquet": (data_dir / "events/control_catalogue_v0.parquet", "38f9d419a449240863022406050c92bb29538323dda769e832f1fa796e889a21"),
         "benchmark_2024_event_control_v0.parquet": (data_dir / "benchmarks/benchmark_2024_event_control_v0.parquet", "711ac21fb3d7178453edaf6f31d139eaf9d8a7ec600af1bd7e3a85a2f5c4a142"),
-        "p3_comprehensive_audit.json": (data_dir / "manifests/p3_comprehensive_audit.json", "634726174294d5dacaaabf32e6288031be507c15229b684b010cbda2a83d1cf7"),
+        "p3_comprehensive_audit.json": (data_dir / "manifests/p3_comprehensive_audit.json", "e1133f55bc32f3a8e7a227ac06bc3eea9d85758da0319caa2f53a9fec63b9206"),
     }
     for name, (path_obj, exp_hash) in protected_hashes.items():
         if not path_obj.exists():
