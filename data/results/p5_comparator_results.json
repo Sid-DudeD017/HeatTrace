@@ -1,0 +1,16 @@
+{
+  "full_benchmark": {
+    "is_supported": false,
+    "status": "unsupported",
+    "reason": "Instance job count 30 exceeds exact comparator limit 6",
+    "optimal_objective": null
+  },
+  "supported_small_fixture": {
+    "is_supported": true,
+    "status": "optimal",
+    "reason": "Global optimum found via exact branch-and-bound",
+    "optimal_cost_usd": 16.3515,
+    "optimal_emissions_kg": 86.1396,
+    "optimal_objective": 16.3515
+  }
+}

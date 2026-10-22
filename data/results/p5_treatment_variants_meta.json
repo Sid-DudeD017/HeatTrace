@@ -1,0 +1,86 @@
+{
+  "raw": {
+    "variant": "raw",
+    "row_count": 240,
+    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+    "modified_cell_count": 0,
+    "clipped_cell_count": 0,
+    "imputed_cell_count": 0,
+    "remaining_missing_count": 0,
+    "carbon_quality_label": "quality_limited_sensitivity_only",
+    "treatment_description": "Unmodified original benchmark data."
+  },
+  "clipped": {
+    "variant": "clipped",
+    "row_count": 240,
+    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+    "modified_cell_count": 150,
+    "clipped_cell_count": 150,
+    "imputed_cell_count": 0,
+    "per_column_clipped_count": {
+      "temperature_c": 1,
+      "demand_mw": 39,
+      "net_generation_mw": 36,
+      "price_usd_per_mwh": 34,
+      "carbon_g_per_kwh": 40
+    },
+    "fitted_bounds": {
+      "temperature_c": {
+        "lower_bound": 11.7,
+        "upper_bound": 30.865,
+        "source_rows": 48
+      },
+      "demand_mw": {
+        "lower_bound": 23267.12,
+        "upper_bound": 41256.45,
+        "source_rows": 48
+      },
+      "net_generation_mw": {
+        "lower_bound": 16218.88,
+        "upper_bound": 36459.97,
+        "source_rows": 48
+      },
+      "price_usd_per_mwh": {
+        "lower_bound": 10.1201,
+        "upper_bound": 88.9037,
+        "source_rows": 48
+      },
+      "carbon_g_per_kwh": {
+        "lower_bound": 97.7815,
+        "upper_bound": 247.2493,
+        "source_rows": 48
+      }
+    },
+    "remaining_missing_count": 0,
+    "carbon_quality_label": "quality_limited_sensitivity_only",
+    "treatment_description": "Values outside 1st/99th percentiles clipped using historical bounds."
+  },
+  "causal_imputed": {
+    "variant": "causal_imputed",
+    "row_count": 240,
+    "timestamp_min_utc": "2024-06-05 07:00:00+00:00",
+    "timestamp_max_utc": "2024-07-06 06:00:00+00:00",
+    "modified_cell_count": 0,
+    "clipped_cell_count": 0,
+    "imputed_cell_count": 0,
+    "per_column_imputed_count": {
+      "temperature_c": 0,
+      "demand_mw": 0,
+      "net_generation_mw": 0,
+      "price_usd_per_mwh": 0,
+      "carbon_g_per_kwh": 0
+    },
+    "fallback_medians": {
+      "temperature_c": 18.075,
+      "demand_mw": 28654.5,
+      "net_generation_mw": 27214.0,
+      "price_usd_per_mwh": 32.0101,
+      "carbon_g_per_kwh": 145.3426
+    },
+    "remaining_missing_count": 0,
+    "carbon_quality_label": "quality_limited_sensitivity_only",
+    "treatment_description": "Causal forward fill within window; frozen historical median fallback."
+  }
+}

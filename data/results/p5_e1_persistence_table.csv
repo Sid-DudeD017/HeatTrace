@@ -1,0 +1,3 @@
+window_id,window_type,duration_hours,threshold_temperature_c,threshold_exceedance_hours,exceedance_fraction,max_consecutive_exceedance_hours,mean_consecutive_exceedance_hours,temp_lag1_autocorrelation,price_lag1_autocorrelation,demand_lag1_autocorrelation
+CTRL_20240605,control,120,25.6,0,0.0,0,0.0,0.9448,0.9015,0.9635
+HW_20240702,event,120,25.6,17,0.1417,8,5.67,0.9516,0.8848,0.9574

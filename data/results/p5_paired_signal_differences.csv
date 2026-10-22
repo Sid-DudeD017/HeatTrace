@@ -1,0 +1,6 @@
+signal,valid_pairs_count,mean_paired_difference,median_paired_difference,std_paired_difference,bootstrap_ci_95_lower,bootstrap_ci_95_upper,bootstrap_std_err,cohens_d,carbon_quality,inferential_status
+temperature_c,120,4.0533,4.7,4.0638,3.3537,4.7477,0.3698,0.9974,primary_eligible,exploratory_paired_hourly
+demand_mw,120,5967.7167,5098.0,4224.3426,5246.3279,6744.0587,380.3687,1.4127,primary_eligible,exploratory_paired_hourly
+net_generation_mw,120,4212.1917,2686.5,4134.0826,3505.6631,4971.7067,370.3298,1.0189,primary_eligible,exploratory_paired_hourly
+price_usd_per_mwh,120,26.7058,19.2171,22.9811,23.0115,30.8963,2.0481,1.1621,primary_eligible,exploratory_paired_hourly
+carbon_g_per_kwh,120,54.4158,51.3499,47.4727,46.0708,62.9306,4.2758,1.1463,quality_limited_sensitivity_only,exploratory_paired_hourly
