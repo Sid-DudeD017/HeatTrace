@@ -263,7 +263,7 @@ def test_p5_5_audit_fails_on_tampered_headline(tmp_path: Path):
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("Headline 2 control_cost_first_savings_pct mismatch" in r for r in res["failure_reasons"])
+    assert any("control_cost_first_savings_pct" in r and "mismatch" in r for r in res["failure_reasons"])
 
 
 def test_p5_5_audit_fails_on_synthetic_8_row_headline(tmp_path: Path):
@@ -362,8 +362,8 @@ def test_p5_5_audit_fails_on_synthetic_8_row_headline(tmp_path: Path):
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("total_scenarios mismatch" in r for r in res["failure_reasons"])
-    assert any("total_runs mismatch" in r for r in res["failure_reasons"])
+    assert any("metadata.total_scenarios" in r and "mismatch" in r for r in res["failure_reasons"])
+    assert any("metadata.total_runs" in r and "mismatch" in r for r in res["failure_reasons"])
 
 
 def test_headline_findings_pure_calculation_and_test_isolation(tmp_path: Path):
@@ -574,7 +574,7 @@ def test_audit_cleanly_fails_on_malformed_and_schema_invalid_json(tmp_path: Path
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit_missing_meta.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("Missing or invalid required section 'metadata'" in r for r in res["failure_reasons"])
+    assert any("metadata" in r and "missing required key" in r for r in res["failure_reasons"])
 
     # 3. Missing headline_3_noise_degradation section
     bad_dict = dict(valid_dict)
@@ -583,7 +583,7 @@ def test_audit_cleanly_fails_on_malformed_and_schema_invalid_json(tmp_path: Path
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit_missing_h3.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("Missing or invalid required section 'headline_3_noise_degradation'" in r for r in res["failure_reasons"])
+    assert any("headline_3_noise_degradation" in r and "missing required key" in r for r in res["failure_reasons"])
 
     # 4. Missing one required noise-savings key
     bad_dict = json.loads(json.dumps(valid_dict))
@@ -592,7 +592,7 @@ def test_audit_cleanly_fails_on_malformed_and_schema_invalid_json(tmp_path: Path
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit_missing_nk.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("Missing required key 'headline_3.savings_pct_by_noise_sigma.noisy_sigma_0_50'" in r for r in res["failure_reasons"])
+    assert any("headline_3_noise_degradation.savings_pct_by_noise_sigma.noisy_sigma_0_50" in r and "missing required key" in r for r in res["failure_reasons"])
 
     # 5. Numeric field replaced by string
     bad_dict = json.loads(json.dumps(valid_dict))
@@ -601,7 +601,7 @@ def test_audit_cleanly_fails_on_malformed_and_schema_invalid_json(tmp_path: Path
     res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit_str_val.json")
     assert res["status"] == "VERIFIED_FAIL"
     assert res["checks"]["headline_numbers_reproduce"] is False
-    assert any("must be numeric" in r for r in res["failure_reasons"])
+    assert any("headline_2_primary_fair_savings.control_cost_first_savings_pct" in r and "expected numeric float" in r for r in res["failure_reasons"])
 
 
 def test_write_headline_findings_rejects_invalid_numerical_values(tmp_path: Path):
@@ -658,6 +658,186 @@ def test_valid_canonical_findings_strict_roundtrip(tmp_path: Path):
     # Verify production hashes remain byte-for-byte identical
     for f in monitored_files:
         assert sha256_file(f) == initial_hashes[f], f"Production file modified by test: {f}"
+
+
+@pytest.mark.parametrize(
+    "section,key",
+    [
+        # Section 4: carbon tradeoff
+        ("headline_4_carbon_cost_tradeoff", "event_sample_size_scenarios"),
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct"),
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_cost_premium_vs_cost_first_pct"),
+        # Section 5: CVaR tail risk
+        ("headline_5_tail_risk_cvar90", "event_sample_size_scenarios"),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_90_baseline_usd_h"),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_90_cost_first_usd_h"),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_90_dro_inspired_usd_h"),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_first_reduction_pct"),
+        # Section 6: operational feasibility
+        ("headline_6_operational_feasibility", "unconstrained_feasibility_pct"),
+        ("headline_6_operational_feasibility", "moderate_stress_feasibility_pct"),
+        ("headline_6_operational_feasibility", "extreme_stress_feasibility_pct"),
+        ("headline_6_operational_feasibility", "workload_3x_extreme_feasibility_pct"),
+        # Section 7: comparator validation
+        ("headline_7_comparator_validation", "instances_evaluated"),
+        ("headline_7_comparator_validation", "cost_first_mean_gap_usd"),
+        ("headline_7_comparator_validation", "cost_first_mean_gap_pct"),
+        ("headline_7_comparator_validation", "baseline_mean_gap_pct"),
+        ("headline_7_comparator_validation", "all_comparator_optimal"),
+    ],
+)
+def test_headline_sections_4_to_7_missing_key_fails_cleanly(tmp_path: Path, section: str, key: str):
+    """Test 1: Verify missing any required key in sections 4-7 yields structured VERIFIED_FAIL without raising."""
+    from heattrace.ingest.provenance import sha256_file
+    repo_root = Path(__file__).resolve().parent.parent
+    t_root = tmp_path / "repo"
+    t_data = t_root / "data"
+    t_cfg = t_root / "configs"
+    t_docs = t_root / "docs"
+    (t_data / "results").mkdir(parents=True, exist_ok=True)
+    (t_data / "manifests").mkdir(parents=True, exist_ok=True)
+    (t_data / "figures").mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    t_docs.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy(repo_root / "configs/p5_5.yaml", t_cfg / "p5_5.yaml")
+    shutil.copy(repo_root / "data/manifests/p5_5_experiment_grid.json", t_data / "manifests/p5_5_experiment_grid.json")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.parquet", t_data / "results/p5_5_experiment_results.parquet")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.csv", t_data / "results/p5_5_experiment_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.csv", t_data / "results/p5_5_comparator_validation_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.json", t_data / "results/p5_5_comparator_validation_results.json")
+    shutil.copytree(repo_root / "data/results/p5_5_schedules", t_data / "results/p5_5_schedules", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "data/figures", t_data / "figures", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "docs", t_docs, dirs_exist_ok=True)
+    for f in ["p5_5_policy_comparison_summary.csv", "p5_5_policy_paired_differences.csv", "p5_5_view1_primary_fair_summary.csv", "p5_5_view2_service_normalized_summary.csv", "p5_5_view3_failure_aware_summary.csv"]:
+        shutil.copy(repo_root / f"data/results/{f}", t_data / f"results/{f}")
+    shutil.copy(repo_root / "p1_p5_baseline_hashes.json", t_root / "p1_p5_baseline_hashes.json")
+
+    with open(repo_root / "data/results/p5_5_headline_findings.json") as f:
+        valid_dict = json.load(f)
+
+    bad_dict = json.loads(json.dumps(valid_dict))
+    del bad_dict[section][key]
+
+    hf_target = t_data / "results/p5_5_headline_findings.json"
+    hf_target.write_text(json.dumps(bad_dict, indent=2), encoding="utf-8")
+    before_h = sha256_file(hf_target)
+
+    res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
+    assert res["status"] == "VERIFIED_FAIL"
+    assert res["checks"]["headline_numbers_reproduce"] is False
+    expected_path = f"{section}.{key}"
+    assert any(expected_path in r for r in res["failure_reasons"])
+    # Input file is unchanged by the audit
+    assert sha256_file(hf_target) == before_h
+
+
+@pytest.mark.parametrize(
+    "section,key,bad_val,expected_err",
+    [
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct", "twelve percent", "expected numeric float"),
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct", None, "expected numeric float"),
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct", [1.0, 2.0], "expected numeric float"),
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct", {"a": 1}, "expected numeric float"),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_90_baseline_usd_h", True, "expected numeric float"),
+        ("headline_6_operational_feasibility", "extreme_stress_feasibility_pct", "22.67%", "expected numeric float"),
+        ("headline_7_comparator_validation", "all_comparator_optimal", "yes", "expected bool"),
+        ("headline_7_comparator_validation", "instances_evaluated", 2.5, "expected int"),
+    ],
+)
+def test_headline_sections_wrong_types_fail_cleanly(tmp_path: Path, section: str, key: str, bad_val: Any, expected_err: str):
+    """Test 2: Verify wrong types in sections 4-7 produce structured VERIFIED_FAIL without exceptions."""
+    repo_root = Path(__file__).resolve().parent.parent
+    t_root = tmp_path / "repo"
+    t_data = t_root / "data"
+    t_cfg = t_root / "configs"
+    t_docs = t_root / "docs"
+    (t_data / "results").mkdir(parents=True, exist_ok=True)
+    (t_data / "manifests").mkdir(parents=True, exist_ok=True)
+    (t_data / "figures").mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    t_docs.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy(repo_root / "configs/p5_5.yaml", t_cfg / "p5_5.yaml")
+    shutil.copy(repo_root / "data/manifests/p5_5_experiment_grid.json", t_data / "manifests/p5_5_experiment_grid.json")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.parquet", t_data / "results/p5_5_experiment_results.parquet")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.csv", t_data / "results/p5_5_experiment_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.csv", t_data / "results/p5_5_comparator_validation_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.json", t_data / "results/p5_5_comparator_validation_results.json")
+    shutil.copytree(repo_root / "data/results/p5_5_schedules", t_data / "results/p5_5_schedules", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "data/figures", t_data / "figures", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "docs", t_docs, dirs_exist_ok=True)
+    for f in ["p5_5_policy_comparison_summary.csv", "p5_5_policy_paired_differences.csv", "p5_5_view1_primary_fair_summary.csv", "p5_5_view2_service_normalized_summary.csv", "p5_5_view3_failure_aware_summary.csv"]:
+        shutil.copy(repo_root / f"data/results/{f}", t_data / f"results/{f}")
+    shutil.copy(repo_root / "p1_p5_baseline_hashes.json", t_root / "p1_p5_baseline_hashes.json")
+
+    with open(repo_root / "data/results/p5_5_headline_findings.json") as f:
+        valid_dict = json.load(f)
+
+    bad_dict = json.loads(json.dumps(valid_dict))
+    bad_dict[section][key] = bad_val
+
+    hf_target = t_data / "results/p5_5_headline_findings.json"
+    hf_target.write_text(json.dumps(bad_dict, indent=2), encoding="utf-8")
+
+    res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
+    assert res["status"] == "VERIFIED_FAIL"
+    assert res["checks"]["headline_numbers_reproduce"] is False
+    expected_path = f"{section}.{key}"
+    assert any(expected_path in r for r in res["failure_reasons"])
+    assert any(expected_err in r for r in res["failure_reasons"])
+
+
+@pytest.mark.parametrize(
+    "section,key,tampered_val",
+    [
+        ("headline_4_carbon_cost_tradeoff", "carbon_first_emissions_reduction_pct", 99.99),
+        ("headline_5_tail_risk_cvar90", "cvar_cost_90_baseline_usd_h", 55.55),
+        ("headline_6_operational_feasibility", "extreme_stress_feasibility_pct", 77.77),
+        ("headline_7_comparator_validation", "cost_first_mean_gap_pct", 5.0),
+        ("headline_7_comparator_validation", "all_comparator_optimal", False),
+    ],
+)
+def test_headline_sections_tampered_values_detected(tmp_path: Path, section: str, key: str, tampered_val: Any):
+    """Test 3 & 4: Verify tampered numerical and boolean values in sections 4-7 are caught by recursive comparison."""
+    repo_root = Path(__file__).resolve().parent.parent
+    t_root = tmp_path / "repo"
+    t_data = t_root / "data"
+    t_cfg = t_root / "configs"
+    t_docs = t_root / "docs"
+    (t_data / "results").mkdir(parents=True, exist_ok=True)
+    (t_data / "manifests").mkdir(parents=True, exist_ok=True)
+    (t_data / "figures").mkdir(parents=True, exist_ok=True)
+    t_cfg.mkdir(parents=True, exist_ok=True)
+    t_docs.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy(repo_root / "configs/p5_5.yaml", t_cfg / "p5_5.yaml")
+    shutil.copy(repo_root / "data/manifests/p5_5_experiment_grid.json", t_data / "manifests/p5_5_experiment_grid.json")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.parquet", t_data / "results/p5_5_experiment_results.parquet")
+    shutil.copy(repo_root / "data/results/p5_5_experiment_results.csv", t_data / "results/p5_5_experiment_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.csv", t_data / "results/p5_5_comparator_validation_results.csv")
+    shutil.copy(repo_root / "data/results/p5_5_comparator_validation_results.json", t_data / "results/p5_5_comparator_validation_results.json")
+    shutil.copytree(repo_root / "data/results/p5_5_schedules", t_data / "results/p5_5_schedules", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "data/figures", t_data / "figures", dirs_exist_ok=True)
+    shutil.copytree(repo_root / "docs", t_docs, dirs_exist_ok=True)
+    for f in ["p5_5_policy_comparison_summary.csv", "p5_5_policy_paired_differences.csv", "p5_5_view1_primary_fair_summary.csv", "p5_5_view2_service_normalized_summary.csv", "p5_5_view3_failure_aware_summary.csv"]:
+        shutil.copy(repo_root / f"data/results/{f}", t_data / f"results/{f}")
+    shutil.copy(repo_root / "p1_p5_baseline_hashes.json", t_root / "p1_p5_baseline_hashes.json")
+
+    with open(repo_root / "data/results/p5_5_headline_findings.json") as f:
+        valid_dict = json.load(f)
+
+    bad_dict = json.loads(json.dumps(valid_dict))
+    bad_dict[section][key] = tampered_val
+
+    hf_target = t_data / "results/p5_5_headline_findings.json"
+    hf_target.write_text(json.dumps(bad_dict, indent=2), encoding="utf-8")
+
+    res = run_g5_5_audit(repo_root=t_root, data_dir=t_data, config_dir=t_cfg, output_audit_path=tmp_path / "audit.json")
+    assert res["status"] == "VERIFIED_FAIL"
+    assert res["checks"]["headline_numbers_reproduce"] is False
+    expected_path = f"{section}.{key}"
+    assert any(expected_path in r for r in res["failure_reasons"])
 
 
 def test_frozen_baseline_hashes_unmutated_after_test_execution():
