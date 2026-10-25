@@ -3,7 +3,7 @@
 **Phase:** Phase 9 / Day 11 (Corrected Event-Level Analysis)
 **Protocol Reference:** `docs/p6_frozen_protocol.md`
 **Configuration Reference:** `configs/p6_validity.yaml`
-**Implementation Commit:** `6c193cb070667b1c9967b5fea23c398a9381ad65`
+**Implementation Commit:** `5ff0d2370ed48655a5879aaad266f75dd102e459`
 **Status:** COMPLETE (PASS_WITH_BOUNDED_LIMITATIONS)
 
 ---
@@ -32,22 +32,30 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 
 ### H2 — Capacity-Awareness Recovery: **NOT_SUPPORTED**
 - **Frozen Scope:** Power-capped model, heatwave context, carbon_first objective, medium curve.
-- **Prerequisite Check:** Static heatwave loss exists in CONF_1 (-0.5x) and CONF_2 (-0.5x). CONF_3 had 0.0x static loss and is classified `NOT_APPLICABLE_NO_PREREQUISITE_LOSS`.
-- **Tested Boundary Recovery:** Neither capacity_aware nor full_thermal_aware recovered the tested boundary (0.0x recovery in CONF_1 and CONF_2).
-- **Violation Hours at 3.0x:** In CONF_2, full_thermal_aware reduced violation hours from 1.0h to 0.5h; in CONF_1, boundary changed by -0.5x with violation hours changing from 1.5h to 0.5h. Capacity_aware produced 0.0h violation reduction.
-- **Classification:** NOT_SUPPORTED because tested boundary recovery is absent.
+- **Evaluator Results:**
+#### Policy: `capacity_aware`
+- **f5c700:** applicable=True (static loss=-0.5x); policy HW boundary=2.5x vs static HW boundary=2.5x -> boundary change=0.0x (recovery=False); violation hours at 3x: static=1.5h, policy=1.5h -> reduction=0.0h (service change=0.0 slots)
+- **2a6e22:** applicable=True (static loss=-0.5x); policy HW boundary=2.5x vs static HW boundary=2.5x -> boundary change=0.0x (recovery=False); violation hours at 3x: static=1.0h, policy=1.0h -> reduction=0.0h (service change=0.0 slots)
+- **628624:** NOT_APPLICABLE_NO_PREREQUISITE_LOSS (static HW=3.0x, static CTRL=3.0x)
+
+#### Policy: `full_thermal_aware`
+- **f5c700:** applicable=True (static loss=-0.5x); policy HW boundary=2.0x vs static HW boundary=2.5x -> boundary change=-0.5x (recovery=False); violation hours at 3x: static=1.5h, policy=0.5h -> reduction=1.0h (service change=0.0 slots)
+- **2a6e22:** applicable=True (static loss=-0.5x); policy HW boundary=2.5x vs static HW boundary=2.5x -> boundary change=0.0x (recovery=False); violation hours at 3x: static=1.0h, policy=0.5h -> reduction=0.5h (service change=0.0 slots)
+- **628624:** NOT_APPLICABLE_NO_PREREQUISITE_LOSS (static HW=3.0x, static CTRL=3.0x)
+- **Classification:** **NOT_SUPPORTED** because tested boundary recovery is absent across all applicable events.
 
 ### H3 — Event-Blind Understatement: **PARTIALLY_SUPPORTED**
+- **Evaluation Scope:** 36 seed-aggregated core-policy comparisons per triplet/context (3 policy pairs × 2 facility models × 2 curves × 3 workloads).
 - **Event-Level Results (Independent Triplet Units):**
-- **TRIPLET_CONF_1_f5c700:** heatwave nonzero cost=24/12, control nonzero=24/12, blind nonzero=0/12; ranking reversals vs blind=24/12 (discriminating=True)
-- **TRIPLET_CONF_2_2a6e22:** heatwave nonzero cost=24/12, control nonzero=0/12, blind nonzero=0/12; ranking reversals vs blind=24/12 (discriminating=True)
-- **TRIPLET_CONF_3_628624:** heatwave nonzero cost=0/12, control nonzero=0/12, blind nonzero=0/12; ranking reversals vs blind=0/12 (discriminating=False)
-- **Sign Consistency:** 2/3 events discriminating.
+- **TRIPLET_CONF_1_f5c700:** heatwave nonzero cost=24/36, control nonzero=24/36, blind nonzero=0/36; event effect (HW - blind)=+24; transitions vs blind: tie->nontie=24, strict_reversals=0, unchanged=12 (discriminating=True)
+- **TRIPLET_CONF_2_2a6e22:** heatwave nonzero cost=24/36, control nonzero=0/36, blind nonzero=0/36; event effect (HW - blind)=+24; transitions vs blind: tie->nontie=24, strict_reversals=0, unchanged=12 (discriminating=True)
+- **TRIPLET_CONF_3_628624:** heatwave nonzero cost=0/36, control nonzero=0/36, blind nonzero=0/36; event effect (HW - blind)=+0; transitions vs blind: tie->nontie=0, strict_reversals=0, unchanged=36 (discriminating=False)
+- **Descriptive Event Effects (HW - Blind Nonzero Count):** [24, 24, 0], median=+24.0, sign consistency=2/3 positive.
 - **Leave-One-Out Sensitivity:** {'excl_f5c700': '1/2 discriminating', 'excl_2a6e22': '1/2 discriminating', 'excl_628624': '2/2 discriminating'}.
-- **Classification:** PARTIALLY_SUPPORTED. CONF_1 and CONF_2 expose policy cost/carbon separations and ranking reversals that event-blind windows completely obscure (0/12 nonzero gaps in blind); CONF_3 is a null event where both heatwave and blind show zero separation.
+- **Classification:** **PARTIALLY_SUPPORTED**. CONF_1 and CONF_2 expose policy cost/carbon separations and baseline-tie to heatwave-non-tie transitions that event-blind windows completely obscure (0/36 nonzero gaps in blind); CONF_3 is a null event where both heatwave and blind show zero separation. Strict reversals (A-preferred to B-preferred) were zero.
 
 ### H4 — Forecast Mechanism Attribution: **NOT_ESTIMABLE**
-- **Classification:** NOT_ESTIMABLE.
+- **Classification:** **NOT_ESTIMABLE**.
 - **Reason:** The frozen confirmation matrix does not contain a controlled forecast-source intervention (varying forecast input while holding scheduler, facility model, workload, and objective identical). Substituting policy comparisons or hindsight oracle runs violates causal attribution.
 
 ### H5 — HeatGuard Comparator: **NOT_SUPPORTED**
@@ -56,7 +64,7 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - **TRIPLET_CONF_1_f5c700:** calibrated violations=1.0h, fixed violations=0.0h, full_thermal violations=1.0h (improved over fixed=False, improved over deterministic=False)
 - **TRIPLET_CONF_2_2a6e22:** calibrated violations=0.5h, fixed violations=0.5h, full_thermal violations=0.5h (improved over fixed=False, improved over deterministic=False)
 - **TRIPLET_CONF_3_628624:** calibrated violations=0.0h, fixed violations=0.0h, full_thermal violations=0.0h (improved over fixed=False, improved over deterministic=False)
-- **Classification:** NOT_SUPPORTED. Calibrated HeatGuard failed to outperform fixed-margin HeatGuard (which had fewer or equal violations) or deterministic Full Thermal Aware across the series.
+- **Classification:** **NOT_SUPPORTED**. Calibrated HeatGuard failed to outperform fixed-margin HeatGuard (which had fewer or equal violations) or deterministic Full Thermal Aware across the series.
 
 ---
 
@@ -76,10 +84,10 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - `data/results/p6_analysis_manifest.json`
 - `data/results/p6_t1_cohort_provenance.csv` (5 rows)
 - `data/results/p6_t2_event_feasibility.csv` (72 rows)
-- `data/results/p6_t3_equal_service_gaps.csv` (27 rows)
+- `data/results/p6_t3_equal_service_gaps.csv` (27 rows; primary condition 9 per triplet)
 - `data/results/p6_t4_forecast_evidence.csv` (17 rows)
 - `data/results/p6_h1_h5_assessment.csv` (5 rows)
 - `data/figures/p6_f1_event_policy_contrasts.png` (displays CONF_1, CONF_2, and CONF_3 separately)
-- `data/figures/p6_f4_h1_sensitivity.png` (displays event-level H1 effects and H3 discriminability)
+- `data/figures/p6_f4_h1_sensitivity.png` (displays event-level H1 effects and H3 discriminability with denominator 36)
 - `data/figures/p6_f2_allocation_distance_status.md`
 - `data/figures/p6_f3_forecast_regret_status.md`
