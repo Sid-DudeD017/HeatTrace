@@ -1,0 +1,65 @@
+{
+  "execution_timestamp_utc": "2026-10-24T06:28:42.502049+00:00",
+  "phase": "P6_Day1_Smoke",
+  "experiment_label": "controlled_thermal_stress",
+  "version": "1.0",
+  "provenance_hashes": {
+    "configuration_file_sha256": "250f1b07daa6a19bcc9fe7415c7034b5ade240d69095cf3b539b7ee6ba001551",
+    "canonical_configuration_digest": "2d40b37f97e3e09d01e8480fad8c185bebe242056bd8304941031ab928b0d996",
+    "benchmark_parquet_sha256": "711ac21fb3d7178453edaf6f31d139eaf9d8a7ec600af1bd7e3a85a2f5c4a142",
+    "workload_parquet_sha256": "3812f172b65193e779e05dbd5e802efe22609a9790d2890dd90b7609d6cbe5cc",
+    "canonical_workload_digest": "f6c834b94f0d0b0e49d3b58a5c79673413e6d6bf1571feb221b07bc647b47877",
+    "forecast_parquet_sha256": "3d3832f37c866024c7e528758680e97e5cd6d5f3d5000614ed68307ea5bf60ae",
+    "results_csv_sha256": "c7bbf1b908f74692630b94cedf313be35631fd83ad17b8b8d411631a77a346b8"
+  },
+  "experiment_parameters": {
+    "nominal_compute_capacity_kw": 500.0,
+    "derived_facility_cap_kw": 600.0,
+    "max_concurrent_jobs": 16,
+    "violation_tolerance_kw": 1e-06,
+    "policy_name": "cost_first",
+    "policy_version": "1.0",
+    "event_window_id": "HW_20240702",
+    "control_window_id": "CTRL_20240605",
+    "expected_horizon_hours": 120,
+    "thermal_scenario_ids": [
+      "low",
+      "medium",
+      "high"
+    ]
+  },
+  "source_paths": {
+    "config_path": "configs/p6_thermal.yaml",
+    "benchmark_parquet_path": "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+    "workload_parquet_path": "data/workloads/workload_trace_v0.parquet",
+    "forecast_parquet_path": "data/forecasts/p4_historical_forecasts_v0.parquet",
+    "results_csv_path": "data/results/p6_day1_smoke_results.csv"
+  },
+  "total_runs": 12,
+  "results_files": {
+    "csv": {
+      "path": "data/results/p6_day1_smoke_results.csv",
+      "sha256": "c7bbf1b908f74692630b94cedf313be35631fd83ad17b8b8d411631a77a346b8",
+      "row_count": 12
+    }
+  },
+  "summary": {
+    "runs_evaluated": 12,
+    "windows": [
+      "CTRL_20240605",
+      "HW_20240702"
+    ],
+    "scenarios": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "policy_classes": [
+      "temperature_unaware",
+      "heat_aware"
+    ],
+    "feasible_runs": 12,
+    "infeasible_runs": 0
+  },
+  "disclaimer": "Day 1 smoke test run only; implementation verification check, not scientific finding."
+}

@@ -9,6 +9,11 @@ from .generator import (
     inspect_workload_trace,
     validate_workload_dataframe,
 )
+from .scaling import (
+    FROZEN_WORKLOAD_SEEDS,
+    SUPPORTED_MULTIPLIERS,
+    scale_workload,
+)
 
 __all__ = [
     "WORKLOAD_JOB_COLUMNS",
@@ -16,4 +21,7 @@ __all__ = [
     "validate_workload_dataframe",
     "build_and_export_workloads",
     "inspect_workload_trace",
+    "scale_workload",
+    "SUPPORTED_MULTIPLIERS",
+    "FROZEN_WORKLOAD_SEEDS",
 ]

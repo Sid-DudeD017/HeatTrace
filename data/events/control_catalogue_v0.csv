@@ -1,0 +1,5 @@
+control_id,matched_event_id,matching_method,anchor_date,local_start_date,local_end_exclusive,start_timestamp_utc,end_timestamp_utc,duration_days,duration_hours,is_eligible,rejection_reasons,source_coverage_status,mean_max_temperature_c,target_temperature_distance_c,matching_score,configuration_version
+CTRL_20240605,HW_20240702,ordinary_summer_anchor_distance,2024-06-07,2024-06-05,2024-06-10,2024-06-05 07:00:00+00:00,2024-06-10 07:00:00+00:00,5,120,True,[],verified_complete,20.34,1.36,1.36,1.0
+CTRL_20240610,HW_20220620,ordinary_summer_anchor_distance,2024-06-07,2024-06-10,2024-06-15,2024-06-10 07:00:00+00:00,2024-06-15 07:00:00+00:00,5,120,True,[],verified_complete,21.0,0.7,1500.7,1.0
+CTRL_20240615,HW_20220904,ordinary_summer_anchor_distance,2024-06-07,2024-06-15,2024-06-20,2024-06-15 07:00:00+00:00,2024-06-20 07:00:00+00:00,5,120,True,[],verified_complete,20.12,1.58,2001.58,1.0
+CTRL_20240620,HW_20220922,ordinary_summer_anchor_distance,2024-06-07,2024-06-20,2024-06-25,2024-06-20 07:00:00+00:00,2024-06-25 07:00:00+00:00,5,120,True,[],verified_complete,19.22,2.48,2502.48,1.0

@@ -238,6 +238,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Load, summarize, and display P5.5 experiment findings and stress testing results",
     )
     parser.add_argument(
+        "--run-p6-thermal-smoke",
+        action="store_true",
+        help="Execute Day 1 P6 thermal stress smoke test and record artifacts",
+    )
+    parser.add_argument(
+        "--materialize-gate1",
+        action="store_true",
+        help="Regenerate all Gate 1 fallback controls, blind pool, index, and 1,440-row benchmark artifacts",
+    )
+    parser.add_argument(
+        "--run-p6-pilot",
+        action="store_true",
+        help="Execute Day 8 P6 development-only pilot (TRIPLET_DEV_ae821c) and produce audit artifacts",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1553,9 +1568,89 @@ def run_load_p5_5_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_run_p6_thermal_smoke(args: argparse.Namespace) -> int:
+    """Execute Day 1 P6 thermal stress smoke test."""
+    from heattrace.experiments.p6_thermal_grid import run_p6_thermal_smoke
+    repo_root = Path(".").resolve()
+    print("\n================== HeatTrace P6 Day 1 Thermal Stress Smoke ==================")
+    try:
+        results_df, manifest = run_p6_thermal_smoke(
+            benchmark_parquet_path=repo_root / "data/benchmarks/benchmark_2024_event_control_v0.parquet",
+            workload_parquet_path=repo_root / "data/workloads/workload_trace_v0.parquet",
+            forecast_parquet_path=repo_root / "data/forecasts/p4_historical_forecasts_v0.parquet",
+            config_path=repo_root / "configs/p6_thermal.yaml",
+            output_dir=repo_root / "data/results",
+            manifest_dir=repo_root / "data/manifests",
+        )
+        print(f"Success! Executed {len(results_df)} runs.")
+        print(f"Results written to: {manifest['results_files']['csv']['path']}")
+        print(f"Manifest written to: {repo_root / 'data/manifests/p6_day1_smoke_manifest.json'}")
+        print(f"Feasible runs: {manifest['summary']['feasible_runs']}/{len(results_df)}")
+        print("============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[P6 THERMAL SMOKE ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_materialize_gate1(args: argparse.Namespace) -> int:
+    """Execute end-to-end reproducible Gate 1 materialization pipeline."""
+    from heattrace.process.p6_event_bundle import materialize_p6_gate1_benchmarks
+    repo_root = Path(".").resolve()
+    print("\n================== HeatTrace P6 Gate 1 Materializer ==================")
+    try:
+        manifest = materialize_p6_gate1_benchmarks(
+            repo_root=repo_root,
+            config_dir=repo_root / args.config_dir,
+            data_dir=repo_root / args.data_dir,
+            random_seed=20261016,
+            design_mode="fallback",
+        )
+        print("Success! Materialized all Gate 1 benchmarks.")
+        print(f"Hourly pairs: {manifest['output_files']['pairs_parquet']['path']} ({manifest['summary']['total_benchmark_rows']} rows)")
+        print(f"Index: {manifest['output_files']['index_csv']['path']} ({manifest['summary']['total_triplets']} triplets)")
+        print(f"Blind pool: {manifest['output_files']['blind_pool_csv']['path']} ({manifest['summary']['total_blind_candidates']} candidates)")
+        print(f"Manifest: {manifest['manifest_path']}")
+        print("======================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[GATE 1 MATERIALIZER ERROR] Failed: {e}\n")
+        return 1
+
+
+def run_run_p6_pilot(args: argparse.Namespace) -> int:
+    """Execute Day 8 P6 development-only pilot."""
+    from heattrace.experiments.p6_validity_runner import execute_development_pilot
+    repo_root = Path(".").resolve()
+    print("\n================== HeatTrace P6 Development Pilot Runner ==================")
+    try:
+        pilot_df, meta = execute_development_pilot(
+            repo_root=repo_root,
+            config_path=repo_root / args.config_dir / "p6_validity.yaml",
+            output_dir=repo_root / args.data_dir / "results",
+        )
+        print("Success! Executed development-only pilot.")
+        print(f"Total cells: {meta['total_cells']} (Unique run IDs: {meta['unique_run_ids']})")
+        print(f"Successful: {meta['successful_runs']}, Failed: {meta['failed_runs']}")
+        print(f"Wall time: {meta['total_wall_time_seconds']}s")
+        print(f"Deliverable 1: {repo_root / args.data_dir / 'results/p6_development_pilot.parquet'}")
+        print(f"Deliverable 2: {repo_root / args.data_dir / 'results/p6_forecast_metrics.csv'}")
+        print("===========================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[P6 PILOT RUNNER ERROR] Failed: {e}\n")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.build_p5_5:
+    if args.run_p6_pilot:
+        code = run_run_p6_pilot(args)
+    elif args.materialize_gate1:
+        code = run_materialize_gate1(args)
+    elif args.run_p6_thermal_smoke:
+        code = run_run_p6_thermal_smoke(args)
+    elif args.build_p5_5:
         code = run_build_p5_5(args)
     elif args.run_p5_5:
         code = run_run_p5_5(args)

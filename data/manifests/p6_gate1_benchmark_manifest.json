@@ -1,0 +1,415 @@
+{
+  "algorithm_version": "1.0",
+  "design_mode": "fallback",
+  "generated_at_utc": "2026-10-24T15:08:23.233190+00:00",
+  "manifest_path": "data/manifests/p6_gate1_benchmark_manifest.json",
+  "manifest_version": "1.0",
+  "output_files": {
+    "blind_pool_csv": {
+      "path": "data/benchmarks/p6_event_blind_pool.csv",
+      "sha256": "af651dad6f4f9388b2f14347aa4e10a2c11206e3a4e68c69546f15a85cfe539a",
+      "size_bytes": 78580
+    },
+    "control_catalogue_parquet": {
+      "path": "data/events/control_catalogue_v0.parquet",
+      "sha256": "7a957d362a0340b39c3b76b1d80174233b46cc8841177b8feb0e9b75016d13f5",
+      "size_bytes": 11539
+    },
+    "index_csv": {
+      "path": "data/benchmarks/p6_event_control_index.csv",
+      "sha256": "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72",
+      "size_bytes": 1750
+    },
+    "pairs_parquet": {
+      "path": "data/benchmarks/p6_event_control_pairs.parquet",
+      "sha256": "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109",
+      "size_bytes": 53938
+    }
+  },
+  "random_seed": 20261016,
+  "raw_source_files": {
+    "20220618_20220618_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220618_20220618_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "3801d01a28015e16666f7e6ab22fa9926d363a40c36cea2a335ed7d985919c49",
+      "size_bytes": 11541829
+    },
+    "20220619_20220619_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220619_20220619_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "a5711a4a984ca7dc42508d630c76bc321e8e975ab504241758c446488963f478",
+      "size_bytes": 11742393
+    },
+    "20220620_20220620_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220620_20220620_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "b95740e247b5e3381cf452d2aa64f492a35afc5d2bd537e4d64657b67db7c592",
+      "size_bytes": 12122434
+    },
+    "20220621_20220621_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220621_20220621_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "eea516871763a216587aefea2cedafa053ea1af88ec94b8de9b29a217fe86f01",
+      "size_bytes": 12455756
+    },
+    "20220622_20220622_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220622_20220622_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "7b47e4f9305b5d8d29fde3636d714d8c929bb5ea934bce01a9659e16f1fed8a0",
+      "size_bytes": 12577945
+    },
+    "20220623_20220623_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220623_20220623_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "9dccfc48b81034223649156450b4622cd7ec2d6bbe6643b71b664f30387b94cb",
+      "size_bytes": 12770319
+    },
+    "20220624_20220624_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220624_20220624_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "d1334ff5eb0dd0af6ee9a4e95091058e8b2a7436cdb8243bd5de9597d4dcc71f",
+      "size_bytes": 12696245
+    },
+    "20220625_20220625_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/June18-25_22/20220625_20220625_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "772865641e9045d067a4a06ee2227dd4b21e52bd312011b4fd697b1f2e3889fd",
+      "size_bytes": 12697127
+    },
+    "20220903_20220903_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220903_20220903_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "c9848227da97b9c14dbe258c41b1cfd74d5fcd5e715f5b881aeb1eb2ad44a8f8",
+      "size_bytes": 12590810
+    },
+    "20220904_20220904_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220904_20220904_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "09df83f1c860b2da2bbd29fc773c103024d4c738aec1c9198efe3ed0b2dbc157",
+      "size_bytes": 12490169
+    },
+    "20220905_20220905_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220905_20220905_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "d136b683816ffd91fcb9fc8d823ad3c756b05a9b4e41503ecbec2288b772fce8",
+      "size_bytes": 12635388
+    },
+    "20220906_20220906_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220906_20220906_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "119cb12c1fb8ff2b5e4b9c6865a219b337d1fa77b64b1caee989a890edd9ccb7",
+      "size_bytes": 12330131
+    },
+    "20220907_20220907_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220907_20220907_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "bcbefd84feafe71082228eb2f45f0a4e4dac1d3b9f31f7f433a8554d45a97241",
+      "size_bytes": 12494158
+    },
+    "20220908_20220908_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220908_20220908_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "5057b97b174fd04f84b10854e9638e016defd8e3d4721bf1e681f584dc99ff23",
+      "size_bytes": 12364237
+    },
+    "20220909_20220909_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220909_20220909_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "29e92f7397e04d6c35bdad244b94cb1c1bec474a7b2ce805d6ad7d33418090e8",
+      "size_bytes": 12508194
+    },
+    "20220910_20220910_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept3-10_22/20220910_20220910_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "a7829d03adb45d3f2588a8a821b1c6f866eccd97f72512cc688c7b8dd35007b6",
+      "size_bytes": 12225225
+    },
+    "20220920_20220920_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220920_20220920_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "5fcfa4d5ad04d828c081549d1d3a6e1baafc145c2a222c8a123898e82d57e497",
+      "size_bytes": 12439318
+    },
+    "20220921_20220921_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220921_20220921_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "4a08933373f35312277b3312e13257b8b2dcd41bca894460c8d59b689e3e2189",
+      "size_bytes": 12356418
+    },
+    "20220922_20220922_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220922_20220922_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "b0ffd13c8b320dbd7c60e22dd589a9391811a11753ee6151b1dc02192a3c9f42",
+      "size_bytes": 12384962
+    },
+    "20220923_20220923_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220923_20220923_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "ee69848d87d2cbdbe2d8f0c92143df8b30fa4f2dff3d0e45bf540629d99cf1fb",
+      "size_bytes": 12427649
+    },
+    "20220924_20220924_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220924_20220924_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "cd5527a50e252ff42892e8334f88e76f6f3422d3a7fd023073899d60da9a0515",
+      "size_bytes": 12406253
+    },
+    "20220925_20220925_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220925_20220925_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "e3342ca2b9c052d80b9e6c22b11f49656d5f1ae36eca7403807410f019eb9cfb",
+      "size_bytes": 12314545
+    },
+    "20220926_20220926_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220926_20220926_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "7a52ff489ec267894c75facf5775a3399456a0c2ee2f95b3ac7cb6e62e34d7d3",
+      "size_bytes": 12448361
+    },
+    "20220927_20220927_DAM_LMP_GRP_N_N_v12_csv.zip": {
+      "path": "data/raw/caiso/historical/Sept20-27_22/20220927_20220927_DAM_LMP_GRP_N_N_v12_csv.zip",
+      "sha256": "feddfb516248c1de0d2d3b01b666459036bae09baa5b5a7d98e7575ad2eab9e1",
+      "size_bytes": 12186718
+    },
+    "CISO.xlsx": {
+      "path": "data/raw/eia/CISO.xlsx",
+      "sha256": "b418ea77f536048e11fe0c5786de7544dfa7c774a90083e7f2c0d9facc74ce50",
+      "size_bytes": 97607203
+    },
+    "GHCNh_USW00023234_2022.psv": {
+      "path": "data/raw/noaa/GHCNh_USW00023234_2022.psv",
+      "sha256": "7b2c0793e99761763ffc3930114a64837b4680301e2a415f2a7940ac0d0a066e",
+      "size_bytes": 10672117
+    },
+    "GHCNh_USW00023234_2024.psv": {
+      "path": "data/raw/noaa/GHCNh_USW00023234_2024.psv",
+      "sha256": "5f4b0c8513e5793698886836795aa8b8a7dac5793ef4e4cb6a9368e7c4e7c1f3",
+      "size_bytes": 11970018
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240601_20240602.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240601_20240602.zip",
+      "sha256": "4f6b04dee467eaa91275539b676d8fc643672ce11ef8d00c18ca849e184b7b24",
+      "size_bytes": 1651
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240605_20240610.zip",
+      "sha256": "75d4875260b8f31eae6b40da1d46fde037f0a19b9d5676502184ee728030407c",
+      "size_bytes": 6445
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240607_20240608.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240607_20240608.zip",
+      "sha256": "660d0ab9d75e12b63b156058ac5c50e36e9f79f8ed65df1d4a17a684bb8316e2",
+      "size_bytes": 1655
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240610_20240615.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240610_20240615.zip",
+      "sha256": "1d9fdf3e0cbf1d73bf78d190fb16ecb3688dafc68c73eb4c4f94cc570aeea92c",
+      "size_bytes": 6408
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240615_20240620.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240615_20240620.zip",
+      "sha256": "9e06e340937677da6272dca502646d4787460e2e7ddfb6924d8dda299ebd39cb",
+      "size_bytes": 6427
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240620_20240625.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240620_20240625.zip",
+      "sha256": "b5890bf003a403e2b11eccad8b61408f94783a3d9eff6304f69c8ae771df63e0",
+      "size_bytes": 6473
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240701_20240706.zip",
+      "sha256": "222b4f5b407145667212048c52b87df5c0ec132100aa2ebb4d16788b6f4bcc8b",
+      "size_bytes": 6450
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240702_20240703.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240702_20240703.zip",
+      "sha256": "4814616d14da1a49036ef1e5f86f216083974697ae29d491f893d814972a5efc",
+      "size_bytes": 1617
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240727_20240801.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240727_20240801.zip",
+      "sha256": "f886ce4470540f75609bb58ac331b03f1f35cc2106436ef8f675e3e7942b32f5",
+      "size_bytes": 6492
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240803_20240808.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240803_20240808.zip",
+      "sha256": "5e5d21c2837fab1305a749e6af6a1b86084fc07dc6db93e0c85020751fbf6d1d",
+      "size_bytes": 6458
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240903_20240908.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240903_20240908.zip",
+      "sha256": "e7138ee2e401878d505d05ba24caaf165058945caaca0c3ab63d8a86eaab99bf",
+      "size_bytes": 6550
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240915_20240920.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240915_20240920.zip",
+      "sha256": "76ad82b132715964dc7a8502f65e87e6a162aefe5e5376e8dc02deb54aa959f3",
+      "size_bytes": 6319
+    },
+    "caiso_dam_lmp_TH_NP15_GEN-APND_20240920_20240925.zip": {
+      "path": "data/raw/caiso/caiso_dam_lmp_TH_NP15_GEN-APND_20240920_20240925.zip",
+      "sha256": "90192b879414151ee1680c53c6959fe062172e9c06fa142a2f5a3e5126810376",
+      "size_bytes": 6384
+    },
+    "eia930_region_CISO_20220601.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20220601.json",
+      "sha256": "7118cb902904fb8c017f4bfd7287b617f3a27bce29e8ca7db511e993b1cdf25c",
+      "size_bytes": 9589
+    },
+    "eia930_region_CISO_20220619.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20220619.json",
+      "sha256": "1d46ef1d1019e5be8b6798a58ac790146f2dec6acf2d666ec89e05e94260380d",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20220904.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20220904.json",
+      "sha256": "87230af7789d2e481a384cb308b421cac2483aa4c7d91a3641d854d4a884bd33",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20220921.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20220921.json",
+      "sha256": "f070a34d70401a643578b596826122b3222008356455a4b9e5431596169f6a32",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240605.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240605.json",
+      "sha256": "b7a3509d0539b48d6e672c8816724d18a6c2dd54c92f9db34bd2561ea767fbd0",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240607.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240607.json",
+      "sha256": "9b13c2890180e45c50530c5f158622caa1f873eb3317c7c0675795ab4f0dbc4c",
+      "size_bytes": 9589
+    },
+    "eia930_region_CISO_20240610.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240610.json",
+      "sha256": "3ea66916337a025fe064ce8f815a0275a6c1569fc593b1a0e5c5958c1c5fc53c",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240615.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240615.json",
+      "sha256": "fb049fbb7975ceeef037e28bc4bbff93de4c997c6f7f4c526bf5e42564985650",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240620.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240620.json",
+      "sha256": "fd05c21e9a0ea1b1f15b5107ec6ad4b3c713632513ba3ed0d5ced671cc8c7517",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240701.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240701.json",
+      "sha256": "1c98b10c1594d1b3c0906aa26bf20e028b82512fb4e211b6a4c526c5970b039c",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240702.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240702.json",
+      "sha256": "b5f7c5d59659aba2abb713c22b62c9e16f324bbc07cf8e84ec00f5f45a6a4e1b",
+      "size_bytes": 9589
+    },
+    "eia930_region_CISO_20240727.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240727.json",
+      "sha256": "f9fb06ce8a85fa1d66918ac46833b8bc3fa7745c82941cd882e76658c3ab6d11",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240803.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240803.json",
+      "sha256": "f073aad9d9a9ec1d149b07bab915577e617280faa15f8c40291bde2af6ad2fbb",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240903.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240903.json",
+      "sha256": "80e2f7f2cd983604347fbc0c5c0b3c5b6179b73bb306524b081ca5317f2051ed",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240915.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240915.json",
+      "sha256": "df4115b73ba520a83553b9b7a6b4ac2568b6e93c8fec44b785c9e8a10328d7b9",
+      "size_bytes": 45782
+    },
+    "eia930_region_CISO_20240920.json": {
+      "path": "data/raw/eia/eia930_region_CISO_20240920.json",
+      "sha256": "bbba1e168229298a0597d6610b11218e30a3659292ba4fef3ffc34bfa2fe96fc",
+      "size_bytes": 45782
+    }
+  },
+  "raw_source_files_count": 56,
+  "summary": {
+    "confirmatory_triplets": 3,
+    "development_triplets": 1,
+    "selected_blind_candidates": 4,
+    "total_benchmark_rows": 1440,
+    "total_blind_candidates": 472,
+    "total_triplets": 4
+  },
+  "triplets": [
+    {
+      "algorithm_version": "1.0",
+      "blind_end_utc": "2024-09-24T07:00:00+00:00",
+      "blind_id": "BLIND_ef75b17921d7",
+      "blind_start_utc": "2024-09-19T07:00:00+00:00",
+      "control_end_utc": "2024-06-10T07:00:00+00:00",
+      "control_id": "CTRL_20240605",
+      "control_start_utc": "2024-06-05T07:00:00+00:00",
+      "data_quality_status": "verified_valid",
+      "duration_hours": 120,
+      "eligibility_status": "eligible",
+      "event_id": "HW_20240702",
+      "gate1_outcome": "PASS",
+      "heatwave_end_utc": "2024-07-06T07:00:00+00:00",
+      "heatwave_start_utc": "2024-07-01T07:00:00+00:00",
+      "matching_covariates": "calendar_distance_and_noaa_temperature",
+      "matching_distances": "score=1.36;temp_dist_c=1.36",
+      "role": "development",
+      "row_count": 120,
+      "selection_seed": 20261016,
+      "source_artifact_version": "1.0",
+      "triplet_id": "TRIPLET_DEV_ae821c"
+    },
+    {
+      "algorithm_version": "1.0",
+      "blind_end_utc": "2024-08-08T07:00:00+00:00",
+      "blind_id": "BLIND_9511c8fdb71a",
+      "blind_start_utc": "2024-08-03T07:00:00+00:00",
+      "control_end_utc": "2024-06-15T07:00:00+00:00",
+      "control_id": "CTRL_20240610",
+      "control_start_utc": "2024-06-10T07:00:00+00:00",
+      "data_quality_status": "verified_valid",
+      "duration_hours": 120,
+      "eligibility_status": "eligible",
+      "event_id": "HW_20220620",
+      "gate1_outcome": "PASS",
+      "heatwave_end_utc": "2022-06-24T07:00:00+00:00",
+      "heatwave_start_utc": "2022-06-19T07:00:00+00:00",
+      "matching_covariates": "calendar_distance_and_noaa_temperature",
+      "matching_distances": "score=1500.7;temp_dist_c=0.7",
+      "role": "confirmatory",
+      "row_count": 120,
+      "selection_seed": 20261016,
+      "source_artifact_version": "1.0",
+      "triplet_id": "TRIPLET_CONF_1_f5c700"
+    },
+    {
+      "algorithm_version": "1.0",
+      "blind_end_utc": "2024-09-08T07:00:00+00:00",
+      "blind_id": "BLIND_ec5ea1727f70",
+      "blind_start_utc": "2024-09-03T07:00:00+00:00",
+      "control_end_utc": "2024-06-20T07:00:00+00:00",
+      "control_id": "CTRL_20240615",
+      "control_start_utc": "2024-06-15T07:00:00+00:00",
+      "data_quality_status": "verified_valid",
+      "duration_hours": 120,
+      "eligibility_status": "eligible",
+      "event_id": "HW_20220904",
+      "gate1_outcome": "PASS",
+      "heatwave_end_utc": "2022-09-09T07:00:00+00:00",
+      "heatwave_start_utc": "2022-09-04T07:00:00+00:00",
+      "matching_covariates": "calendar_distance_and_noaa_temperature",
+      "matching_distances": "score=2001.58;temp_dist_c=1.58",
+      "role": "confirmatory",
+      "row_count": 120,
+      "selection_seed": 20261016,
+      "source_artifact_version": "1.0",
+      "triplet_id": "TRIPLET_CONF_2_2a6e22"
+    },
+    {
+      "algorithm_version": "1.0",
+      "blind_end_utc": "2024-08-01T07:00:00+00:00",
+      "blind_id": "BLIND_0a5ab2aec053",
+      "blind_start_utc": "2024-07-27T07:00:00+00:00",
+      "control_end_utc": "2024-06-25T07:00:00+00:00",
+      "control_id": "CTRL_20240620",
+      "control_start_utc": "2024-06-20T07:00:00+00:00",
+      "data_quality_status": "verified_valid",
+      "duration_hours": 120,
+      "eligibility_status": "eligible",
+      "event_id": "HW_20220922",
+      "gate1_outcome": "PASS",
+      "heatwave_end_utc": "2022-09-26T07:00:00+00:00",
+      "heatwave_start_utc": "2022-09-21T07:00:00+00:00",
+      "matching_covariates": "calendar_distance_and_noaa_temperature",
+      "matching_distances": "score=2502.48;temp_dist_c=2.48",
+      "role": "confirmatory",
+      "row_count": 120,
+      "selection_seed": 20261016,
+      "source_artifact_version": "1.0",
+      "triplet_id": "TRIPLET_CONF_3_628624"
+    }
+  ]
+}

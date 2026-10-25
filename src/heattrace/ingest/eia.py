@@ -26,9 +26,19 @@ DEFAULT_EIA_API_TIMEOUT_SECONDS = 120.0
 
 
 def get_eia_api_key() -> str | None:
-    """Read EIA_API_KEY from environment without logging or persisting."""
+    """Read EIA_API_KEY from environment (or .env if not set in environ) without logging or persisting."""
     key = os.environ.get("EIA_API_KEY", "").strip()
-    return key if key else None
+    if not key and Path(".env").exists():
+        try:
+            with open(".env", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip().startswith("EIA_API_KEY="):
+                        key = line.strip().split("=", 1)[1].strip()
+                        break
+        except Exception:
+            pass
+    clean_key = key.strip("'\"").strip() if key else ""
+    return clean_key if clean_key else None
 
 
 def redact_api_key(url_or_text: str, api_key: str | None = None) -> str:

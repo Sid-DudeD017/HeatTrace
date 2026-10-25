@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HeatTrace Thermal Stress Sprint</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f4f1ea;
+      --surface: #fffdf8;
+      --surface-2: #eee8dc;
+      --text: #24231f;
+      --muted: #6f6b62;
+      --line: #d9d1c4;
+      --accent: #d95d39;
+      --accent-2: #196c68;
+      --accent-soft: #f6d9cd;
+      --good: #227447;
+      --warn: #9a6512;
+      --danger: #b83d36;
+      --shadow: 0 14px 40px rgba(52, 43, 28, .09);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #181815;
+        --surface: #22221f;
+        --surface-2: #2c2b27;
+        --text: #f2eee4;
+        --muted: #b4aea3;
+        --line: #413f39;
+        --accent: #ff805b;
+        --accent-2: #58b6ae;
+        --accent-soft: #4d2d24;
+        --good: #65c78d;
+        --warn: #e2ad4f;
+        --danger: #ff7b72;
+        --shadow: 0 16px 44px rgba(0, 0, 0, .25);
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; }
+    header { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .header-inner { max-width: 1440px; margin: 0 auto; padding: 26px 28px 20px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 5px 0 4px; font-size: clamp(28px, 4vw, 46px); line-height: 1.05; letter-spacing: -.045em; }
+    h2 { margin: 0 0 14px; font-size: 25px; letter-spacing: -.025em; }
+    h3 { margin: 0 0 9px; font-size: 17px; }
+    p { margin: 0 0 12px; }
+    .subtitle { max-width: 820px; color: var(--muted); }
+    .deadline { padding: 12px 16px; background: var(--accent-soft); border-radius: 12px; min-width: 220px; }
+    .deadline strong { display: block; color: var(--accent); font-size: 20px; }
+    nav { max-width: 1440px; margin: 0 auto; padding: 0 28px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+    .tab { border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); padding: 13px 14px 11px; white-space: nowrap; font-weight: 650; }
+    .tab:hover { color: var(--text); }
+    .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+    main { max-width: 1440px; margin: 0 auto; padding: 28px; }
+    .panel[hidden] { display: none; }
+    .grid { display: grid; gap: 18px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow); }
+    .card.flat { box-shadow: none; }
+    .hero-card { display: grid; grid-template-columns: 1.2fr .8fr; gap: 20px; align-items: stretch; }
+    .flow { display: grid; grid-template-columns: repeat(5, 1fr); align-items: center; gap: 8px; margin-top: 18px; }
+    .flow-step { background: var(--surface-2); border-radius: 11px; padding: 13px; text-align: center; font-weight: 650; min-height: 70px; display: grid; place-items: center; }
+    .flow-arrow { display: none; }
+    .tag, .owner, .status-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; }
+    .tag { background: var(--surface-2); color: var(--muted); }
+    .tag.hot { background: var(--accent-soft); color: var(--accent); }
+    .owner.a { background: color-mix(in srgb, var(--accent) 17%, transparent); color: var(--accent); }
+    .owner.b { background: color-mix(in srgb, var(--accent-2) 17%, transparent); color: var(--accent-2); }
+    .owner.c { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+    .callout { border-left: 4px solid var(--accent); padding: 13px 15px; background: var(--accent-soft); border-radius: 0 11px 11px 0; margin: 14px 0; }
+    .callout.teal { border-left-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+    .callout strong { display: block; margin-bottom: 4px; }
+    ul, ol { margin: 8px 0 0; padding-left: 22px; }
+    li + li { margin-top: 5px; }
+    .scope-list { list-style: none; padding: 0; }
+    .scope-list li { padding: 8px 0 8px 25px; position: relative; border-bottom: 1px solid var(--line); }
+    .scope-list li:last-child { border-bottom: 0; }
+    .scope-list li::before { position: absolute; left: 0; font-weight: 800; }
+    .scope-list.in li::before { content: "✓"; color: var(--good); }
+    .scope-list.out li::before { content: "×"; color: var(--danger); }
+    .equation { font-family: Georgia, serif; font-size: 19px; background: var(--surface-2); padding: 14px; border-radius: 11px; text-align: center; overflow-x: auto; }
+    .timeline { display: grid; gap: 12px; }
+    .day-row { display: grid; grid-template-columns: 140px 1fr; gap: 14px; align-items: start; }
+    .day-label { position: sticky; top: 8px; }
+    .day-label strong { display: block; font-size: 17px; }
+    .day-label span { color: var(--muted); font-size: 13px; }
+    .blocks { display: grid; grid-template-columns: repeat(12, minmax(42px, 1fr)); gap: 5px; }
+    .block { min-height: 76px; border-radius: 9px; padding: 8px; font-size: 12px; overflow: hidden; background: var(--surface-2); border-top: 4px solid var(--line); }
+    .block.a { border-top-color: var(--accent); }
+    .block.b { border-top-color: var(--accent-2); }
+    .block.c { border-top-color: var(--warn); }
+    .block strong { display: block; font-size: 12px; }
+    .block small { color: var(--muted); }
+    .span2 { grid-column: span 2; }
+    .span3 { grid-column: span 3; }
+    .span4 { grid-column: span 4; }
+    .span6 { grid-column: span 6; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 15px; color: var(--muted); font-size: 13px; }
+    .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--line); }
+    .legend .la::before { background: var(--accent); }
+    .legend .lb::before { background: var(--accent-2); }
+    .legend .lc::before { background: var(--warn); }
+    .board-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .progress-wrap { min-width: 260px; flex: 1; }
+    .progress-label { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-bottom: 5px; }
+    .progress { height: 9px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+    .progress > span { display: block; height: 100%; background: var(--accent); transition: width .2s ease; }
+    .board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .column { background: color-mix(in srgb, var(--surface-2) 58%, transparent); border-radius: 13px; padding: 12px; min-height: 300px; }
+    .column h3 { display: flex; justify-content: space-between; }
+    .task { background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 13px; margin-bottom: 10px; box-shadow: 0 5px 14px rgba(0,0,0,.04); }
+    .task p { margin: 6px 0 9px; font-size: 13px; color: var(--muted); }
+    .task-meta { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .task-actions { display: flex; gap: 5px; }
+    .icon-btn, .btn { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 9px; padding: 7px 10px; }
+    .icon-btn { padding: 5px 8px; }
+    .btn:hover, .icon-btn:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn.danger { color: var(--danger); }
+    .status-pill.todo { background: var(--surface-2); color: var(--muted); }
+    .status-pill.doing { background: color-mix(in srgb, var(--warn) 17%, transparent); color: var(--warn); }
+    .status-pill.done { background: color-mix(in srgb, var(--good) 17%, transparent); color: var(--good); }
+    .accordion { border-top: 1px solid var(--line); }
+    details { border-bottom: 1px solid var(--line); padding: 12px 0; }
+    summary { font-weight: 700; cursor: pointer; }
+    .code-card { margin-top: 14px; }
+    .code-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 8px; }
+    pre { margin: 0; background: #171915; color: #e9eadf; padding: 16px; border-radius: 11px; overflow: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; max-height: 460px; }
+    code { font-family: var(--mono); }
+    .copy-note { color: var(--good); font-size: 12px; min-height: 18px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px 9px; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+    td { font-size: 14px; }
+    .table-wrap { overflow-x: auto; }
+    .risk-high { color: var(--danger); font-weight: 700; }
+    .risk-med { color: var(--warn); font-weight: 700; }
+    textarea { width: 100%; min-height: 100px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--surface); color: var(--text); }
+    .checklist { list-style: none; padding: 0; }
+    .checklist label { display: flex; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .checklist input { width: 17px; height: 17px; margin-top: 3px; }
+    .prompt { margin-bottom: 14px; }
+    .prompt-text { white-space: pre-wrap; background: var(--surface-2); border-radius: 11px; padding: 14px; font-family: var(--mono); font-size: 13px; }
+    .footer { color: var(--muted); font-size: 12px; text-align: center; padding: 28px; }
+    @media (max-width: 980px) {
+      .grid.three, .board { grid-template-columns: 1fr 1fr; }
+      .hero-card { grid-template-columns: 1fr; }
+      .blocks { grid-template-columns: repeat(6, 1fr); }
+      .span6 { grid-column: span 6; }
+    }
+    @media (max-width: 720px) {
+      .header-inner { grid-template-columns: 1fr; padding: 22px 18px; }
+      nav { padding: 0 14px; }
+      main { padding: 18px; }
+      .grid.two, .grid.three, .board { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .day-row { grid-template-columns: 1fr; }
+      .day-label { position: static; }
+      .blocks { grid-template-columns: 1fr 1fr; }
+      .block, .span2, .span3, .span4, .span6 { grid-column: span 1; }
+      .deadline { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="header-inner">
+      <div>
+        <div class="eyebrow">HeatTrace · thermal-stress validation sprint</div>
+        <h1>From heatwave label to operational mechanism</h1>
+        <p class="subtitle">A three-day implementation workspace for testing whether temperature-unaware carbon schedulers overcommit when cooling overhead rises and effective compute capacity falls.</p>
+      </div>
+      <div class="deadline"><span>Hard deadline</span><strong>27 Oct 2026</strong><small>Submission + buffer day</small></div>
+    </div>
+    <nav role="tablist" aria-label="Workspace sections">
+      <button class="tab" role="tab" aria-selected="true" aria-controls="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="plan">Day-by-day plan</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="board">Task board</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="implementation">Implementation guide</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="experiments">Experiments</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="risks">Risks & decisions</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="writing">Writing plan</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="prompts">Prompts library</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="overview" class="panel" role="tabpanel">
+      <div class="hero-card">
+        <article class="card">
+          <span class="tag hot">Core hypothesis</span>
+          <h2 style="margin-top:10px">Static-capacity scheduling may be invalid under thermal stress</h2>
+          <p>The existing benchmark uses temperature to select and label events, but scheduling feasibility is governed by a constant compute-power cap. This sprint introduces a controlled physical pathway from ambient heat to facility operation.</p>
+          <div class="flow" aria-label="Thermal stress causal chain">
+            <div class="flow-step">Ambient temperature rises</div>
+            <div class="flow-step">PUE / cooling overhead rises</div>
+            <div class="flow-step">Effective compute capacity falls</div>
+            <div class="flow-step">Unaware scheduler overcommits</div>
+            <div class="flow-step">Violations, unmet work, regret</div>
+          </div>
+          <div class="callout teal"><strong>Decision rule</strong>Test the hypothesis; do not tune parameters until failure appears. If invalidity occurs only under the high-sensitivity curve, describe it as a controlled stress boundary.</div>
+        </article>
+        <aside class="card">
+          <h3>Team ownership</h3>
+          <p><span class="owner a">Person A · integration lead</span></p>
+          <p>Repository integration, heat-aware scheduler, final decisions, submission.</p>
+          <p><span class="owner b">Person B · modelling & tests</span></p>
+          <p>PUE model, thermal metrics, unit tests, assumptions record.</p>
+          <p><span class="owner c">Person C · experiments & evidence</span></p>
+          <p>Experiment execution, figures, tables, validity checks, writing support.</p>
+          <div class="callout"><strong>Minimum viable result</strong>One reproducible heatwave/control comparison across three fixed thermal-sensitivity levels, with unaware and heat-aware schedules scored against the same realized thermal model.</div>
+        </aside>
+      </div>
+
+      <div class="grid two" style="margin-top:18px">
+        <article class="card flat">
+          <h3>In scope</h3>
+          <ul class="scope-list in">
+            <li>CAISO July 2024 event and matched June 2024 control</li>
+            <li>Piecewise, configurable PUE–temperature sensitivity</li>
+            <li>Static unaware baseline versus heat-aware capacity scheduling</li>
+            <li>Facility energy, power violations, SLA, cost, carbon proxy and regret</li>
+            <li>Low, medium and high preregistered sensitivity scenarios</li>
+            <li>Workload identity and boundary robustness checks</li>
+          </ul>
+        </article>
+        <article class="card flat">
+          <h3>Explicitly out of scope</h3>
+          <ul class="scope-list out">
+            <li>Claiming a calibrated production data-center thermal model</li>
+            <li>Multi-region or multi-event statistical generalization</li>
+            <li>New battery, geographic migration or network models</li>
+            <li>Faithful full reproduction of Ruparel's adaptive DRO method</li>
+            <li>Marginal-emissions claims or certified avoided emissions</li>
+            <li>Tuning thermal parameters after observing failures</li>
+          </ul>
+        </article>
+      </div>
+      <div class="grid two" style="margin-top:18px">
+        <div class="equation">E<sub>facility,t</sub> = E<sub>compute,t</sub> × PUE(T<sub>t</sub>)</div>
+        <div class="equation">P<sub>compute-cap,t</sub> = P<sub>facility-cap</sub> ÷ PUE(T<sub>t</sub>)</div>
+      </div>
+    </section>
+
+    <section id="plan" class="panel" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Hour-blocked delivery plan</h2>
+        <div class="legend"><span class="la">Person A · integration</span><span class="lb">Person B · modelling</span><span class="lc">Person C · evidence</span></div>
+        <div class="timeline">
+          <div class="day-row">
+            <div class="day-label"><strong>24 Oct · Day 1</strong><span>Mechanism + tests</span></div>
+            <div class="blocks">
+              <div class="block a span2"><strong>09:00–11:00</strong>Freeze config, interfaces, output schema<small>A</small></div>
+              <div class="block b span3"><strong>09:00–12:00</strong>Implement PUE curves and capacity series<small>B · depends on config</small></div>
+              <div class="block c span3"><strong>09:00–12:00</strong>Assumptions sheet + expected result templates<small>C</small></div>
+              <div class="block a span3"><strong>11:00–14:00</strong>Thermal scoring integration<small>A · after schema</small></div>
+              <div class="block b span3"><strong>13:00–16:00</strong>Unit tests: monotonic PUE, energy, violations<small>B</small></div>
+              <div class="block c span3"><strong>13:00–16:00</strong>Matched-input and boundary checks<small>C</small></div>
+              <div class="block a span3"><strong>15:00–18:00</strong>Heat-aware capacity adapter + smoke run<small>A · after PUE API</small></div>
+              <div class="block b span2"><strong>16:00–18:00</strong>Review integration and failure semantics<small>B</small></div>
+              <div class="block c span2"><strong>16:00–18:00</strong>Draft methods notes<small>C</small></div>
+            </div>
+          </div>
+          <div class="day-row">
+            <div class="day-label"><strong>25 Oct · Day 2</strong><span>Experiments</span></div>
+            <div class="blocks">
+              <div class="block a span3"><strong>09:00–12:00</strong>Implement full thermal experiment runner<small>A</small></div>
+              <div class="block b span3"><strong>09:00–12:00</strong>Independent metric assertions + audit<small>B</small></div>
+              <div class="block c span3"><strong>09:00–12:00</strong>Prepare plotting/report pipeline<small>C</small></div>
+              <div class="block a span3"><strong>13:00–16:00</strong>Run 2 windows × 2 policy classes × 3 levels<small>A</small></div>
+              <div class="block b span3"><strong>13:00–16:00</strong>Review failures and capacity accounting<small>B</small></div>
+              <div class="block c span3"><strong>13:00–16:00</strong>Build comparison table and figures<small>C</small></div>
+              <div class="block a span3"><strong>16:00–18:00</strong>Regret comparator and manifests<small>A</small></div>
+              <div class="block b span2"><strong>16:00–18:00</strong>Reproduction run<small>B</small></div>
+              <div class="block c span2"><strong>16:00–18:00</strong>Interpretation draft<small>C</small></div>
+            </div>
+          </div>
+          <div class="day-row">
+            <div class="day-label"><strong>26 Oct · Day 3</strong><span>Validity + packaging</span></div>
+            <div class="blocks">
+              <div class="block a span3"><strong>09:00–12:00</strong>Clean-run verification and fixes<small>A</small></div>
+              <div class="block b span3"><strong>09:00–12:00</strong>Boundary and threshold robustness<small>B</small></div>
+              <div class="block c span3"><strong>09:00–12:00</strong>Finalize figure, table and captions<small>C</small></div>
+              <div class="block a span3"><strong>13:00–16:00</strong>Freeze artifacts and reproduction command<small>A</small></div>
+              <div class="block b span3"><strong>13:00–16:00</strong>Audit assumptions, claims and tests<small>B</small></div>
+              <div class="block c span3"><strong>13:00–16:00</strong>Write results, limitations and slides<small>C</small></div>
+              <div class="block a span4"><strong>16:00–18:00</strong>Go/no-go review, merge, package<small>All · A decides scope cuts</small></div>
+              <div class="block c span4"><strong>18:00–19:00</strong>Demo rehearsal and final evidence check<small>All</small></div>
+            </div>
+          </div>
+          <div class="day-row">
+            <div class="day-label"><strong>27 Oct · Buffer</strong><span>Submission</span></div>
+            <div class="blocks">
+              <div class="block a span4"><strong>09:00–11:00</strong>Fresh-machine reproduction<small>A + B</small></div>
+              <div class="block c span4"><strong>09:00–11:00</strong>PDF, figures and citation check<small>C</small></div>
+              <div class="block a span4"><strong>11:00–13:00</strong>Submit; preserve checksum and receipt<small>A</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:18px"><strong>Critical path</strong>PUE configuration → hourly effective capacity → thermal scoring → heat-aware scheduling → paired runs → validity checks → figures and claims.</div>
+    </section>
+
+    <section id="board" class="panel" role="tabpanel" hidden>
+      <div class="card">
+        <div class="board-controls">
+          <div>
+            <h2 style="margin-bottom:3px">Task board</h2>
+            <p class="subtitle">Use the arrows to move tasks. Progress persists in this browser.</p>
+          </div>
+          <button class="btn danger" id="reset-board">Reset board</button>
+        </div>
+        <div class="grid three" id="day-progress"></div>
+        <div class="board" id="task-board" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="implementation" class="panel" role="tabpanel" hidden>
+      <div class="grid two">
+        <article class="card flat">
+          <h2>Repository integration</h2>
+          <pre><code>src/heattrace/thermal/
+  __init__.py
+  model.py              # PUE and effective-capacity functions
+  metrics.py            # facility energy and violation scoring
+  scheduler.py          # heat-aware constraint adapter
+
+src/heattrace/experiments/
+  p6_thermal_grid.py    # frozen 2 × 2 × 3 design
+  p6_thermal_runner.py  # schedule, score, persist
+
+src/heattrace/analysis/
+  p6_thermal_report.py  # tables and figures
+
+configs/p6_thermal.yaml
+tests/test_p6_thermal.py
+docs/p6_thermal_method.md</code></pre>
+        </article>
+        <article class="card flat">
+          <h3>Integration contract</h3>
+          <ol>
+            <li>Leave existing P1–P5.5 outputs untouched.</li>
+            <li>Add temperature and thermal scenario IDs to the experiment context.</li>
+            <li>Unaware policies receive the nominal static compute cap.</li>
+            <li>Heat-aware policies receive an hourly capacity vector.</li>
+            <li>Both are scored against the same realized hourly PUE and facility cap.</li>
+            <li>Persist schedule digest, thermal config digest and realized score digest.</li>
+          </ol>
+          <div class="callout teal"><strong>Failure threshold to freeze</strong>A run is operationally invalid if any hour exceeds the facility cap by more than the numerical tolerance, or any required workload remains unfinished by its deadline.</div>
+        </article>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h2>Runnable starter code</h2>
+        <p class="subtitle">These blocks are designed to be split into the files above and adapted to the existing HeatTrace dataclasses.</p>
+        <div class="accordion">
+          <details open>
+            <summary>PUE(T), effective capacity and facility energy</summary>
+            <div class="code-card">
+              <div class="code-head"><span><code>src/heattrace/thermal/model.py</code></span><button class="btn copy" data-copy="code-pue">Copy</button></div>
+              <pre id="code-pue"><code>from __future__ import annotations
+
+from dataclasses import dataclass
+import numpy as np
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class ThermalScenario:
+    scenario_id: str
+    base_pue: float
+    threshold_c: float
+    slope_per_c: float
+    max_pue: float
+
+
+THERMAL_SCENARIOS = {
+    "low": ThermalScenario("low", 1.20, 22.0, 0.010, 1.45),
+    "medium": ThermalScenario("medium", 1.20, 22.0, 0.020, 1.70),
+    "high": ThermalScenario("high", 1.20, 22.0, 0.035, 2.00),
+}
+
+
+def pue_from_temperature(
+    temperature_c: pd.Series | np.ndarray,
+    scenario: ThermalScenario,
+) -&gt; np.ndarray:
+    """Controlled piecewise sensitivity model; not a calibrated facility model."""
+    temp = np.asarray(temperature_c, dtype=float)
+    if np.isnan(temp).any():
+        raise ValueError("temperature contains missing values")
+    excess = np.maximum(temp - scenario.threshold_c, 0.0)
+    pue = scenario.base_pue + scenario.slope_per_c * excess
+    return np.minimum(pue, scenario.max_pue)
+
+
+def effective_compute_capacity_kw(
+    facility_power_cap_kw: float,
+    pue: np.ndarray,
+) -&gt; np.ndarray:
+    if facility_power_cap_kw &lt;= 0 or np.any(pue &lt; 1.0):
+        raise ValueError("facility cap must be positive and PUE must be at least 1")
+    return facility_power_cap_kw / pue
+
+
+def facility_energy_kwh(
+    compute_energy_kwh: np.ndarray,
+    pue: np.ndarray,
+) -&gt; np.ndarray:
+    compute = np.asarray(compute_energy_kwh, dtype=float)
+    if compute.shape != pue.shape:
+        raise ValueError("compute energy and PUE must have identical shapes")
+    return compute * pue</code></pre>
+              <div class="copy-note" aria-live="polite"></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>Thermal violation and cooling-adjusted metrics</summary>
+            <div class="code-card">
+              <div class="code-head"><span><code>src/heattrace/thermal/metrics.py</code></span><button class="btn copy" data-copy="code-metrics">Copy</button></div>
+              <pre id="code-metrics"><code>from __future__ import annotations
+
+import numpy as np
+
+
+def compute_thermal_metrics(
+    compute_power_kw: np.ndarray,
+    pue: np.ndarray,
+    facility_cap_kw: float,
+    price_usd_per_mwh: np.ndarray,
+    carbon_g_per_kwh: np.ndarray,
+    tolerance_kw: float = 1e-6,
+) -&gt; dict[str, float | int | bool]:
+    compute = np.asarray(compute_power_kw, dtype=float)
+    facility = compute * pue
+    excess = np.maximum(facility - facility_cap_kw, 0.0)
+    cooling = facility - compute
+    violation_mask = excess &gt; tolerance_kw
+
+    cost = facility * np.asarray(price_usd_per_mwh) / 1000.0
+    carbon_kg = facility * np.asarray(carbon_g_per_kwh) / 1000.0
+
+    return {
+        "facility_energy_kwh": float(facility.sum()),
+        "cooling_energy_kwh": float(cooling.sum()),
+        "facility_power_violation_hours": int(violation_mask.sum()),
+        "max_facility_power_excess_kw": float(excess.max(initial=0.0)),
+        "total_facility_power_excess_kwh": float(excess.sum()),
+        "cooling_adjusted_cost_usd": float(cost.sum()),
+        "cooling_adjusted_carbon_kg": float(carbon_kg.sum()),
+        "thermally_feasible": bool(not violation_mask.any()),
+    }</code></pre>
+              <div class="copy-note" aria-live="polite"></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>Temperature-unaware and heat-aware scheduler adapters</summary>
+            <div class="code-card">
+              <div class="code-head"><span><code>src/heattrace/thermal/scheduler.py</code></span><button class="btn copy" data-copy="code-sched">Copy</button></div>
+              <pre id="code-sched"><code>from __future__ import annotations
+
+from dataclasses import replace
+import numpy as np
+import pandas as pd
+
+from heattrace.policy.interfaces import (
+    ForecastResult,
+    ScheduleResult,
+    SchedulingConstraints,
+    SchedulingPolicy,
+)
+
+
+def schedule_temperature_unaware(
+    policy: SchedulingPolicy,
+    workload_df: pd.DataFrame,
+    forecast: ForecastResult,
+    nominal_compute_cap_kw: float,
+    max_concurrent_jobs: int,
+) -&gt; ScheduleResult:
+    """Existing baseline: one static compute-capacity assumption."""
+    constraints = SchedulingConstraints(
+        max_cluster_power_kw=nominal_compute_cap_kw,
+        max_concurrent_jobs=max_concurrent_jobs,
+    )
+    return policy.schedule(workload_df, forecast, constraints)
+
+
+def schedule_heat_aware_greedy(
+    policy: SchedulingPolicy,
+    workload_df: pd.DataFrame,
+    forecast: ForecastResult,
+    effective_capacity_kw: np.ndarray,
+    max_concurrent_jobs: int,
+) -&gt; ScheduleResult:
+    """Adapter: schedule, then repair allocations that exceed hourly capacity.
+
+    Replace with a native hourly-capacity policy after the minimum viable sprint.
+    The repair is deterministic and never moves work outside arrival/deadline bounds.
+    """
+    static_cap = float(np.max(effective_capacity_kw))
+    original = policy.schedule(
+        workload_df,
+        forecast,
+        SchedulingConstraints(static_cap, max_concurrent_jobs),
+    )
+
+    jobs = workload_df.set_index("job_id")
+    hourly_power = np.zeros(len(effective_capacity_kw), dtype=float)
+    accepted = []
+    deferred = []
+
+    for allocation in sorted(
+        original.allocations,
+        key=lambda a: (a.allocated_hour_offset, a.job_id),
+    ):
+        h = allocation.allocated_hour_offset
+        if hourly_power[h] + allocation.execution_power_kw &lt;= effective_capacity_kw[h] + 1e-6:
+            accepted.append(allocation)
+            hourly_power[h] += allocation.execution_power_kw
+        else:
+            deferred.append(allocation)
+
+    unmet = []
+    for allocation in deferred:
+        job = jobs.loc[allocation.job_id]
+        start = max(int(job.arrival_offset_hours), allocation.allocated_hour_offset + 1)
+        stop = min(int(job.deadline_offset_hours), len(effective_capacity_kw) - 1)
+        placed = False
+        for h in range(start, stop + 1):
+            if hourly_power[h] + allocation.execution_power_kw &lt;= effective_capacity_kw[h] + 1e-6:
+                accepted.append(replace(allocation, allocated_hour_offset=h))
+                hourly_power[h] += allocation.execution_power_kw
+                placed = True
+                break
+        if not placed:
+            unmet.append(allocation.job_id)
+
+    return replace(
+        original,
+        policy_name=f"{original.policy_name}_heat_aware",
+        allocations=accepted,
+        is_feasible=not unmet,
+        unmet_deadlines=sorted(set(unmet)),
+    )</code></pre>
+              <div class="copy-note" aria-live="polite"></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>Matched control validation</summary>
+            <div class="code-card">
+              <div class="code-head"><span><code>src/heattrace/experiments/p6_thermal_grid.py</code></span><button class="btn copy" data-copy="code-match">Copy</button></div>
+              <pre id="code-match"><code>from __future__ import annotations
+
+import hashlib
+import pandas as pd
+
+
+def workload_identity_digest(workload_df: pd.DataFrame) -&gt; str:
+    cols = [
+        "job_id", "arrival_offset_hours", "deadline_offset_hours",
+        "processing_requirement", "energy_kwh", "priority",
+    ]
+    payload = workload_df[cols].sort_values("job_id").to_csv(index=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def validate_matched_inputs(
+    event_workload: pd.DataFrame,
+    control_workload: pd.DataFrame,
+    event_window: pd.DataFrame,
+    control_window: pd.DataFrame,
+) -&gt; None:
+    if workload_identity_digest(event_workload) != workload_identity_digest(control_workload):
+        raise ValueError("event and control workloads are not identical")
+    if len(event_window) != 120 or len(control_window) != 120:
+        raise ValueError("both windows must contain exactly 120 hourly rows")
+    for frame, name in [(event_window, "event"), (control_window, "control")]:
+        if frame["timestamp_utc"].duplicated().any():
+            raise ValueError(f"{name} contains duplicate timestamps")
+        if frame["temperature_c"].isna().any():
+            raise ValueError(f"{name} contains missing temperature")</code></pre>
+              <div class="copy-note" aria-live="polite"></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>Experiment runner skeleton</summary>
+            <div class="code-card">
+              <div class="code-head"><span><code>src/heattrace/experiments/p6_thermal_runner.py</code></span><button class="btn copy" data-copy="code-runner">Copy</button></div>
+              <pre id="code-runner"><code>from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from heattrace.thermal.metrics import compute_thermal_metrics
+from heattrace.thermal.model import (
+    THERMAL_SCENARIOS,
+    effective_compute_capacity_kw,
+    pue_from_temperature,
+)
+from heattrace.thermal.scheduler import (
+    schedule_heat_aware_greedy,
+    schedule_temperature_unaware,
+)
+
+
+def hourly_compute_power(schedule, horizon: int) -&gt; np.ndarray:
+    result = np.zeros(horizon, dtype=float)
+    for allocation in schedule.allocations:
+        result[allocation.allocated_hour_offset] += allocation.execution_power_kw
+    return result
+
+
+def run_thermal_pair(
+    windows: dict[str, pd.DataFrame],
+    workload_df: pd.DataFrame,
+    policy,
+    forecasts: dict[str, object],
+    facility_cap_kw: float,
+    max_concurrent_jobs: int,
+) -&gt; pd.DataFrame:
+    rows = []
+    for window_id, realized in windows.items():
+        for sensitivity, scenario in THERMAL_SCENARIOS.items():
+            pue = pue_from_temperature(realized["temperature_c"], scenario)
+            effective_cap = effective_compute_capacity_kw(facility_cap_kw, pue)
+
+            schedules = {
+                "temperature_unaware": schedule_temperature_unaware(
+                    policy, workload_df, forecasts[window_id],
+                    nominal_compute_cap_kw=facility_cap_kw / scenario.base_pue,
+                    max_concurrent_jobs=max_concurrent_jobs,
+                ),
+                "heat_aware": schedule_heat_aware_greedy(
+                    policy, workload_df, forecasts[window_id], effective_cap,
+                    max_concurrent_jobs=max_concurrent_jobs,
+                ),
+            }
+
+            for policy_class, schedule in schedules.items():
+                metrics = compute_thermal_metrics(
+                    compute_power_kw=hourly_compute_power(schedule, len(realized)),
+                    pue=pue,
+                    facility_cap_kw=facility_cap_kw,
+                    price_usd_per_mwh=realized["price_usd_per_mwh"].to_numpy(),
+                    carbon_g_per_kwh=realized["carbon_g_per_kwh"].to_numpy(),
+                )
+                rows.append({
+                    "window_id": window_id,
+                    "window_type": realized["window_type"].iloc[0],
+                    "thermal_sensitivity": sensitivity,
+                    "policy_class": policy_class,
+                    "schedule_feasible": schedule.is_feasible,
+                    **metrics,
+                })
+    return pd.DataFrame(rows)</code></pre>
+              <div class="copy-note" aria-live="polite"></div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="experiments" class="panel" role="tabpanel" hidden>
+      <div class="grid two">
+        <article class="card">
+          <h2>Frozen minimum experiment</h2>
+          <table>
+            <tr><th>Factor</th><th>Levels</th></tr>
+            <tr><td>Window</td><td>HW_20240702; CTRL_20240605</td></tr>
+            <tr><td>Policy class</td><td>Temperature-unaware; heat-aware</td></tr>
+            <tr><td>Thermal sensitivity</td><td>Low; medium; high</td></tr>
+            <tr><td>Workload</td><td>Identical frozen trace and seed</td></tr>
+            <tr><td>Nominal facility limit</td><td>Identical in event and control</td></tr>
+            <tr><td>Primary comparison</td><td>Paired heatwave–control difference</td></tr>
+          </table>
+          <p style="margin-top:12px"><strong>Minimum run count:</strong> 2 windows × 2 policy classes × 3 sensitivities = 12 cells per scheduler policy.</p>
+        </article>
+        <article class="card">
+          <h3>Preregister before execution</h3>
+          <ul>
+            <li>PUE thresholds, slopes, caps and source/rationale.</li>
+            <li>Facility-power violation tolerance.</li>
+            <li>Nominal facility cap and workload seed.</li>
+            <li>Primary policy and primary metric.</li>
+            <li>Rule for incomplete jobs and failure penalties.</li>
+            <li>Whether temperature inputs are oracle or forecasted.</li>
+          </ul>
+          <div class="callout"><strong>Primary metric</strong>Difference-in-differences in facility-power violation hours: (unaware − aware)<sub>heatwave</sub> − (unaware − aware)<sub>control</sub>.</div>
+        </article>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h3>Required metrics and validity checks</h3>
+        <div class="grid two">
+          <div>
+            <ul class="scope-list in">
+              <li>Facility-power violation hours and maximum excess kW</li>
+              <li>Cooling and total facility energy</li>
+              <li>Unfinished jobs, missed deadlines and unmet energy</li>
+              <li>Cooling-adjusted cost and carbon proxy</li>
+              <li>Regret versus heat-aware feasible comparator</li>
+            </ul>
+          </div>
+          <div>
+            <ul class="scope-list in">
+              <li>Workload digest equality across windows</li>
+              <li>Same thermal parameters for event and control</li>
+              <li>120 hourly rows and no timestamp gaps</li>
+              <li>±24h boundary-buffer sensitivity</li>
+              <li>Static-PUE zero-effect regression control</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <h3>Expected-result table · leave blank until runs finish</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Window</th><th>Sensitivity</th><th>Policy class</th><th>Violation hours</th><th>Unmet kWh</th><th>Missed jobs</th><th>Facility kWh</th><th>Cost $</th><th>Carbon kg</th><th>Regret</th></tr></thead>
+            <tbody>
+              <tr><td>Control</td><td>Low</td><td>Unaware</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Control</td><td>Low</td><td>Heat-aware</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Heatwave</td><td>Low</td><td>Unaware</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td>Heatwave</td><td>Low</td><td>Heat-aware</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+              <tr><td colspan="10">Repeat for medium and high sensitivity.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="risks" class="panel" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Risk register</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Risk</th><th>Likelihood</th><th>Impact</th><th>Owner</th><th>Mitigation / decision</th></tr></thead>
+            <tbody>
+              <tr><td>PUE curve lacks credible basis</td><td class="risk-high">High</td><td class="risk-high">High</td><td>B</td><td>Label as controlled sensitivity; document source and never claim calibration.</td></tr>
+              <tr><td>Failure manufactured by arbitrary facility cap</td><td class="risk-high">High</td><td class="risk-high">High</td><td>A</td><td>Freeze cap before runs; include utilization sweep and report boundary.</td></tr>
+              <tr><td>Unaware and aware workloads differ</td><td class="risk-med">Medium</td><td class="risk-high">High</td><td>B</td><td>Assert identical workload digest and required energy.</td></tr>
+              <tr><td>Repair adapter changes policy semantics</td><td class="risk-med">Medium</td><td class="risk-high">High</td><td>A</td><td>Describe as heat-aware feasibility adapter; avoid claims about original DRO.</td></tr>
+              <tr><td>No operational failures appear</td><td class="risk-med">Medium</td><td class="risk-med">Medium</td><td>All</td><td>Report underestimation of facility energy/cost/carbon; do not force failure.</td></tr>
+              <tr><td>Carbon quality flags weaken conclusions</td><td class="risk-high">High</td><td class="risk-med">Medium</td><td>C</td><td>Keep carbon as quality-limited sensitivity evidence.</td></tr>
+              <tr><td>Integration consumes Day 2</td><td class="risk-med">Medium</td><td class="risk-high">High</td><td>A</td><td>Use scorer-only MVP before native hourly-capacity scheduling.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:18px">
+        <article class="card flat">
+          <h3>Open decisions · resolve by 24 Oct 11:00</h3>
+          <ol>
+            <li>What documented relationship justifies the PUE curve?</li>
+            <li>Is the facility cap physical input or controlled utilization parameter?</li>
+            <li>Does the heat-aware policy receive oracle temperature or a forecast?</li>
+            <li>What is the primary scheduler for the minimum experiment?</li>
+            <li>How is work curtailed when realized facility capacity is exceeded?</li>
+          </ol>
+        </article>
+        <article class="card flat">
+          <h3>Cut list · remove in this order</h3>
+          <ol>
+            <li>Extra policies beyond baseline and cost-first.</li>
+            <li>Full native rescheduler; retain deterministic repair adapter.</li>
+            <li>Extra workload multipliers beyond one boundary check.</li>
+            <li>Carbon figure; retain metric table with disclaimer.</li>
+            <li>24-hour phase ablations.</li>
+            <li>Anything outside CAISO or the two frozen windows.</li>
+          </ol>
+        </article>
+      </div>
+      <div class="card flat" style="margin-top:18px">
+        <h3>Decision log</h3>
+        <textarea id="decision-log" placeholder="Record decisions with timestamp, owner, rationale and affected files. Saved automatically in this browser."></textarea>
+      </div>
+    </section>
+
+    <section id="writing" class="panel" role="tabpanel" hidden>
+      <div class="grid two">
+        <article class="card">
+          <h2>Report outline</h2>
+          <ul class="checklist" id="writing-checklist">
+            <li><label><input type="checkbox" data-check="abstract"> Abstract: prototype, mechanism, outcome, limits</label></li>
+            <li><label><input type="checkbox" data-check="intro"> Introduction: gap between event labels and operational heat effects</label></li>
+            <li><label><input type="checkbox" data-check="related"> Related work: carbon scheduling, thermal efficiency, extreme-event evaluation</label></li>
+            <li><label><input type="checkbox" data-check="data"> Data: event/control selection and provenance</label></li>
+            <li><label><input type="checkbox" data-check="model"> Method: PUE sensitivity and effective capacity</label></li>
+            <li><label><input type="checkbox" data-check="design"> Experiment: paired windows, policies and preregistration</label></li>
+            <li><label><input type="checkbox" data-check="results"> Results: feasibility first, then energy/cost/carbon/regret</label></li>
+            <li><label><input type="checkbox" data-check="validity"> Validity: parameters, workloads, boundaries and carbon flags</label></li>
+            <li><label><input type="checkbox" data-check="limits"> Limitations and non-generalization</label></li>
+            <li><label><input type="checkbox" data-check="repro"> Reproduction commands and artifact index</label></li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Figure and table plan</h3>
+          <table>
+            <tr><th>ID</th><th>Content</th><th>Purpose</th></tr>
+            <tr><td>Fig. 1</td><td>Temperature → PUE → effective capacity over 120h</td><td>Show the mechanism</td></tr>
+            <tr><td>Fig. 2</td><td>Facility cap and unaware/aware facility power</td><td>Show when violations occur</td></tr>
+            <tr><td>Table 1</td><td>Frozen thermal scenarios</td><td>Expose assumptions</td></tr>
+            <tr><td>Table 2</td><td>Heatwave/control paired metrics</td><td>Primary evidence</td></tr>
+            <tr><td>Table 3</td><td>Validity and boundary checks</td><td>Rule out artifacts</td></tr>
+          </table>
+          <div class="callout"><strong>Results order</strong>Operational validity → delivered work → facility energy → cost → carbon proxy. Never lead with a cheap schedule that failed to deliver equal work.</div>
+        </article>
+      </div>
+      <article class="card" style="margin-top:18px">
+        <h3>Limitations template</h3>
+        <p>This prototype evaluates one historical CAISO heatwave and one matched control using a controlled temperature-dependent PUE sensitivity model. The thermal relationship is an experimental intervention rather than a calibrated model of a named data center. Results therefore identify conditional stress boundaries and potential evaluation failures; they do not estimate the prevalence of scheduler failures across facilities, regions or heatwaves. The heat-aware adapter is not a faithful implementation of Ruparel's adaptive DRO algorithm. Carbon outcomes use quality-limited production-average intensity and must not be interpreted as avoided marginal emissions. Multi-event replication, authentic facility telemetry, operational temperature forecasts and independent scheduler implementations are required before making general claims.</p>
+      </article>
+      <article class="card" style="margin-top:18px">
+        <h3>Outcome-contingent claim</h3>
+        <p><strong>If violations appear under low/medium sensitivity:</strong> “Under the frozen controlled model, static-capacity scheduling produced thermally invalid allocations during the selected heatwave that were absent or materially smaller in the matched control; heat-aware capacity scheduling reduced those violations.”</p>
+        <p><strong>If only high sensitivity fails:</strong> “HeatTrace identifies a thermal-stress boundary beyond which static-capacity scheduling becomes invalid; lower sensitivities primarily reveal facility-energy underestimation.”</p>
+        <p><strong>If no failures appear:</strong> “Schedulers remained feasible in the tested case, but static energy accounting underestimated cooling-adjusted facility energy, cost and carbon during the heatwave.”</p>
+      </article>
+    </section>
+
+    <section id="prompts" class="panel" role="tabpanel" hidden>
+      <div class="card">
+        <h2>Reusable prompts</h2>
+        <div id="prompt-list"></div>
+      </div>
+    </section>
+  </main>
+  <div class="footer">HeatTrace thermal-stress sprint workspace · State is stored locally in your browser.</div>
+</div>
+
+<script>
+(() => {
+  const STORAGE = 'heattrace-thermal-workspace-v1';
+  const defaults = {
+    tasks: [
+      {id:'d1-1', day:1, owner:'A', priority:'MVP', title:'Freeze P6 thermal configuration', detail:'Facility cap, tolerance, PUE scenarios, primary policy and metric.', status:'todo'},
+      {id:'d1-2', day:1, owner:'B', priority:'MVP', title:'Implement thermal model', detail:'PUE(T), effective compute capacity and facility-energy functions.', status:'todo'},
+      {id:'d1-3', day:1, owner:'B', priority:'MVP', title:'Add thermal unit tests', detail:'Monotonic PUE, higher facility draw at higher temperature, shape and bounds.', status:'todo'},
+      {id:'d1-4', day:1, owner:'A', priority:'MVP', title:'Integrate thermal scoring', detail:'Score existing schedules using realized PUE and facility cap.', status:'todo'},
+      {id:'d1-5', day:1, owner:'A', priority:'MVP', title:'Add heat-aware adapter', detail:'Use hourly effective capacity; never move work outside arrival/deadline.', status:'todo'},
+      {id:'d1-6', day:1, owner:'C', priority:'MVP', title:'Freeze evidence templates', detail:'Expected-result table, assumptions sheet and claim decision tree.', status:'todo'},
+      {id:'d2-1', day:2, owner:'A', priority:'MVP', title:'Build paired experiment runner', detail:'2 windows × 2 policy classes × 3 thermal sensitivities.', status:'todo'},
+      {id:'d2-2', day:2, owner:'B', priority:'MVP', title:'Add integrity assertions', detail:'Workload digest, identical nominal cap, complete 120-hour windows.', status:'todo'},
+      {id:'d2-3', day:2, owner:'A', priority:'MVP', title:'Execute frozen experiment', detail:'Persist schedules, metrics, digests and run manifest.', status:'todo'},
+      {id:'d2-4', day:2, owner:'C', priority:'MVP', title:'Build primary table', detail:'Feasibility, unmet work, facility energy, cost, carbon and regret.', status:'todo'},
+      {id:'d2-5', day:2, owner:'C', priority:'MVP', title:'Generate mechanism figure', detail:'Temperature, PUE, effective capacity and violation hours.', status:'todo'},
+      {id:'d2-6', day:2, owner:'B', priority:'MVP', title:'Independent reproduction run', detail:'Verify deterministic outputs and investigate mismatches.', status:'todo'},
+      {id:'d3-1', day:3, owner:'B', priority:'MVP', title:'Boundary robustness check', detail:'Repeat with lead-in/out buffer or justified boundary alternative.', status:'todo'},
+      {id:'d3-2', day:3, owner:'C', priority:'MVP', title:'Workload matching audit', detail:'Confirm identical arrivals, deadlines, energy and seeds.', status:'todo'},
+      {id:'d3-3', day:3, owner:'A', priority:'MVP', title:'Freeze final artifacts', detail:'Config, results, figure sources, hashes and reproduction command.', status:'todo'},
+      {id:'d3-4', day:3, owner:'C', priority:'MVP', title:'Write results and limitations', detail:'Use outcome-contingent claim; retain carbon disclaimer.', status:'todo'},
+      {id:'d3-5', day:3, owner:'A', priority:'MVP', title:'Clean-environment validation', detail:'Run tests and full reproduction from documented command.', status:'todo'},
+      {id:'d3-6', day:3, owner:'C', priority:'MVP', title:'Prepare demo and slides', detail:'Problem, mechanism, experiment, result, integrity, limits.', status:'todo'},
+      {id:'x-1', day:3, owner:'A', priority:'Extension', title:'Add all scheduler policies', detail:'Only after the minimum cost-first comparison is frozen.', status:'todo'},
+      {id:'x-2', day:3, owner:'C', priority:'Extension', title:'Add phase ablation', detail:'Onset, peak, sustained and recovery breakdown.', status:'todo'}
+    ],
+    decisions:'',
+    checks:{}
+  };
+
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE));
+      return saved && Array.isArray(saved.tasks) ? {...defaults, ...saved} : structuredClone(defaults);
+    } catch (_) { return structuredClone(defaults); }
+  }
+  let state = loadState();
+  function save() { localStorage.setItem(STORAGE, JSON.stringify(state)); }
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', 'false'));
+      document.querySelectorAll('.panel').forEach(p => p.hidden = true);
+      tab.setAttribute('aria-selected', 'true');
+      document.getElementById(tab.getAttribute('aria-controls')).hidden = false;
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    });
+  });
+
+  const statusOrder = ['todo', 'doing', 'done'];
+  const statusLabels = {todo:'To do', doing:'In progress', done:'Done'};
+  const ownerClass = {A:'a', B:'b', C:'c'};
+
+  function moveTask(id, direction) {
+    const task = state.tasks.find(t => t.id === id);
+    const index = statusOrder.indexOf(task.status);
+    task.status = statusOrder[Math.max(0, Math.min(2, index + direction))];
+    save(); renderBoard();
+  }
+
+  function renderBoard() {
+    const board = document.getElementById('task-board');
+    board.innerHTML = '';
+    statusOrder.forEach(status => {
+      const tasks = state.tasks.filter(t => t.status === status);
+      const col = document.createElement('section');
+      col.className = 'column';
+      col.innerHTML = `<h3>${statusLabels[status]} <span class="tag">${tasks.length}</span></h3>`;
+      tasks.forEach(task => {
+        const el = document.createElement('article');
+        el.className = 'task';
+        el.innerHTML = `
+          <div><span class="tag">Day ${task.day}</span> <span class="tag ${task.priority === 'MVP' ? 'hot' : ''}">${task.priority}</span></div>
+          <strong>${task.title}</strong>
+          <p>${task.detail}</p>
+          <div class="task-meta">
+            <span class="owner ${ownerClass[task.owner]}">Person ${task.owner}</span>
+            <div class="task-actions">
+              <button class="icon-btn back" aria-label="Move ${task.title} backward" ${status === 'todo' ? 'disabled' : ''}>←</button>
+              <button class="icon-btn next" aria-label="Move ${task.title} forward" ${status === 'done' ? 'disabled' : ''}>→</button>
+            </div>
+          </div>`;
+        el.querySelector('.back').addEventListener('click', () => moveTask(task.id, -1));
+        el.querySelector('.next').addEventListener('click', () => moveTask(task.id, 1));
+        col.appendChild(el);
+      });
+      board.appendChild(col);
+    });
+    const progress = document.getElementById('day-progress');
+    progress.innerHTML = '';
+    [1,2,3].forEach(day => {
+      const tasks = state.tasks.filter(t => t.day === day && t.priority === 'MVP');
+      const done = tasks.filter(t => t.status === 'done').length;
+      const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
+      const el = document.createElement('div');
+      el.innerHTML = `<div class="progress-wrap"><div class="progress-label"><span>Day ${day}</span><span>${done}/${tasks.length} · ${pct}%</span></div><div class="progress" role="progressbar" aria-label="Day ${day} progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div></div>`;
+      progress.appendChild(el);
+    });
+  }
+  document.getElementById('reset-board').addEventListener('click', () => {
+    if (confirm('Reset all task statuses, decisions and writing checks?')) {
+      state = structuredClone(defaults); save(); renderBoard(); initNotes(); initChecks();
+    }
+  });
+
+  document.querySelectorAll('.copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = document.getElementById(btn.dataset.copy).innerText;
+      const note = btn.closest('.code-card, .prompt').querySelector('.copy-note');
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (_) {
+        const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+      }
+      if (note) { note.textContent = 'Copied'; setTimeout(() => note.textContent = '', 1200); }
+    });
+  });
+
+  function initNotes() {
+    const note = document.getElementById('decision-log');
+    note.value = state.decisions || '';
+    note.oninput = () => { state.decisions = note.value; save(); };
+  }
+  function initChecks() {
+    document.querySelectorAll('[data-check]').forEach(input => {
+      input.checked = Boolean(state.checks[input.dataset.check]);
+      input.onchange = () => { state.checks[input.dataset.check] = input.checked; save(); };
+    });
+  }
+
+  const prompts = [
+    ['Coding · thermal model', 'Implement the HeatTrace thermal model in src/heattrace/thermal/model.py. Preserve existing project conventions. Add a frozen ThermalScenario dataclass, low/medium/high configurations, a monotonic piecewise PUE(T) function, effective compute capacity, and facility energy. Do not modify existing P1–P5.5 behavior. Add validation for missing values, PUE below 1, shape mismatches, and non-positive caps.'],
+    ['Debugging · unexplained violations', 'Diagnose why facility-power violations appear in this HeatTrace thermal run. Trace the result from workload allocations through hourly compute power, PUE, facility power, cap and tolerance. Check units, interval semantics, duplicate allocations, window alignment and whether the same workload digest was used. Explain the root cause before changing code.'],
+    ['Tests · integrity', 'Write focused pytest tests for HeatTrace thermal stress: PUE is non-decreasing above the threshold; identical compute energy yields greater facility energy at higher temperature; effective capacity falls as PUE rises; static-PUE control produces no heatwave-specific thermal effect; event/control workloads have identical digests; violations respect the frozen numerical tolerance.'],
+    ['Experiments · frozen execution', 'Run only the preregistered HeatTrace P6 grid: two frozen 120-hour windows, temperature-unaware versus heat-aware policy class, and low/medium/high thermal sensitivity. Preserve identical workloads and nominal facility limits. Save schedules, digests, metrics and a manifest. Do not tune parameters in response to results.'],
+    ['Interpretation · evidence check', 'Interpret these HeatTrace thermal results conservatively. First verify equal workload delivery and paired configuration identity. Distinguish operational invalidity, facility-energy underestimation and ordinary economic exposure. State whether failures occur under low, medium or only high sensitivity. Do not generalize beyond one event/control pair or claim actual avoided emissions.'],
+    ['Writing · results section', 'Draft a concise Results section from the attached HeatTrace source tables. Report operational feasibility before cost or carbon. Separate authentic historical inputs from controlled thermal interventions. Include exact denominators, sensitivity levels, heatwave/control contrasts and negative results. End with the single-event and uncalibrated-model limitations.'],
+    ['Review · adversarial audit', 'Act as a skeptical sustainable-computing reviewer. Audit whether the HeatTrace thermal experiment manufactures failure through arbitrary PUE or facility-cap choices. Check parameter provenance, preregistration, workload equality, boundary effects, oracle information, carbon interpretation and whether the heat-aware comparator changes more than temperature handling. Return blocking issues first.'],
+    ['Submission · final gate', 'Perform a final HeatTrace submission audit. Verify tests, reproduction command, frozen config, result-table/figure consistency, source-data hashes, claim wording, limitations, and that every reported number is traceable to a generated artifact. Flag anything that would prevent submission on 27 October 2026.']
+  ];
+  const promptList = document.getElementById('prompt-list');
+  prompts.forEach(([title, body], i) => {
+    const el = document.createElement('article');
+    el.className = 'prompt';
+    el.innerHTML = `<div class="code-head"><h3>${title}</h3><button class="btn copy" data-copy="prompt-${i}">Copy</button></div><div id="prompt-${i}" class="prompt-text">${body}</div><div class="copy-note" aria-live="polite"></div>`;
+    promptList.appendChild(el);
+    el.querySelector('.copy').addEventListener('click', async () => {
+      const text = el.querySelector('.prompt-text').innerText;
+      try { await navigator.clipboard.writeText(text); }
+      catch (_) { const a=document.createElement('textarea');a.value=text;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove(); }
+      const note = el.querySelector('.copy-note'); note.textContent='Copied'; setTimeout(()=>note.textContent='',1200);
+    });
+  });
+
+  renderBoard(); initNotes(); initChecks();
+})();
+</script>
+</body>
+</html>

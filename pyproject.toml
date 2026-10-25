@@ -18,6 +18,7 @@ heattrace = "heattrace.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+ml = ["torch>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
