@@ -3,7 +3,9 @@
 **Phase:** Phase 9 / Day 11 (Corrected Event-Level Analysis)
 **Protocol Reference:** `docs/p6_frozen_protocol.md`
 **Configuration Reference:** `configs/p6_validity.yaml`
-**Implementation Commit:** `5ff0d2370ed48655a5879aaad266f75dd102e459`
+- **Repository Base Commit:** `37bdffbf27666c40a24fb0591d2e2d7436508adf`
+- **Implementation Git Commit:** none; the current repair is uncommitted (`uncommitted_source_changes`)
+- **Authoritative Implementation Identity:** recorded analysis-source (`bea868ca4a76fa8a4a762e39591c6ad03a210f9c9f93edcffa94109bc19f4291`) and focused-test (`0ac246de29ac593f4ef0bc2f70706ca33b5041a5abdae39f76f69cc0cc0c8ed7`) SHA-256 hashes
 **Status:** COMPLETE (PASS_WITH_BOUNDED_LIMITATIONS)
 
 ---
@@ -30,7 +32,7 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - **Support Criterion:** Requires $\ge 2$ of 3 negative effects and negative median. Result: 2/3 negative, median is negative.
 - **Sensitivity (Low Curve):** 1/3 negative, median=0.0x.
 
-### H2 — Capacity-Awareness Recovery: **NOT_SUPPORTED**
+### H2 — Capacity-Awareness Recovery: **PARTIALLY_SUPPORTED**
 - **Frozen Scope:** Power-capped model, heatwave context, carbon_first objective, medium curve.
 - **Evaluator Results:**
 #### Policy: `capacity_aware`
@@ -42,7 +44,7 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - **f5c700:** applicable=True (static loss=-0.5x); policy HW boundary=2.0x vs static HW boundary=2.5x -> boundary change=-0.5x (recovery=False); violation hours at 3x: static=1.5h, policy=0.5h -> reduction=1.0h (service change=0.0 slots)
 - **2a6e22:** applicable=True (static loss=-0.5x); policy HW boundary=2.5x vs static HW boundary=2.5x -> boundary change=0.0x (recovery=False); violation hours at 3x: static=1.0h, policy=0.5h -> reduction=0.5h (service change=0.0 slots)
 - **628624:** NOT_APPLICABLE_NO_PREREQUISITE_LOSS (static HW=3.0x, static CTRL=3.0x)
-- **Classification:** **NOT_SUPPORTED** because tested boundary recovery is absent across all applicable events.
+- **Classification:** **PARTIALLY_SUPPORTED** under frozen disjunction (boundary recovery OR fewer violations): no tested boundary recovery; exact `capacity_aware` policy provides no improvement; `full_thermal_aware` reduces violation hours in both applicable events (1.0h in CONF_1, 0.5h in CONF_2); evidence is mixed across policies and outcomes.
 
 ### H3 — Event-Blind Understatement: **PARTIALLY_SUPPORTED**
 - **Evaluation Scope:** 36 seed-aggregated core-policy comparisons per triplet/context (3 policy pairs × 2 facility models × 2 curves × 3 workloads).

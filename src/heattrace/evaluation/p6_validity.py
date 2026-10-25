@@ -589,6 +589,43 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
             pol_comp = float(sub_pol["completed_processing_slots"].mean())
             comp_change = pol_comp - static_comp
 
+            # Service-integrity predicate for H2 violation reduction:
+            # - Same expected seeds present in both candidate and static sub-dataframes;
+            # - Completed processing slots must be strictly equal across all constituent seeds (no dropped service);
+            # - Demanded processing slots must be strictly equal;
+            # - Every seed must complete 100% of demanded processing slots with 0 unfinished slots.
+            seeds_static = sorted(sub_static["seed"].unique().tolist())
+            seeds_pol = sorted(sub_pol["seed"].unique().tolist())
+            same_seeds = (seeds_static == seeds_pol) and len(seeds_static) > 0
+
+            equal_completed_service = False
+            complete_demanded_service = False
+
+            if same_seeds:
+                eq_comp_all = True
+                comp_dem_all = True
+                for s in seeds_static:
+                    st_row = sub_static[sub_static["seed"] == s].iloc[0]
+                    pol_row = sub_pol[sub_pol["seed"] == s].iloc[0]
+
+                    st_comp_s = int(st_row["completed_processing_slots"])
+                    pol_comp_s = int(pol_row["completed_processing_slots"])
+                    st_dem_s = int(st_row["demanded_processing_slots"])
+                    pol_dem_s = int(pol_row["demanded_processing_slots"])
+                    st_unf_s = int(st_row.get("unfinished_processing_slots", 0))
+                    pol_unf_s = int(pol_row.get("unfinished_processing_slots", 0))
+
+                    if st_comp_s != pol_comp_s or st_dem_s != pol_dem_s:
+                        eq_comp_all = False
+                    if (st_comp_s != st_dem_s) or (pol_comp_s != pol_dem_s) or (st_unf_s != 0) or (pol_unf_s != 0):
+                        comp_dem_all = False
+
+                equal_completed_service = eq_comp_all
+                complete_demanded_service = comp_dem_all
+
+            violation_reduction_eligible = bool(equal_completed_service and complete_demanded_service)
+            is_viol_red = bool((viol_reduction > 0) and violation_reduction_eligible)
+
             pol_res[t] = {
                 "prerequisite_static_loss": True,
                 "recovery_applicable": True,
@@ -600,8 +637,11 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
                 "policy_violation_hours": pol_viols,
                 "violation_hours_reduction": viol_reduction,
                 "completed_service_change": comp_change,
+                "equal_completed_service": equal_completed_service,
+                "complete_demanded_service": complete_demanded_service,
+                "violation_reduction_eligible": violation_reduction_eligible,
                 "is_boundary_recovery": boundary_recovery > 0,
-                "is_violation_reduction": viol_reduction > 0,
+                "is_violation_reduction": is_viol_red,
                 "status": "EVALUATED",
             }
         recovery_results[pol] = pol_res
@@ -613,8 +653,19 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
         for res in pol_dict.values()
         if isinstance(res, dict)
     )
+    any_violation_reduction = any(
+        res.get("is_violation_reduction", False)
+        for pol_dict in recovery_results.values()
+        if isinstance(pol_dict, dict)
+        for res in pol_dict.values()
+        if isinstance(res, dict)
+    )
 
-    if any_boundary_recovery:
+    # Frozen protocol H2 disjunction: higher tested feasible workload OR fewer violations than static.
+    # When evidence is mixed across policies or outcomes (e.g. violation reduction present without boundary recovery,
+    # or capacity_aware showing no improvement while full_thermal_aware reduces violations),
+    # classify as PARTIALLY_SUPPORTED. Unqualified SUPPORTED would require comprehensive recovery.
+    if any_boundary_recovery or any_violation_reduction:
         recovery_results["classification"] = "PARTIALLY_SUPPORTED"
     else:
         recovery_results["classification"] = "NOT_SUPPORTED"
@@ -1099,9 +1150,9 @@ def generate_h1_h5_assessment_table(df: pd.DataFrame, pairwise_df: pd.DataFrame)
             "estimability": "ESTIMABLE",
             "event_level_effects": h2_effects_str,
             "median_effect": "0.0x",
-            "sign_consistency": "0/2 applicable pairs showed tested boundary recovery",
+            "sign_consistency": "0/2 applicable pairs showed tested boundary recovery; 2/2 applicable pairs showed full-thermal violation reduction",
             "classification": h2["classification"],
-            "limitations": "Tested boundary is not recovered under capacity awareness; CONF_3 not applicable (no prerequisite loss).",
+            "limitations": "Mixed evidence under frozen OR rule: no tested boundary recovery; exact capacity_aware provides no improvement; full_thermal_aware reduces violation hours in both applicable events; CONF_3 not applicable (no prerequisite loss).",
             "source_tables": "T2, data/results/p6_event_level_metrics.csv",
         },
         {
@@ -1290,13 +1341,39 @@ def generate_figures(
     return generated_paths
 
 
-def get_git_commit_hash() -> str:
-    """Retrieve current Git commit SHA."""
+def get_git_provenance(
+    analysis_src_path: Path,
+    test_src_path: Path,
+) -> tuple[str, str | None, str]:
+    """Retrieve Git provenance distinguish base commit, commit status, and state.
+
+    Returns:
+        tuple of (repository_base_commit, implementation_git_commit, implementation_state)
+    """
     try:
-        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
-        return out.decode("utf-8").strip()
+        base_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL).decode("utf-8").strip()
     except Exception:
-        return "UNKNOWN_COMMIT"
+        base_commit = "UNKNOWN_COMMIT"
+
+    # Compare the working copies of analysis source and test against their blobs at HEAD.
+    try:
+        diff_res = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--", str(analysis_src_path), str(test_src_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        matches_head = (diff_res.returncode == 0)
+    except Exception:
+        matches_head = False
+
+    if matches_head:
+        impl_commit = base_commit
+        impl_state = "committed"
+    else:
+        impl_commit = None
+        impl_state = "uncommitted_source_changes"
+
+    return base_commit, impl_commit, impl_state
 
 
 def run_phase_9_analysis(
@@ -1375,13 +1452,18 @@ def run_phase_9_analysis(
     test_src_path = Path("tests/test_p6_validity_analysis.py").resolve()
     analysis_src_hash = override_src_hash or (sha256_file(analysis_src_path) if analysis_src_path.exists() else None)
     test_src_hash = override_test_hash or (sha256_file(test_src_path) if test_src_path.exists() else None)
-    commit_sha = override_implementation_commit or get_git_commit_hash()
+
+    repo_base_commit, detected_impl_commit, detected_impl_state = get_git_provenance(analysis_src_path, test_src_path)
+    impl_commit = override_implementation_commit if override_implementation_commit is not None else detected_impl_commit
+    impl_state = "overridden" if override_implementation_commit is not None else detected_impl_state
 
     analysis_manifest = {
         "schema_version": "2.1",
         "phase": "P9",
         "analysis_label": "p6_confirmatory_validity_analysis_corrected",
-        "implementation_git_commit": commit_sha,
+        "repository_base_commit": repo_base_commit,
+        "implementation_git_commit": impl_commit,
+        "implementation_state": impl_state,
         "source_provenance": {
             "p6_validity_analysis_py_sha256": analysis_src_hash,
             "test_p6_validity_analysis_py_sha256": test_src_hash,
@@ -1505,12 +1587,17 @@ def run_phase_9_analysis(
         for t, res in h5_eval["event_comparisons"].items()
     )
 
+    if impl_commit is not None:
+        commit_header_line = f"- **Repository Base Commit:** `{repo_base_commit}`\n- **Implementation Git Commit:** `{impl_commit}` (`{impl_state}`)"
+    else:
+        commit_header_line = f"- **Repository Base Commit:** `{repo_base_commit}`\n- **Implementation Git Commit:** none; the current repair is uncommitted (`{impl_state}`)\n- **Authoritative Implementation Identity:** recorded analysis-source (`{analysis_src_hash}`) and focused-test (`{test_src_hash}`) SHA-256 hashes"
+
     report_content = f"""# HeatTrace Phase 9 Confirmatory Analysis Report
 
 **Phase:** Phase 9 / Day 11 (Corrected Event-Level Analysis)
 **Protocol Reference:** `docs/p6_frozen_protocol.md`
 **Configuration Reference:** `configs/p6_validity.yaml`
-**Implementation Commit:** `{analysis_manifest['implementation_git_commit']}`
+{commit_header_line}
 **Status:** COMPLETE (PASS_WITH_BOUNDED_LIMITATIONS)
 
 ---
@@ -1541,7 +1628,7 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - **Frozen Scope:** Power-capped model, heatwave context, carbon_first objective, medium curve.
 - **Evaluator Results:**
 {h2_section_body}
-- **Classification:** **{h2_eval['classification']}** because tested boundary recovery is absent across all applicable events.
+- **Classification:** **{h2_eval['classification']}** under frozen disjunction (boundary recovery OR fewer violations): no tested boundary recovery; exact `capacity_aware` policy provides no improvement; `full_thermal_aware` reduces violation hours in both applicable events (1.0h in CONF_1, 0.5h in CONF_2); evidence is mixed across policies and outcomes.
 
 ### H3 — Event-Blind Understatement: **{h3_eval['classification']}**
 - **Evaluation Scope:** 36 seed-aggregated core-policy comparisons per triplet/context (3 policy pairs × 2 facility models × 2 curves × 3 workloads).

@@ -31,12 +31,13 @@
   },
   "hypothesis_classifications": {
     "H1": "SUPPORTED",
-    "H2": "NOT_SUPPORTED",
+    "H2": "PARTIALLY_SUPPORTED",
     "H3": "PARTIALLY_SUPPORTED",
     "H4": "NOT_ESTIMABLE",
     "H5": "NOT_SUPPORTED"
   },
-  "implementation_git_commit": "5ff0d2370ed48655a5879aaad266f75dd102e459",
+  "implementation_git_commit": null,
+  "implementation_state": "uncommitted_source_changes",
   "input_artifacts": {
     "p6_validity_checkpoint_parquet": {
       "expected_sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f",
@@ -65,7 +66,7 @@
     "f2_status_md_sha256": "a68d94a9e4dbc29600e0c4a0f7027c21d65cc9e5973f1c59df3e90aa8d110951",
     "f3_status_md_sha256": "b95aac50a8c15dca814cb6ce97c426fb3f915a250e3e7203ef95cec0cf69c231",
     "f4_png_sha256": "247a97f2ba3c6b050bf69454d3b5da73811538d20efb74f60f81a377a064af4d",
-    "h1_h5_assessment_csv_sha256": "40204d87d6a1c9c15cc38b297229fa2caea2d805a3bb1e5c8ec4bcfae7363a99",
+    "h1_h5_assessment_csv_sha256": "48ac19530bc60db2a6945d7231f9ab518059441e1336544fea65a462a864f4ba",
     "policy_pairwise_metrics_csv_sha256": "261dadaf4a8c6939448927d66cd91a68b6a4eca89811eb547386995f59774e73",
     "t1_cohort_provenance_csv_sha256": "86ccf8243a67b1cf3c904efc026dd084376ef97fd90cd1c2292608b2e66164a0",
     "t2_event_feasibility_csv_sha256": "40dda3001aacd21aaa0aa3babbee734b7e9b5292742be5abd9c78e0347a800cd",
@@ -73,6 +74,7 @@
     "t4_forecast_evidence_csv_sha256": "6c479ce5f12d916bdbe2074e965ce815ae5788c8533fc89a62f15aeca16fe676"
   },
   "phase": "P9",
+  "repository_base_commit": "37bdffbf27666c40a24fb0591d2e2d7436508adf",
   "row_counts": {
     "h1_h5_assessment_csv": 5,
     "p6_event_level_metrics_csv": 378,
@@ -89,7 +91,7 @@
   "source_provenance": {
     "frozen_config_sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
     "frozen_protocol_sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
-    "p6_validity_analysis_py_sha256": "51baf1dc2166daee0132e3619aaf92fc6635a82f3bae49e92c28a8dbb52730c7",
-    "test_p6_validity_analysis_py_sha256": "f907a89f9d79bac2c174484998c0d8fc09f4dea53ec60dc5126d4cf5279e958d"
+    "p6_validity_analysis_py_sha256": "bea868ca4a76fa8a4a762e39591c6ad03a210f9c9f93edcffa94109bc19f4291",
+    "test_p6_validity_analysis_py_sha256": "0ac246de29ac593f4ef0bc2f70706ca33b5041a5abdae39f76f69cc0cc0c8ed7"
   }
 }

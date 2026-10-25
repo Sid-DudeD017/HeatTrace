@@ -147,21 +147,142 @@ def test_h1_support_rule_and_outcome(p8_df):
 def test_h2_recovery_classification_and_prerequisites(p8_df):
     """Verify H2 evaluation handles prerequisite static loss and reports exact recovery numbers."""
     h2 = evaluate_h2(p8_df)
-    assert h2["classification"] == "NOT_SUPPORTED"
+    # Frozen protocol disjunction: higher tested boundary OR fewer violations.
+    # Because full_thermal_aware reduces violations by 1.0h (CONF_1) and 0.5h (CONF_2)
+    # but tested boundary is not recovered and capacity_aware shows no improvement,
+    # the mixed evidence classifies as PARTIALLY_SUPPORTED.
+    assert h2["classification"] == "PARTIALLY_SUPPORTED"
 
     # CONF_3 has no prerequisite static loss -> NOT_APPLICABLE
     assert h2["capacity_aware"]["TRIPLET_CONF_3_628624"]["status"] == "NOT_APPLICABLE_NO_PREREQUISITE_LOSS"
     assert h2["full_thermal_aware"]["TRIPLET_CONF_3_628624"]["status"] == "NOT_APPLICABLE_NO_PREREQUISITE_LOSS"
 
-    # CONF_1 and CONF_2 have prerequisite loss
+    # Exact capacity_aware non-improvement
     assert h2["capacity_aware"]["TRIPLET_CONF_1_f5c700"]["boundary_recovery"] == 0.0
-    assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["boundary_recovery"] == -0.5
+    assert h2["capacity_aware"]["TRIPLET_CONF_1_f5c700"]["violation_hours_reduction"] == 0.0
     assert h2["capacity_aware"]["TRIPLET_CONF_2_2a6e22"]["boundary_recovery"] == 0.0
+    assert h2["capacity_aware"]["TRIPLET_CONF_2_2a6e22"]["violation_hours_reduction"] == 0.0
+
+    # CONF_1 and CONF_2 have prerequisite loss
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["boundary_recovery"] == -0.5
     assert h2["full_thermal_aware"]["TRIPLET_CONF_2_2a6e22"]["boundary_recovery"] == 0.0
 
-    # Violation reduction
-    assert h2["full_thermal_aware"]["TRIPLET_CONF_2_2a6e22"]["violation_hours_reduction"] == 0.5
+    # 1.0h and 0.5h full_thermal_aware violation reductions
     assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["violation_hours_reduction"] == 1.0
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_2_2a6e22"]["violation_hours_reduction"] == 0.5
+
+    # Service-integrity predicate passes on actual applicable comparisons
+    for pol in ["capacity_aware", "full_thermal_aware"]:
+        for t in ["TRIPLET_CONF_1_f5c700", "TRIPLET_CONF_2_2a6e22"]:
+            res = h2[pol][t]
+            assert res["equal_completed_service"] is True
+            assert res["complete_demanded_service"] is True
+            assert res["violation_reduction_eligible"] is True
+
+
+def test_h2_synthetic_adversarial_violation_reduction_activates_or_branch(p8_df):
+    """Adversarial test proving violation reduction alone activates the frozen OR branch in evaluate_h2."""
+    # Create synthetic df where violation reduction is forced to 0 for all policies -> NOT_SUPPORTED
+    zero_viol_df = p8_df.copy()
+    zero_viol_df["facility_power_violation_hours"] = 0.0
+    h2_zero = evaluate_h2(zero_viol_df)
+    assert h2_zero["classification"] == "NOT_SUPPORTED"
+
+    # Now introduce violation reduction only (without boundary recovery) in a single cell
+    # Under CONF_1, static_unaware at 3x has 5.0 violation hours, while full_thermal_aware has 0.0
+    # Both policies complete all demanded slots -> service-integrity passes
+    synth_df = zero_viol_df.copy()
+    static_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_1_f5c700")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["policy_id"] == "static_unaware")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[static_mask, "facility_power_violation_hours"] = 5.0
+    h2_synth = evaluate_h2(synth_df)
+    res_fta = h2_synth["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]
+    assert res_fta["boundary_recovery"] <= 0.0
+    assert res_fta["equal_completed_service"] is True
+    assert res_fta["complete_demanded_service"] is True
+    assert res_fta["violation_reduction_eligible"] is True
+    assert res_fta["is_violation_reduction"] is True
+    assert h2_synth["classification"] == "PARTIALLY_SUPPORTED"
+
+
+def test_h2_dropped_work_adversarial_rejected(p8_df):
+    """Adversarial test proving that lower violation hours created by dropping work cannot credit H2."""
+    synth_df = p8_df.copy()
+    # Neutralize CONF_2 full_thermal_aware so CONF_1 is the sole possible supporting branch
+    conf2_fta_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_2_2a6e22")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["policy_id"] == "full_thermal_aware")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[conf2_fta_mask, "facility_power_violation_hours"] = 1.0
+
+    # In CONF_1: candidate full_thermal_aware achieves 0.0 violation hours (vs static 1.5h) only by dropping 20 slots
+    conf1_fta_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_1_f5c700")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["policy_id"] == "full_thermal_aware")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[conf1_fta_mask, "facility_power_violation_hours"] = 0.0
+    synth_df.loc[conf1_fta_mask, "completed_processing_slots"] -= 20
+    synth_df.loc[conf1_fta_mask, "unfinished_processing_slots"] += 20
+
+    h2_dropped = evaluate_h2(synth_df)
+    res_fta = h2_dropped["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]
+    # Raw violation reduction is positive (1.5 - 0.0 = 1.5h)
+    assert res_fta["violation_hours_reduction"] == 1.5
+    # But service integrity fails
+    assert res_fta["equal_completed_service"] is False
+    assert res_fta["complete_demanded_service"] is False
+    assert res_fta["violation_reduction_eligible"] is False
+    assert res_fta["is_violation_reduction"] is False
+    # Therefore H2 is not supported by dropped work
+    assert h2_dropped["classification"] == "NOT_SUPPORTED"
+
+
+def test_h2_incomplete_demanded_service_adversarial_rejected(p8_df):
+    """Adversarial test proving incomplete demanded service (even if equal between policies) cannot credit H2."""
+    synth_df = p8_df.copy()
+    # Neutralize CONF_2 full_thermal_aware
+    conf2_fta_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_2_2a6e22")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["policy_id"] == "full_thermal_aware")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[conf2_fta_mask, "facility_power_violation_hours"] = 1.0
+
+    # In CONF_1 at 3x, reduce completed slots across all policies so none complete full demanded service
+    conf1_3x_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_1_f5c700")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[conf1_3x_mask, "completed_processing_slots"] -= 20
+    synth_df.loc[conf1_3x_mask, "unfinished_processing_slots"] += 20
+
+    # Set full_thermal_aware violation hours to 0.0 (creating raw violation reduction of 1.5h vs static)
+    conf1_fta_mask = (
+        (synth_df["triplet_id"] == "TRIPLET_CONF_1_f5c700")
+        & (synth_df["context"] == "heatwave")
+        & (synth_df["policy_id"] == "full_thermal_aware")
+        & (synth_df["workload_multiplier"] == 3.0)
+    )
+    synth_df.loc[conf1_fta_mask, "facility_power_violation_hours"] = 0.0
+
+    h2_incomp = evaluate_h2(synth_df)
+    res_fta = h2_incomp["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]
+    assert res_fta["violation_hours_reduction"] == 1.5
+    assert res_fta["equal_completed_service"] is True
+    assert res_fta["complete_demanded_service"] is False
+    assert res_fta["violation_reduction_eligible"] is False
+    assert res_fta["is_violation_reduction"] is False
+    assert h2_incomp["classification"] == "NOT_SUPPORTED"
 
 
 def test_ranking_transition_classification_logic():
