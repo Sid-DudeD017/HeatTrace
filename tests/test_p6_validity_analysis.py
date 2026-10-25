@@ -13,6 +13,7 @@ from heattrace.evaluation.p6_validity import (
     CANONICAL_P8_HASHES,
     EXPECTED_ROW_COUNT,
     FLOAT_TOLERANCE,
+    classify_ranking_transition,
     compute_allocation_distance,
     compute_event_level_metrics,
     compute_policy_pairwise_metrics,
@@ -25,6 +26,7 @@ from heattrace.evaluation.p6_validity import (
     evaluate_h4,
     evaluate_h5,
     generate_h1_h5_assessment_table,
+    generate_t3_equal_service_gaps,
     is_row_feasible,
     run_phase_9_analysis,
     sha256_file,
@@ -122,9 +124,7 @@ def test_failure_rows_retained_in_feasibility():
 def test_seed_aggregation_before_policy_contrasts(p8_df):
     """Verify that seeds are aggregated before computing policy contrasts in p6_policy_pairwise_metrics."""
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
-    # Total seed-aggregated pairwise combinations = 540
     assert len(pairwise_df) == 540
-    # Every row aggregates exactly 2 seeds
     assert (pairwise_df["seed_count"] == 2).all()
     assert "source_run_ids_a" in pairwise_df.columns
     assert "source_run_ids_b" in pairwise_df.columns
@@ -164,29 +164,102 @@ def test_h2_recovery_classification_and_prerequisites(p8_df):
     assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["violation_hours_reduction"] == 1.0
 
 
-def test_h3_event_level_independence_and_mixed_evidence(p8_df):
-    """Verify H3 evaluates 3 historical pairs independently and classifies PARTIALLY_SUPPORTED due to CONF-3 null."""
+def test_ranking_transition_classification_logic():
+    """Verify ranking transition semantics (ties vs strict reversals)."""
+    # Strict reversal: A-pref to B-pref
+    assert classify_ranking_transition("policy_a_preferred", "policy_b_preferred") == "STRICT_REVERSAL"
+    assert classify_ranking_transition("policy_b_preferred", "policy_a_preferred") == "STRICT_REVERSAL"
+
+    # Tie to non-tie
+    assert classify_ranking_transition("TIE", "policy_a_preferred") == "BASELINE_TIE_TO_HEATWAVE_NON_TIE"
+    assert classify_ranking_transition("TIE", "policy_b_preferred") == "BASELINE_TIE_TO_HEATWAVE_NON_TIE"
+
+    # Non-tie to tie
+    assert classify_ranking_transition("policy_a_preferred", "TIE") == "BASELINE_NON_TIE_TO_HEATWAVE_TIE"
+
+    # Unchanged
+    assert classify_ranking_transition("TIE", "TIE") == "SAME"
+    assert classify_ranking_transition("policy_a_preferred", "policy_a_preferred") == "SAME"
+
+    # Guarded
+    assert classify_ranking_transition(None, "policy_a_preferred") == "NOT_ESTIMABLE"
+    assert classify_ranking_transition("NOT_ESTIMABLE", "TIE") == "NOT_ESTIMABLE"
+
+
+def test_h3_full_scope_denominators_and_transition_counts(p8_df):
+    """Verify H3 full scope has denominator 36 per triplet, correct event effects, and zero strict reversals."""
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
     h3 = evaluate_h3(pairwise_df)
 
     assert h3["classification"] == "PARTIALLY_SUPPORTED"
-    assert h3["discriminating_triplet_count"] == 2
     assert h3["total_triplets"] == 3
-    assert h3["sign_consistency"] == "2/3 events discriminating"
 
-    # CONF_1 and CONF_2 discriminating
-    assert h3["event_results"]["TRIPLET_CONF_1_f5c700"]["is_heatwave_more_discriminating"] is True
-    assert h3["event_results"]["TRIPLET_CONF_2_2a6e22"]["is_heatwave_more_discriminating"] is True
+    # Check denominator 36 across all triplets
+    for t in ["TRIPLET_CONF_1_f5c700", "TRIPLET_CONF_2_2a6e22", "TRIPLET_CONF_3_628624"]:
+        res = h3["event_results"][t]
+        assert res["total_evaluated_pairs_per_context"] == 36
+        # Numerator never exceeds denominator
+        assert res["heatwave_nonzero_cost_comparisons"] <= 36
+        assert res["control_nonzero_cost_comparisons"] <= 36
+        assert res["blind_nonzero_cost_comparisons"] <= 36
 
-    # CONF_3 is null event (not discriminating)
-    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["is_heatwave_more_discriminating"] is False
-    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["heatwave_nonzero_cost_comparisons"] == 0
-    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["blind_nonzero_cost_comparisons"] == 0
+    # CONF_1: 24/36 HW, 24/36 CTRL, 0/36 BLIND
+    c1 = h3["event_results"]["TRIPLET_CONF_1_f5c700"]
+    assert c1["heatwave_nonzero_cost_comparisons"] == 24
+    assert c1["control_nonzero_cost_comparisons"] == 24
+    assert c1["blind_nonzero_cost_comparisons"] == 0
+    assert c1["event_effect_nonzero_cost_delta"] == 24
+    assert c1["blind_tie_to_nontie_count"] == 24
+    assert c1["blind_strict_reversals_count"] == 0
 
-    # Leave one out
-    assert "excl_628624" in h3["leave_one_pair_out"]
-    assert h3["leave_one_pair_out"]["excl_628624"] == "2/2 discriminating"
-    assert h3["leave_one_pair_out"]["excl_f5c700"] == "1/2 discriminating"
+    # CONF_2: 24/36 HW, 0/36 CTRL, 0/36 BLIND
+    c2 = h3["event_results"]["TRIPLET_CONF_2_2a6e22"]
+    assert c2["heatwave_nonzero_cost_comparisons"] == 24
+    assert c2["control_nonzero_cost_comparisons"] == 0
+    assert c2["blind_nonzero_cost_comparisons"] == 0
+    assert c2["event_effect_nonzero_cost_delta"] == 24
+    assert c2["blind_tie_to_nontie_count"] == 24
+    assert c2["blind_strict_reversals_count"] == 0
+
+    # CONF_3: 0/36 HW, 0/36 CTRL, 0/36 BLIND
+    c3 = h3["event_results"]["TRIPLET_CONF_3_628624"]
+    assert c3["heatwave_nonzero_cost_comparisons"] == 0
+    assert c3["control_nonzero_cost_comparisons"] == 0
+    assert c3["blind_nonzero_cost_comparisons"] == 0
+    assert c3["event_effect_nonzero_cost_delta"] == 0
+    assert c3["blind_tie_to_nontie_count"] == 0
+    assert c3["blind_strict_reversals_count"] == 0
+
+    # Event effects list and median
+    assert h3["event_effects"] == [24, 24, 0]
+    assert h3["median_event_effect"] == 24.0
+    assert h3["sign_consistency"] == "2/3 positive"
+
+
+def test_t3_primary_condition_rows_and_transitions(p8_df):
+    """Verify primary T3 table has exactly 27 rows (9 per triplet) with explicit transition fields."""
+    pairwise_df = compute_policy_pairwise_metrics(p8_df)
+    t3_df = generate_t3_equal_service_gaps(pairwise_df)
+
+    assert len(t3_df) == 27
+    for t in ["TRIPLET_CONF_1_f5c700", "TRIPLET_CONF_2_2a6e22", "TRIPLET_CONF_3_628624"]:
+        assert len(t3_df[t3_df["triplet_id"] == t]) == 9
+
+    # Check explicit fields
+    for col in [
+        "transition_vs_control",
+        "transition_vs_blind",
+        "strict_reversal_vs_control",
+        "strict_reversal_vs_blind",
+        "tie_to_nontie_vs_control",
+        "tie_to_nontie_vs_blind",
+    ]:
+        assert col in t3_df.columns
+
+    # Strict reversals vs blind are 0 across all 27 rows
+    assert t3_df["strict_reversal_vs_blind"].sum() == 0
+    # Tie to nontie vs blind: 12 total (6 in CONF_1, 6 in CONF_2)
+    assert t3_df["tie_to_nontie_vs_blind"].sum() == 12
 
 
 def test_h4_not_estimable_without_controlled_forecast_mutation(p8_df):
@@ -206,11 +279,8 @@ def test_h5_comparator_event_level_and_zero_margin_equivalence(p8_df):
     assert "full_thermal_aware verified equivalent to zero-margin HeatGuard" in h5["no_margin_comparator_equivalence"]
     assert len(h5["event_comparisons"]) == 3
 
-    # In CONF_1: calibrated = 1.0h, fixed = 0.0h -> does not improve over fixed
     assert h5["event_comparisons"]["TRIPLET_CONF_1_f5c700"]["improves_over_fixed_margin"] is False
-    # In CONF_2: calibrated = 0.5h, fixed = 0.5h -> ties fixed, does not improve
     assert h5["event_comparisons"]["TRIPLET_CONF_2_2a6e22"]["improves_over_fixed_margin"] is False
-    # In CONF_3: calibrated = 0.0h, fixed = 0.0h -> ties fixed
     assert h5["event_comparisons"]["TRIPLET_CONF_3_628624"]["improves_over_fixed_margin"] is False
 
 
@@ -219,7 +289,6 @@ def test_equal_service_rejection_after_aggregation(p8_df):
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
     assert len(pairwise_df) == 540
 
-    # Rejected pairs should be exactly 10 (all involving oracle in control where seed 20261016 had unfinished slots)
     rejected = pairwise_df[pairwise_df["equal_service_eligible"] == False]
     assert len(rejected) == 10
     for _, row in rejected.iterrows():
@@ -360,7 +429,6 @@ def test_allocation_distance_math():
 
 def test_synthetic_mutation_changes_evaluator_classification(p8_df):
     """Regression test proving classification changes dynamically when synthetic data changes."""
-    # Mutate p8_df to make H3 fully supported (make CONF_3 also discriminating)
     mutated_df = p8_df.copy()
     mask = (
         (mutated_df["triplet_id"] == "TRIPLET_CONF_3_628624")
@@ -374,11 +442,29 @@ def test_synthetic_mutation_changes_evaluator_classification(p8_df):
     assert h3_mut["classification"] == "SUPPORTED"
     assert h3_mut["discriminating_triplet_count"] == 3
 
-    # Generate assessment table on mutated data and verify text changed
     t_mut = generate_h1_h5_assessment_table(mutated_df, pw_mut)
     h3_row = t_mut[t_mut["hypothesis"].str.startswith("H3")].iloc[0]
     assert h3_row["classification"] == "SUPPORTED"
-    assert "3/3 events discriminating" in h3_row["sign_consistency"]
+    assert "3/3 positive" in h3_row["sign_consistency"]
+
+
+def test_h2_markdown_report_matches_evaluator_data(tmp_path):
+    """Verify H2 markdown report accurately displays full-thermal CONF-1 boundary change of -0.5x."""
+    res_dir = tmp_path / "results"
+    fig_dir = tmp_path / "figures"
+    doc_dir = tmp_path / "docs"
+
+    run_phase_9_analysis(
+        results_dir=res_dir,
+        figures_dir=fig_dir,
+        docs_dir=doc_dir,
+    )
+
+    report_text = (doc_dir / "p6_phase9_analysis_report.md").read_text(encoding="utf-8")
+    assert "boundary change=-0.5x" in report_text
+    assert "0.0x recovery in CONF_1 and CONF_2" not in report_text
+    assert "/12" not in report_text
+    assert "/36" in report_text
 
 
 def test_deterministic_full_generation(tmp_path):
@@ -397,12 +483,10 @@ def test_deterministic_full_generation(tmp_path):
         docs_dir=dir2 / "docs",
     )
 
-    # Check row counts
     assert len(out1["event_metrics_df"]) == 378
     assert len(out1["pairwise_df"]) == 540
-    assert len(out1["tables"]["T3"]) == 27  # 3 triplets * 3 policy pairs * 3 workloads
+    assert len(out1["tables"]["T3"]) == 27
 
-    # Check identical CSV outputs
     for filename in [
         "p6_event_level_metrics.csv",
         "p6_policy_pairwise_metrics.csv",
@@ -416,8 +500,11 @@ def test_deterministic_full_generation(tmp_path):
         h2 = sha256_file(dir2 / "results" / filename)
         assert h1 == h2, f"Nondeterministic CSV output for {filename}"
 
-    # Check markdown status artifacts
     for filename in ["p6_f2_allocation_distance_status.md", "p6_f3_forecast_regret_status.md"]:
         h1 = sha256_file(dir1 / "figures" / filename)
         h2 = sha256_file(dir2 / "figures" / filename)
         assert h1 == h2, f"Nondeterministic status artifact for {filename}"
+
+    h1_rep = sha256_file(dir1 / "docs" / "p6_phase9_analysis_report.md")
+    h2_rep = sha256_file(dir2 / "docs" / "p6_phase9_analysis_report.md")
+    assert h1_rep == h2_rep, "Nondeterministic report markdown output"

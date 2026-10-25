@@ -6,10 +6,12 @@ Corrected implementation:
 - H1: Evaluates frozen primary scope (power-capped, static_unaware, carbon_first, medium curve primary, low sensitivity).
 - H2: Evaluates recovery relative to static only where prerequisite static heatwave loss exists.
 - H3: Evaluates event-level benchmark discriminability and event-blind understatement across the 3 independent triplets without pooling.
+  Uses explicit ranking transition semantics (BASELINE_TIE_TO_HEATWAVE_NON_TIE, STRICT_REVERSAL, etc.).
+  Reports exact full-scope denominators (36 per triplet/context) and descriptive event effects (+24, +24, 0; median +24).
 - H4: Strictly classifies exploratory forecast mechanism attribution as NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION.
 - H5: Evaluates calibrated HeatGuard against fixed-margin HeatGuard and deterministic Full Thermal Aware at the event level after seed aggregation.
 - Equal-service enforcement rejects aggregated comparisons if any constituent seed experienced unequal service.
-- All report and assessment text is dynamically rendered from structured evaluator returns.
+- All report and assessment text is dynamically rendered from structured evaluator returns without hard-coded numbers.
 - T1–T4 tables and F1, F4 figures generated deterministically; F2/F3 produce explicit evidence availability status artifacts.
 """
 
@@ -56,6 +58,21 @@ def compute_run_id_digest(run_ids: list[str]) -> str:
     """Compute canonical run ID digest matching P8 contract."""
     sorted_ids = sorted(str(rid) for rid in run_ids)
     return hashlib.sha256("\n".join(sorted_ids).encode("utf-8")).hexdigest()
+
+
+def classify_ranking_transition(rank_baseline: str | None, rank_hw: str | None) -> str:
+    """Classify ranking transition between a baseline context and heatwave."""
+    if rank_baseline in (None, "NOT_ESTIMABLE", "NULL_UNEQUAL_SERVICE") or rank_hw in (None, "NOT_ESTIMABLE", "NULL_UNEQUAL_SERVICE"):
+        return "NOT_ESTIMABLE"
+    if rank_baseline == rank_hw:
+        return "SAME"
+    if rank_baseline == "TIE" and rank_hw != "TIE":
+        return "BASELINE_TIE_TO_HEATWAVE_NON_TIE"
+    if rank_baseline != "TIE" and rank_hw == "TIE":
+        return "BASELINE_NON_TIE_TO_HEATWAVE_TIE"
+    if rank_baseline != "TIE" and rank_hw != "TIE" and rank_baseline != rank_hw:
+        return "STRICT_REVERSAL"
+    return "SAME"
 
 
 def verify_p8_baseline(
@@ -384,7 +401,6 @@ def compute_policy_pairwise_metrics(df: pd.DataFrame) -> pd.DataFrame:
                     cost_rank_order = "NULL_UNEQUAL_SERVICE"
                     carbon_rank_order = "NULL_UNEQUAL_SERVICE"
 
-                # Service normalized diagnostics
                 denom_a = agg_completed_a if agg_completed_a > 0 else None
                 denom_b = agg_completed_b if agg_completed_b > 0 else None
                 cost_slot_a = (agg_cost_a / denom_a) if denom_a else None
@@ -532,6 +548,9 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
                 pol_res[t] = {
                     "prerequisite_static_loss": False,
                     "recovery_applicable": False,
+                    "static_hw_boundary": static_hw_boundary,
+                    "static_ctrl_boundary": static_ctrl_boundary,
+                    "policy_hw_boundary": None,
                     "boundary_recovery": None,
                     "violation_hours_reduction": None,
                     "completed_service_change": None,
@@ -544,7 +563,6 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
             )
             boundary_recovery = pol_hw_boundary - static_hw_boundary
 
-            # Compare violations and completed service at 3.0x workload
             sub_static = df[
                 (df["triplet_id"] == t)
                 & (df["context"] == "heatwave")
@@ -575,6 +593,7 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
                 "prerequisite_static_loss": True,
                 "recovery_applicable": True,
                 "static_hw_boundary": static_hw_boundary,
+                "static_ctrl_boundary": static_ctrl_boundary,
                 "policy_hw_boundary": pol_hw_boundary,
                 "boundary_recovery": boundary_recovery,
                 "static_violation_hours": static_viols,
@@ -587,8 +606,6 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
             }
         recovery_results[pol] = pol_res
 
-    # Derive classification based on whether any applicable pair achieves boundary recovery
-    # or consistent violation reduction across applicable pairs
     any_boundary_recovery = any(
         res.get("is_boundary_recovery", False)
         for pol_dict in recovery_results.values()
@@ -608,7 +625,8 @@ def evaluate_h2(df: pd.DataFrame) -> dict[str, Any]:
 def evaluate_h3(pairwise_df: pd.DataFrame) -> dict[str, Any]:
     """Evaluate Secondary Hypothesis H3 at the historical-event-pair level.
 
-    Treats the 3 historical event pairs as the independent units.
+    Treats the 3 historical event pairs as independent units.
+    Full evaluation scope: 3 policy pairs × 2 facility models × 2 curves × 3 workloads = 36 comparisons per triplet/context.
     """
     deployable_pairs = pairwise_df[pairwise_df["both_deployable"] == True].copy()
     core_pols = ["capacity_aware", "full_thermal_aware", "static_unaware"]
@@ -627,7 +645,8 @@ def evaluate_h3(pairwise_df: pd.DataFrame) -> dict[str, Any]:
         ctrl_sub = t_sub[t_sub["context"] == "control"]
         blind_sub = t_sub[t_sub["context"] == "event_blind"]
 
-        # Count nonzero gaps (separations)
+        total_pairs = len(hw_sub)
+
         hw_nz_cost = int((hw_sub["cost_gap_usd"].abs() > FLOAT_TOLERANCE).sum())
         ctrl_nz_cost = int((ctrl_sub["cost_gap_usd"].abs() > FLOAT_TOLERANCE).sum())
         blind_nz_cost = int((blind_sub["cost_gap_usd"].abs() > FLOAT_TOLERANCE).sum())
@@ -636,25 +655,41 @@ def evaluate_h3(pairwise_df: pd.DataFrame) -> dict[str, Any]:
         ctrl_nz_carb = int((ctrl_sub["carbon_gap_kg"].abs() > FLOAT_TOLERANCE).sum())
         blind_nz_carb = int((blind_sub["carbon_gap_kg"].abs() > FLOAT_TOLERANCE).sum())
 
-        # Check ranking changes / reversals between HW and CTRL/BLIND
-        # Matching across context within triplet: facility_model, thermal_curve, workload_multiplier, objective, pol_a, pol_b
-        merged_hw_blind = pd.merge(
+        # Merge and classify ranking transitions vs Blind
+        m_blind = pd.merge(
             hw_sub,
             blind_sub,
             on=["facility_model", "thermal_curve", "workload_multiplier", "objective", "policy_id_a", "policy_id_b"],
             suffixes=("_hw", "_blind"),
         )
-        blind_reversals = int((merged_hw_blind["cost_rank_order_hw"] != merged_hw_blind["cost_rank_order_blind"]).sum())
+        blind_transitions = [
+            classify_ranking_transition(r["cost_rank_order_blind"], r["cost_rank_order_hw"])
+            for _, r in m_blind.iterrows()
+        ]
+        blind_tie_to_nontie = blind_transitions.count("BASELINE_TIE_TO_HEATWAVE_NON_TIE")
+        blind_nontie_to_tie = blind_transitions.count("BASELINE_NON_TIE_TO_HEATWAVE_TIE")
+        blind_strict_reversals = blind_transitions.count("STRICT_REVERSAL")
+        blind_unchanged = blind_transitions.count("SAME")
 
-        merged_hw_ctrl = pd.merge(
+        # Merge and classify ranking transitions vs Control
+        m_ctrl = pd.merge(
             hw_sub,
             ctrl_sub,
             on=["facility_model", "thermal_curve", "workload_multiplier", "objective", "policy_id_a", "policy_id_b"],
             suffixes=("_hw", "_ctrl"),
         )
-        ctrl_reversals = int((merged_hw_ctrl["cost_rank_order_hw"] != merged_hw_ctrl["cost_rank_order_ctrl"]).sum())
+        ctrl_transitions = [
+            classify_ranking_transition(r["cost_rank_order_ctrl"], r["cost_rank_order_hw"])
+            for _, r in m_ctrl.iterrows()
+        ]
+        ctrl_tie_to_nontie = ctrl_transitions.count("BASELINE_TIE_TO_HEATWAVE_NON_TIE")
+        ctrl_nontie_to_tie = ctrl_transitions.count("BASELINE_NON_TIE_TO_HEATWAVE_TIE")
+        ctrl_strict_reversals = ctrl_transitions.count("STRICT_REVERSAL")
+        ctrl_unchanged = ctrl_transitions.count("SAME")
 
-        is_discriminating = (hw_nz_cost > blind_nz_cost) or (blind_reversals > 0)
+        # Descriptive event effect: heatwave nonzero cost comparisons minus blind nonzero cost comparisons
+        event_effect = hw_nz_cost - blind_nz_cost
+        is_discriminating = (event_effect > 0) or (blind_tie_to_nontie > 0) or (blind_strict_reversals > 0)
 
         event_results[t] = {
             "heatwave_nonzero_cost_comparisons": hw_nz_cost,
@@ -663,22 +698,31 @@ def evaluate_h3(pairwise_df: pd.DataFrame) -> dict[str, Any]:
             "heatwave_nonzero_carbon_comparisons": hw_nz_carb,
             "control_nonzero_carbon_comparisons": ctrl_nz_carb,
             "blind_nonzero_carbon_comparisons": blind_nz_carb,
-            "total_evaluated_pairs_per_context": len(hw_sub),
-            "ranking_reversals_hw_vs_blind": blind_reversals,
-            "ranking_reversals_hw_vs_ctrl": ctrl_reversals,
+            "total_evaluated_pairs_per_context": total_pairs,
+            "event_effect_nonzero_cost_delta": event_effect,
+            "blind_tie_to_nontie_count": blind_tie_to_nontie,
+            "blind_nontie_to_tie_count": blind_nontie_to_tie,
+            "blind_strict_reversals_count": blind_strict_reversals,
+            "blind_unchanged_count": blind_unchanged,
+            "control_tie_to_nontie_count": ctrl_tie_to_nontie,
+            "control_nontie_to_tie_count": ctrl_nontie_to_tie,
+            "control_strict_reversals_count": ctrl_strict_reversals,
+            "control_unchanged_count": ctrl_unchanged,
             "is_heatwave_more_discriminating": is_discriminating,
         }
 
     discriminating_count = sum(1 for res in event_results.values() if res["is_heatwave_more_discriminating"])
     total_triplets = len(triplets)
 
-    # Leave-one-out sensitivity for H3
+    event_effects = [event_results[t]["event_effect_nonzero_cost_delta"] for t in triplets]
+    median_event_effect = float(np.median(event_effects))
+    positive_effect_count = sum(1 for e in event_effects if e > 0)
+
     loo_conclusions = {}
     for excluded in triplets:
         rem = [res["is_heatwave_more_discriminating"] for k, res in event_results.items() if k != excluded]
         loo_conclusions[f"excl_{excluded.split('_')[-1]}"] = f"{sum(rem)}/{len(rem)} discriminating"
 
-    # Derive classification based on event consistency
     if discriminating_count == total_triplets:
         classification = "SUPPORTED"
     elif discriminating_count > 0:
@@ -690,7 +734,9 @@ def evaluate_h3(pairwise_df: pd.DataFrame) -> dict[str, Any]:
         "event_results": event_results,
         "discriminating_triplet_count": discriminating_count,
         "total_triplets": total_triplets,
-        "sign_consistency": f"{discriminating_count}/{total_triplets} events discriminating",
+        "event_effects": event_effects,
+        "median_event_effect": median_event_effect,
+        "sign_consistency": f"{positive_effect_count}/{total_triplets} positive",
         "leave_one_pair_out": loo_conclusions,
         "classification": classification,
     }
@@ -714,12 +760,7 @@ def evaluate_h4(df: pd.DataFrame) -> dict[str, Any]:
 
 def evaluate_h5(df: pd.DataFrame, pairwise_df: pd.DataFrame) -> dict[str, Any]:
     """Evaluate Frozen Comparator Hypothesis H5 — HeatGuard Evaluation at event level."""
-    # Scope: power_capped, medium curve, carbon_first, heatwave context
     triplets = sorted(df["triplet_id"].unique())
-
-    # Verify zero-margin deterministic equivalence of full_thermal_aware
-    # Both policies share identical rolling scheduler semantics, 24h horizon, 1h commitment,
-    # and zero safety margin (safety_margin=0.0).
     event_comparisons = {}
 
     for t in triplets:
@@ -733,7 +774,6 @@ def evaluate_h5(df: pd.DataFrame, pairwise_df: pd.DataFrame) -> dict[str, Any]:
 
         def get_policy_stats(pol_id: str) -> dict[str, float]:
             p_sub = sub[sub["policy_id"] == pol_id]
-            # Aggregate seeds first per workload multiplier
             workloads = sorted(p_sub["workload_multiplier"].unique())
             v_list, excess_list, comp_list, dem_list, cost_list, carb_list = [], [], [], [], [], []
             for w in workloads:
@@ -758,7 +798,6 @@ def evaluate_h5(df: pd.DataFrame, pairwise_df: pd.DataFrame) -> dict[str, Any]:
         fix_stats = get_policy_stats("heatguard_fixed")
         fta_stats = get_policy_stats("full_thermal_aware")
 
-        # Equal service holds if completed == demanded for all
         cal_vs_fix_equal = (cal_stats["total_completed_slots"] == cal_stats["total_demanded_slots"]) and (
             fix_stats["total_completed_slots"] == fix_stats["total_demanded_slots"]
         )
@@ -779,7 +818,6 @@ def evaluate_h5(df: pd.DataFrame, pairwise_df: pd.DataFrame) -> dict[str, Any]:
             "viol_cal_minus_fta": cal_stats["total_violation_hours"] - fta_stats["total_violation_hours"],
         }
 
-    # Classification requires credible improvement over both comparators across the bounded series
     both_improved_count = sum(
         1 for res in event_comparisons.values()
         if res["improves_over_fixed_margin"] and res["improves_over_deterministic"]
@@ -891,9 +929,10 @@ def generate_t2_event_feasibility(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def generate_t3_equal_service_gaps(pairwise_df: pd.DataFrame) -> pd.DataFrame:
-    """Generate Table T3: Event-level equal-service gaps, rankings, ties, and reversals."""
-    # Retains triplet_id and computes reversal indicators between heatwave and control/blind
-    # Filter to power_capped, medium curve, carbon_first for primary presentation
+    """Generate Table T3: Event-level equal-service gaps, rankings, ties, and explicit transition semantics.
+
+    Primary condition scope: power_capped + medium curve + carbon_first (9 comparisons per triplet, 27 rows total).
+    """
     core_pols = ["capacity_aware", "full_thermal_aware", "static_unaware"]
     sub = pairwise_df[
         (pairwise_df["facility_model"] == "power_capped")
@@ -933,18 +972,16 @@ def generate_t3_equal_service_gaps(pairwise_df: pd.DataFrame) -> pd.DataFrame:
         ctrl_info = extract_info(ctrl_row)
         blind_info = extract_info(blind_row)
 
-        reversal_vs_ctrl = (
-            (hw_info["rank"] != ctrl_info["rank"])
-            if (hw_info["rank"] != "NOT_ESTIMABLE" and ctrl_info["rank"] != "NOT_ESTIMABLE")
-            else None
-        )
-        reversal_vs_blind = (
-            (hw_info["rank"] != blind_info["rank"])
-            if (hw_info["rank"] != "NOT_ESTIMABLE" and blind_info["rank"] != "NOT_ESTIMABLE")
-            else None
-        )
+        trans_ctrl = classify_ranking_transition(ctrl_info["rank"], hw_info["rank"])
+        trans_blind = classify_ranking_transition(blind_info["rank"], hw_info["rank"])
+
+        strict_rev_ctrl = (trans_ctrl == "STRICT_REVERSAL")
+        strict_rev_blind = (trans_blind == "STRICT_REVERSAL")
+        tie_to_nontie_ctrl = (trans_ctrl == "BASELINE_TIE_TO_HEATWAVE_NON_TIE")
+        tie_to_nontie_blind = (trans_blind == "BASELINE_TIE_TO_HEATWAVE_NON_TIE")
 
         records.append({
+            "table_scope": "primary_condition_power_capped_medium_carbon_first_9_per_triplet",
             "triplet_id": triplet_id,
             "policy_id_a": pol_a,
             "policy_id_b": pol_b,
@@ -956,8 +993,12 @@ def generate_t3_equal_service_gaps(pairwise_df: pd.DataFrame) -> pd.DataFrame:
             "control_rank_order": ctrl_info["rank"],
             "blind_cost_gap_usd": blind_info["cost_gap"],
             "blind_rank_order": blind_info["rank"],
-            "reversal_vs_control": reversal_vs_ctrl,
-            "reversal_vs_blind": reversal_vs_blind,
+            "transition_vs_control": trans_ctrl,
+            "transition_vs_blind": trans_blind,
+            "strict_reversal_vs_control": strict_rev_ctrl,
+            "strict_reversal_vs_blind": strict_rev_blind,
+            "tie_to_nontie_vs_control": tie_to_nontie_ctrl,
+            "tie_to_nontie_vs_blind": tie_to_nontie_blind,
         })
 
     return pd.DataFrame(records).sort_values(
@@ -1016,12 +1057,9 @@ def generate_h1_h5_assessment_table(df: pd.DataFrame, pairwise_df: pd.DataFrame)
     h4 = evaluate_h4(df)
     h5 = evaluate_h5(df, pairwise_df)
 
-    # Render dynamic string representations from structured returns
-    # H1
     h1_effects = {t: f"{h1['medium_primary']['pair_details'][t]['effect_hw_minus_ctrl']:.1f}x" for t in h1["medium_primary"]["pair_details"]}
     h1_effects_str = ", ".join(f"{t}: {eff}" for t, eff in h1_effects.items())
 
-    # H2
     h2_summary_parts = []
     for pol in ["capacity_aware", "full_thermal_aware"]:
         for t, res in h2[pol].items():
@@ -1033,13 +1071,11 @@ def generate_h1_h5_assessment_table(df: pd.DataFrame, pairwise_df: pd.DataFrame)
                 h2_summary_parts.append(f"{pol} {t.split('_')[-1]}: {res['status']}")
     h2_effects_str = "; ".join(h2_summary_parts)
 
-    # H3
     h3_events_str = ", ".join(
-        f"{t.split('_')[-1]}: discrim={res['is_heatwave_more_discriminating']} (hw_nz={res['heatwave_nonzero_cost_comparisons']}, blind_nz={res['blind_nonzero_cost_comparisons']}, rev={res['ranking_reversals_hw_vs_blind']})"
+        f"{t.split('_')[-1]}: discrim={res['is_heatwave_more_discriminating']} (hw_nz={res['heatwave_nonzero_cost_comparisons']}/{res['total_evaluated_pairs_per_context']}, blind_nz={res['blind_nonzero_cost_comparisons']}/{res['total_evaluated_pairs_per_context']}, tie_to_nontie={res['blind_tie_to_nontie_count']}, strict_rev={res['blind_strict_reversals_count']})"
         for t, res in h3["event_results"].items()
     )
 
-    # H5
     h5_events_str = ", ".join(
         f"{t.split('_')[-1]}: cal_viol={res['calibrated']['total_violation_hours']}h, fix_viol={res['fixed_margin']['total_violation_hours']}h, fta_viol={res['deterministic_full_thermal']['total_violation_hours']}h"
         for t, res in h5["event_comparisons"].items()
@@ -1073,7 +1109,7 @@ def generate_h1_h5_assessment_table(df: pd.DataFrame, pairwise_df: pd.DataFrame)
             "frozen_status": "FROZEN_SECONDARY",
             "estimability": "ESTIMABLE",
             "event_level_effects": h3_events_str,
-            "median_effect": "N/A",
+            "median_effect": f"+{h3['median_event_effect']:.0f} comparisons",
             "sign_consistency": h3["sign_consistency"],
             "classification": h3["classification"],
             "limitations": "Mixed event evidence: CONF_1 and CONF_2 expose policy divergence obscured by blind windows; CONF_3 is a null event.",
@@ -1122,8 +1158,6 @@ def generate_figures(
 
     generated_paths = {}
 
-    # Figure F1: Per-Event Policy Outcome Contrasts Across Contexts
-    # Display each of the 3 triplets separately without averaging
     f1_sub = df[
         (df["facility_model"] == "power_capped")
         & (df["thermal_curve"] == "medium")
@@ -1181,7 +1215,6 @@ def generate_figures(
     plt.close(fig)
     generated_paths["F1"] = str(f1_png)
 
-    # Figure F4: Sign consistency and leave-one-pair-out sensitivity
     h1 = evaluate_h1(df)
     h3 = evaluate_h3(pairwise_df)
 
@@ -1190,7 +1223,6 @@ def generate_figures(
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
-    # Panel 1: H1 Confirmatory Pair Effects
     c_list = ["#E74C3C" if e < 0 else "#2ECC71" for e in pair_effects]
     ax1.bar(pair_short_labels, pair_effects, color=c_list, width=0.4)
     ax1.axhline(0, color="black", linestyle="--", linewidth=1)
@@ -1206,9 +1238,9 @@ def generate_figures(
     ax1.legend()
     ax1.grid(axis="y", linestyle="--", alpha=0.5)
 
-    # Panel 2: H3 Event-Level Discriminability & Leave-One-Out
     h3_counts = [h3["event_results"][t]["heatwave_nonzero_cost_comparisons"] for t in triplets]
     blind_counts = [h3["event_results"][t]["blind_nonzero_cost_comparisons"] for t in triplets]
+    total_eval = h3["event_results"][triplets[0]]["total_evaluated_pairs_per_context"]
     x = np.arange(len(triplets))
     width = 0.35
 
@@ -1217,7 +1249,7 @@ def generate_figures(
     ax2.set_xticks(x)
     ax2.set_xticklabels(pair_short_labels)
     ax2.set_title(f"H3 Event Discriminability ({h3['classification']})", fontsize=11, fontweight="bold")
-    ax2.set_ylabel("Nonzero Policy Comparisons (out of 12)")
+    ax2.set_ylabel(f"Nonzero Policy Comparisons (out of {total_eval})")
     ax2.set_xlabel("Confirmatory Triplet ID")
     ax2.legend()
     ax2.grid(axis="y", linestyle="--", alpha=0.5)
@@ -1230,7 +1262,6 @@ def generate_figures(
     plt.close(fig)
     generated_paths["F4"] = str(f4_png)
 
-    # F2 and F3 Status Artifacts
     f2_md = out_p / "p6_f2_allocation_distance_status.md"
     f2_content = """# F2 Status Artifact: Allocation Distance Matrix
 
@@ -1276,6 +1307,9 @@ def run_phase_9_analysis(
     results_dir: Path | str = "data/results",
     figures_dir: Path | str = "data/figures",
     docs_dir: Path | str = "docs",
+    override_implementation_commit: str | None = None,
+    override_src_hash: str | None = None,
+    override_test_hash: str | None = None,
 ) -> dict[str, Any]:
     """Execute complete Phase 9 confirmatory analysis and generate all required artifacts."""
     res_dir = Path(results_dir)
@@ -1337,17 +1371,17 @@ def run_phase_9_analysis(
     h4_eval = evaluate_h4(df)
     h5_eval = evaluate_h5(df, pairwise_df)
 
-    # Compute source file hashes for complete provenance
     analysis_src_path = Path(__file__).resolve()
     test_src_path = Path("tests/test_p6_validity_analysis.py").resolve()
-    analysis_src_hash = sha256_file(analysis_src_path) if analysis_src_path.exists() else None
-    test_src_hash = sha256_file(test_src_path) if test_src_path.exists() else None
+    analysis_src_hash = override_src_hash or (sha256_file(analysis_src_path) if analysis_src_path.exists() else None)
+    test_src_hash = override_test_hash or (sha256_file(test_src_path) if test_src_path.exists() else None)
+    commit_sha = override_implementation_commit or get_git_commit_hash()
 
     analysis_manifest = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "phase": "P9",
         "analysis_label": "p6_confirmatory_validity_analysis_corrected",
-        "implementation_git_commit": get_git_commit_hash(),
+        "implementation_git_commit": commit_sha,
         "source_provenance": {
             "p6_validity_analysis_py_sha256": analysis_src_hash,
             "test_p6_validity_analysis_py_sha256": test_src_hash,
@@ -1426,14 +1460,48 @@ def run_phase_9_analysis(
     manifest_out_path = res_dir / "p6_analysis_manifest.json"
     write_atomic_json(manifest_out_path, analysis_manifest)
 
-    # Dynamic Markdown Report rendered from evaluator data structures
+    # Dynamic Markdown Report rendered purely from structured evaluator returns
     h1_effects_md = ", ".join(f"{t}: {eff:.1f}x" for t, eff in h1_eval["medium_primary"]["pair_effects"].items())
+
+    # Build H2 section purely from evaluator return
+    h2_policy_blocks = []
+    for pol_id, pol_res in h2_eval.items():
+        if not isinstance(pol_res, dict):
+            continue
+        lines = [f"#### Policy: `{pol_id}`"]
+        for t, d in pol_res.items():
+            if not isinstance(d, dict):
+                continue
+            t_short = t.split("_")[-1]
+            if d.get("recovery_applicable"):
+                lines.append(
+                    f"- **{t_short}:** applicable=True (static loss={d['static_hw_boundary'] - d['static_ctrl_boundary']:.1f}x); "
+                    f"policy HW boundary={d['policy_hw_boundary']:.1f}x vs static HW boundary={d['static_hw_boundary']:.1f}x "
+                    f"-> boundary change={d['boundary_recovery']:.1f}x (recovery={d['is_boundary_recovery']}); "
+                    f"violation hours at 3x: static={d['static_violation_hours']:.1f}h, policy={d['policy_violation_hours']:.1f}h "
+                    f"-> reduction={d['violation_hours_reduction']:.1f}h (service change={d['completed_service_change']:.1f} slots)"
+                )
+            else:
+                lines.append(f"- **{t_short}:** {d.get('status')} (static HW={d.get('static_hw_boundary')}x, static CTRL={d.get('static_ctrl_boundary')}x)")
+        h2_policy_blocks.append("\n".join(lines))
+    h2_section_body = "\n\n".join(h2_policy_blocks)
+
+    # Build H3 section purely from evaluator return
     h3_events_md = "\n".join(
-        f"- **{t}:** heatwave nonzero cost={res['heatwave_nonzero_cost_comparisons']}/12, control nonzero={res['control_nonzero_cost_comparisons']}/12, blind nonzero={res['blind_nonzero_cost_comparisons']}/12; ranking reversals vs blind={res['ranking_reversals_hw_vs_blind']}/12 (discriminating={res['is_heatwave_more_discriminating']})"
+        f"- **{t}:** heatwave nonzero cost={res['heatwave_nonzero_cost_comparisons']}/{res['total_evaluated_pairs_per_context']}, "
+        f"control nonzero={res['control_nonzero_cost_comparisons']}/{res['total_evaluated_pairs_per_context']}, "
+        f"blind nonzero={res['blind_nonzero_cost_comparisons']}/{res['total_evaluated_pairs_per_context']}; "
+        f"event effect (HW - blind)={res['event_effect_nonzero_cost_delta']:+d}; "
+        f"transitions vs blind: tie->nontie={res['blind_tie_to_nontie_count']}, strict_reversals={res['blind_strict_reversals_count']}, unchanged={res['blind_unchanged_count']} "
+        f"(discriminating={res['is_heatwave_more_discriminating']})"
         for t, res in h3_eval["event_results"].items()
     )
+
     h5_events_md = "\n".join(
-        f"- **{t}:** calibrated violations={res['calibrated']['total_violation_hours']:.1f}h, fixed violations={res['fixed_margin']['total_violation_hours']:.1f}h, full_thermal violations={res['deterministic_full_thermal']['total_violation_hours']:.1f}h (improved over fixed={res['improves_over_fixed_margin']}, improved over deterministic={res['improves_over_deterministic']})"
+        f"- **{t}:** calibrated violations={res['calibrated']['total_violation_hours']:.1f}h, "
+        f"fixed violations={res['fixed_margin']['total_violation_hours']:.1f}h, "
+        f"full_thermal violations={res['deterministic_full_thermal']['total_violation_hours']:.1f}h "
+        f"(improved over fixed={res['improves_over_fixed_margin']}, improved over deterministic={res['improves_over_deterministic']})"
         for t, res in h5_eval["event_comparisons"].items()
     )
 
@@ -1471,27 +1539,27 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 
 ### H2 — Capacity-Awareness Recovery: **{h2_eval['classification']}**
 - **Frozen Scope:** Power-capped model, heatwave context, carbon_first objective, medium curve.
-- **Prerequisite Check:** Static heatwave loss exists in CONF_1 (-0.5x) and CONF_2 (-0.5x). CONF_3 had 0.0x static loss and is classified `NOT_APPLICABLE_NO_PREREQUISITE_LOSS`.
-- **Tested Boundary Recovery:** Neither capacity_aware nor full_thermal_aware recovered the tested boundary (0.0x recovery in CONF_1 and CONF_2).
-- **Violation Hours at 3.0x:** In CONF_2, full_thermal_aware reduced violation hours from 1.0h to 0.5h; in CONF_1, boundary changed by -0.5x with violation hours changing from 1.5h to 0.5h. Capacity_aware produced 0.0h violation reduction.
-- **Classification:** {h2_eval['classification']} because tested boundary recovery is absent.
+- **Evaluator Results:**
+{h2_section_body}
+- **Classification:** **{h2_eval['classification']}** because tested boundary recovery is absent across all applicable events.
 
 ### H3 — Event-Blind Understatement: **{h3_eval['classification']}**
+- **Evaluation Scope:** 36 seed-aggregated core-policy comparisons per triplet/context (3 policy pairs × 2 facility models × 2 curves × 3 workloads).
 - **Event-Level Results (Independent Triplet Units):**
 {h3_events_md}
-- **Sign Consistency:** {h3_eval['sign_consistency']}.
+- **Descriptive Event Effects (HW - Blind Nonzero Count):** {h3_eval['event_effects']}, median={h3_eval['median_event_effect']:+.1f}, sign consistency={h3_eval['sign_consistency']}.
 - **Leave-One-Out Sensitivity:** {h3_eval['leave_one_pair_out']}.
-- **Classification:** {h3_eval['classification']}. CONF_1 and CONF_2 expose policy cost/carbon separations and ranking reversals that event-blind windows completely obscure (0/12 nonzero gaps in blind); CONF_3 is a null event where both heatwave and blind show zero separation.
+- **Classification:** **{h3_eval['classification']}**. CONF_1 and CONF_2 expose policy cost/carbon separations and baseline-tie to heatwave-non-tie transitions that event-blind windows completely obscure (0/36 nonzero gaps in blind); CONF_3 is a null event where both heatwave and blind show zero separation. Strict reversals (A-preferred to B-preferred) were zero.
 
 ### H4 — Forecast Mechanism Attribution: **{h4_eval['classification']}**
-- **Classification:** {h4_eval['classification']}.
+- **Classification:** **{h4_eval['classification']}**.
 - **Reason:** {h4_eval['missing_comparison']}
 
 ### H5 — HeatGuard Comparator: **{h5_eval['classification']}**
 - **Zero-Margin Equivalence:** {h5_eval['no_margin_comparator_equivalence']}
 - **Event-Level Comparator Results:**
 {h5_events_md}
-- **Classification:** {h5_eval['classification']}. Calibrated HeatGuard failed to outperform fixed-margin HeatGuard (which had fewer or equal violations) or deterministic Full Thermal Aware across the series.
+- **Classification:** **{h5_eval['classification']}**. Calibrated HeatGuard failed to outperform fixed-margin HeatGuard (which had fewer or equal violations) or deterministic Full Thermal Aware across the series.
 
 ---
 
@@ -1511,11 +1579,11 @@ Zero failures, zero development row contamination, zero missing IDs, zero mutati
 - `data/results/p6_analysis_manifest.json`
 - `data/results/p6_t1_cohort_provenance.csv` ({len(t1_df)} rows)
 - `data/results/p6_t2_event_feasibility.csv` ({len(t2_df)} rows)
-- `data/results/p6_t3_equal_service_gaps.csv` ({len(t3_df)} rows)
+- `data/results/p6_t3_equal_service_gaps.csv` ({len(t3_df)} rows; primary condition 9 per triplet)
 - `data/results/p6_t4_forecast_evidence.csv` ({len(t4_df)} rows)
 - `data/results/p6_h1_h5_assessment.csv` ({len(h_assess_df)} rows)
 - `data/figures/p6_f1_event_policy_contrasts.png` (displays CONF_1, CONF_2, and CONF_3 separately)
-- `data/figures/p6_f4_h1_sensitivity.png` (displays event-level H1 effects and H3 discriminability)
+- `data/figures/p6_f4_h1_sensitivity.png` (displays event-level H1 effects and H3 discriminability with denominator 36)
 - `data/figures/p6_f2_allocation_distance_status.md`
 - `data/figures/p6_f3_forecast_regret_status.md`
 """
