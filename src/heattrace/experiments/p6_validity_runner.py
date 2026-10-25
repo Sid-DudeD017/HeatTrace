@@ -2024,19 +2024,12 @@ def execute_p6_confirmatory_cell(
     error_class = None
     error_msg = None
 
-    nominal_compute_cap_kw = float(fcfg.nominal_compute_capacity_kw)
-    constraints = SchedulingConstraints(
-        max_cluster_power_kw=nominal_compute_cap_kw,
-        max_concurrent_jobs=16,
-        allow_preemption=True,
-    )
-
-    trace_id = str(workload_df["workload_trace_id"].iloc[0])
-    demanded_proc = int(workload_df["processing_requirement"].sum())
-    demanded_energy = float(workload_df["energy_kwh"].sum())
-
     sched_res: ScheduleResult | None = None
     applied_margin: float | None = None
+
+    trace_id = None
+    demanded_proc = None
+    demanded_energy = None
 
     completed_proc = None
     completed_energy = None
@@ -2053,6 +2046,29 @@ def execute_p6_confirmatory_cell(
     unmet_deadlines_count = None
 
     try:
+        # Extract workload metadata safely inside try block
+        if workload_df is not None and not workload_df.empty and "workload_trace_id" in workload_df.columns:
+            trace_id = str(workload_df["workload_trace_id"].iloc[0])
+            demanded_proc = int(workload_df["processing_requirement"].sum())
+            demanded_energy = float(workload_df["energy_kwh"].sum())
+        else:
+            trace_id = f"trace_unknown_seed_{spec.seed}_wl_{spec.workload_multiplier:.1f}x"
+            demanded_proc = 0
+            demanded_energy = 0.0
+
+        if fcfg is None:
+            raise ValueError(f"FacilityConfig is None for {spec.run_id}")
+
+        nominal_compute_cap_kw = float(fcfg.nominal_compute_capacity_kw)
+        constraints = SchedulingConstraints(
+            max_cluster_power_kw=nominal_compute_cap_kw,
+            max_concurrent_jobs=16,
+            allow_preemption=True,
+        )
+
+        if realized_window_df is None or realized_window_df.empty:
+            raise ValueError(f"realized_window_df is empty or None for {spec.run_id}")
+
         realized_temp_df = realized_window_df[["timestamp_utc", "temperature_c"]].copy()
         realized_state = build_realized_facility_state(realized_temp_df, fcfg)
         start_ts = pd.to_datetime(realized_window_df["timestamp_utc"].iloc[0], utc=True).to_pydatetime()
@@ -2288,7 +2304,209 @@ def execute_frozen_confirmation(
     if commit_res.returncode != 0:
         raise ValueError(f"Execution commit '{execution_commit}' does not resolve in repository: {commit_res.stderr.strip()}")
 
-    # 2. Check tracked git tree is clean
+    # 3. Check if final output already exists
+    if final_parquet.exists():
+        # Do not append to execution log; do not schedule any cell
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"Final runs parquet exists but manifest is missing: {manifest_path}")
+        if not execution_log_path.exists():
+            raise FileNotFoundError(f"Final runs parquet exists but execution log is missing: {execution_log_path}")
+
+        with manifest_path.open("r", encoding="utf-8") as mf:
+            manifest_meta = json.load(mf)
+
+        # 1. Require manifest required fields
+        req_manifest_fields = [
+            "manifest_version",
+            "study_phase",
+            "confirmation_status",
+            "total_confirmatory_cells",
+            "unique_run_ids",
+            "successful_runs",
+            "failed_runs",
+            "cohort_counts",
+            "run_id_digest",
+            "expected_run_id_digest",
+            "execution_commit",
+            "p7_implementation_commit",
+            "frozen_hashes",
+            "output_artifacts",
+        ]
+        for fld in req_manifest_fields:
+            if fld not in manifest_meta:
+                raise ValueError(f"Manifest missing required field: '{fld}'")
+
+        # 2. Require caller execution commit to match manifest
+        if manifest_meta["execution_commit"] != execution_commit:
+            raise ValueError(
+                f"Execution commit mismatch for completed confirmation: caller '{execution_commit}' != manifest '{manifest_meta['execution_commit']}'"
+            )
+
+        # 3. Verify both commits resolve locally
+        for c_sha, c_name in [
+            (manifest_meta["execution_commit"], "P8 execution commit"),
+            (manifest_meta["p7_implementation_commit"], "P7 implementation commit"),
+        ]:
+            c_res = subprocess.run(["git", "cat-file", "-e", f"{c_sha}^{{commit}}"], capture_output=True, text=True, cwd=root)
+            if c_res.returncode != 0:
+                raise ValueError(f"{c_name} '{c_sha}' does not resolve locally in repository")
+
+        # 4. Recompute all frozen input hashes from disk and compare
+        verified_hashes = verify_frozen_hashes(root)
+        validity_cfg_path = root / "configs/p6_validity.yaml"
+        thermal_cfg_path = root / "configs/p6_thermal.yaml"
+        protocol_path = root / "docs/p6_frozen_protocol.md"
+        benchmark_pairs_path = root / "data/benchmarks/p6_event_control_pairs.parquet"
+        index_csv_path = root / "data/benchmarks/p6_event_control_index.csv"
+        phase_overlay_path = root / "data/benchmarks/p7_phase_label_overlay.parquet"
+        p7_manifest_path = root / "data/manifests/p7_confirmatory_dry_run_manifest.json"
+
+        if not p7_manifest_path.exists():
+            raise FileNotFoundError(f"P7 confirmatory dry-run manifest missing: {p7_manifest_path}")
+        with p7_manifest_path.open("r", encoding="utf-8") as f:
+            p7_manifest = json.load(f)
+
+        _, p6_validity_hash, p6_thermal_hash = verify_and_validate_configs(root, validity_cfg_path, thermal_cfg_path)
+        p6_protocol_hash = sha256_file(protocol_path)
+        benchmark_pairs_hash = sha256_file(benchmark_pairs_path)
+        index_csv_hash = sha256_file(index_csv_path)
+        phase_overlay_hash = sha256_file(phase_overlay_path)
+
+        expected_frozen_all = {
+            "p6_validity_yaml_sha256": FROZEN_P6_VALIDITY_YAML_HASH,
+            "p6_thermal_yaml_sha256": FROZEN_P6_THERMAL_YAML_HASH,
+            "p6_frozen_protocol_sha256": FROZEN_P6_PROTOCOL_HASH,
+            "benchmark_parquet_sha256": FROZEN_BENCHMARK_PARQUET_HASH,
+            "benchmark_index_sha256": FROZEN_INDEX_CSV_HASH,
+            "phase_overlay_sha256": FROZEN_PHASE_OVERLAY_HASH,
+            "p4_manifest_sha256": FROZEN_P4_MANIFEST_HASH,
+            "p4_checkpoint_sha256": FROZEN_P4_CHECKPOINT_HASH,
+            "calibration_manifest_sha256": FROZEN_CALIBRATION_MANIFEST_HASH,
+        }
+        actual_disk_hashes = {
+            "p6_validity_yaml_sha256": p6_validity_hash,
+            "p6_thermal_yaml_sha256": p6_thermal_hash,
+            "p6_frozen_protocol_sha256": p6_protocol_hash,
+            "benchmark_parquet_sha256": benchmark_pairs_hash,
+            "benchmark_index_sha256": index_csv_hash,
+            "phase_overlay_sha256": phase_overlay_hash,
+            **verified_hashes,
+        }
+        for k_hash, exp_val in expected_frozen_all.items():
+            if actual_disk_hashes[k_hash] != exp_val:
+                raise ValueError(f"Disk hash mismatch for {k_hash}: got {actual_disk_hashes[k_hash]}, expected {exp_val}")
+            # Check p7 manifest
+            p7_key = k_hash if k_hash in p7_manifest.get("frozen_hashes", {}) else (
+                "frozen_benchmark_parquet_sha256" if k_hash == "benchmark_parquet_sha256" else (
+                    "frozen_index_csv_sha256" if k_hash == "benchmark_index_sha256" else (
+                        "phase_overlay_parquet_sha256" if k_hash == "phase_overlay_sha256" else None
+                    )
+                )
+            )
+            if p7_key and p7_manifest.get("frozen_hashes", {}).get(p7_key) != exp_val:
+                raise ValueError(f"P7 manifest hash mismatch for {p7_key}")
+            # Check p8 manifest
+            if manifest_meta.get("frozen_hashes", {}).get(k_hash) != exp_val:
+                raise ValueError(f"P8 manifest hash mismatch for {k_hash}")
+
+        # 5. Re-enumerate the frozen matrix and build workload cache
+        specs = enumerate_p7_confirmatory_matrix(validity_cfg_path)
+        if len(specs) != 756:
+            raise ValueError(f"Confirmatory matrix enumeration count {len(specs)} != 756")
+        sorted_run_ids = sorted(s.run_id for s in specs)
+        actual_run_id_digest = hashlib.sha256("\n".join(sorted_run_ids).encode("utf-8")).hexdigest()
+        if actual_run_id_digest != "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1":
+            raise ValueError(f"Confirmatory run-ID digest mismatch: {actual_run_id_digest}")
+
+        expected_specs = {s.run_id: s for s in specs}
+        workload_cache, workload_digests = build_workload_cache(root)
+
+        provenance_hashes = {
+            "p6_config_sha256": p6_validity_hash,
+            "p6_thermal_config_sha256": p6_thermal_hash,
+            "p6_protocol_sha256": p6_protocol_hash,
+            "benchmark_parquet_sha256": benchmark_pairs_hash,
+            "benchmark_index_sha256": index_csv_hash,
+            "phase_overlay_sha256": phase_overlay_hash,
+            **verified_hashes,
+        }
+        for (s_val, m_val), d_val in workload_digests.items():
+            provenance_hashes[f"workload_sha256_{s_val}_{m_val}"] = d_val
+
+        # 6. Run validate_existing_confirmatory_parquet against the final parquet
+        validated_completed = validate_existing_confirmatory_parquet(
+            parquet_path=final_parquet,
+            expected_specs=expected_specs,
+            provenance_hashes=provenance_hashes,
+            workload_cache=workload_cache,
+            execution_commit=execution_commit,
+        )
+        if len(validated_completed) != 756:
+            raise ValueError(f"Final parquet does not contain exactly 756 completed rows: got {len(validated_completed)}")
+
+        final_df = pd.read_parquet(final_parquet)
+        if list(final_df.columns) != EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS:
+            raise ValueError(f"Final parquet columns do not match expected confirmatory schema exactly")
+
+        cohort_counts = final_df["cohort"].value_counts().to_dict()
+        if cohort_counts != {
+            "core_benchmark": 432,
+            "event_blind_benchmark": 216,
+            "algorithm_comparators": 72,
+            "oracle_reference": 36,
+        }:
+            raise ValueError(f"Cohort counts mismatch in final parquet: {cohort_counts}")
+
+        oracle_deps = final_df[final_df["cohort"] == "oracle_reference"]["deployable"].unique()
+        if list(oracle_deps) != [False]:
+            raise ValueError(f"Oracle cells have invalid deployable flag in final parquet: {oracle_deps}")
+
+        for dev_ident in [DEV_TRIPLET_ID, *DEV_WINDOWS.values()]:
+            if (final_df["triplet_id"] == dev_ident).any() or (final_df["window_id"] == dev_ident).any():
+                raise ValueError(f"Development identity leaked into final parquet: {dev_ident}")
+
+        # 7. Check hashes against manifest
+        act_runs_sha256 = sha256_file(final_parquet)
+        act_log_sha256 = sha256_file(execution_log_path)
+        exp_runs_sha256 = manifest_meta["output_artifacts"]["runs_parquet"]["sha256"]
+        exp_log_sha256 = manifest_meta["output_artifacts"]["execution_log"]["sha256"]
+
+        if act_runs_sha256 != exp_runs_sha256:
+            raise ValueError(f"Final parquet hash mismatch: disk '{act_runs_sha256}' != manifest '{exp_runs_sha256}'")
+        if act_log_sha256 != exp_log_sha256:
+            raise ValueError(f"Execution log hash mismatch: disk '{act_log_sha256}' != manifest '{exp_log_sha256}'")
+
+        # 8. Check checkpoint consistency if checkpoint exists
+        if checkpoint_parquet.exists():
+            act_cp_sha256 = sha256_file(checkpoint_parquet)
+            if act_cp_sha256 != act_runs_sha256:
+                raise ValueError("Checkpoint parquet is not byte-identical to final runs parquet")
+            _ = validate_existing_confirmatory_parquet(
+                parquet_path=checkpoint_parquet,
+                expected_specs=expected_specs,
+                provenance_hashes=provenance_hashes,
+                workload_cache=workload_cache,
+                execution_commit=execution_commit,
+            )
+
+        success_count = int((final_df["status"] == "SUCCESS").sum())
+        failed_count = int((final_df["status"] == "FAILED").sum())
+
+        return final_df, {
+            "status": "ALREADY_COMPLETED",
+            "message": "Final confirmation runs parquet already exists and passed complete cryptographic validation; scheduled zero cells.",
+            "scheduled_cells": 0,
+            "total_confirmatory_cells": len(final_df),
+            "unique_run_ids": final_df["run_id"].nunique(),
+            "successful_runs": success_count,
+            "failed_runs": failed_count,
+            "cohort_counts": cohort_counts,
+            "run_id_digest": actual_run_id_digest,
+            "execution_commit": execution_commit,
+            "manifest": manifest_meta,
+        }
+
+    # 2. Check tracked git tree is clean (for new execution only)
     if require_clean_git:
         git_status = subprocess.run(
             ["git", "status", "--porcelain", "--untracked-files=no"],
@@ -2301,23 +2519,14 @@ def execute_frozen_confirmation(
         if git_status.stdout.strip():
             raise ValueError(f"Tracked Git tree is not clean. Uncommitted tracked changes detected:\n{git_status.stdout}")
 
-    # 3. Check if final output already exists
-    if final_parquet.exists():
-        log_event("FINAL_OUTPUT_ALREADY_EXISTS", {"final_parquet": str(final_parquet)})
-        # Validate existing final parquet without scheduling any cell
-        existing_df = pd.read_parquet(final_parquet)
-        if len(existing_df) != 756:
-            raise ValueError(f"Existing final parquet corrupt: {len(existing_df)} rows != 756")
-        manifest_meta: dict[str, Any] = {}
-        if manifest_path.exists():
-            with manifest_path.open("r", encoding="utf-8") as mf:
-                manifest_meta = json.load(mf)
-        return existing_df, {
-            "status": "ALREADY_COMPLETED",
-            "message": "Final confirmation runs parquet already exists; scheduled zero cells.",
-            "total_cells": len(existing_df),
-            "manifest": manifest_meta,
-        }
+        # Check HEAD match for hypothetical new execution only
+        head_res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=root)
+        if head_res.returncode == 0:
+            actual_head = head_res.stdout.strip()
+            if actual_head != execution_commit:
+                raise ValueError(
+                    f"Execution commit for new confirmation must equal checked-out HEAD: commit '{execution_commit}' != HEAD '{actual_head}'"
+                )
 
     # 4. Verify P7 manifest and all 9 frozen hashes
     p7_manifest_path = root / "data/manifests/p7_confirmatory_dry_run_manifest.json"
@@ -2449,29 +2658,90 @@ def execute_frozen_confirmation(
         if spec.run_id in current_results:
             continue
 
-        pairs_df = conf_pairs_by_triplet[spec.triplet_id]
-        w_df = pairs_df[pairs_df["window_type"] == spec.context].sort_values("timestamp_utc").reset_index(drop=True)
-        workload = workload_cache[(spec.seed, spec.workload_multiplier)]
-        temp_fc, mkt_fc = forecast_cache[(spec.triplet_id, spec.context)]
+        try:
+            pairs_df = conf_pairs_by_triplet[spec.triplet_id]
+            w_df = pairs_df[pairs_df["window_type"] == spec.context].sort_values("timestamp_utc").reset_index(drop=True)
+            workload = workload_cache[(spec.seed, spec.workload_multiplier)]
+            temp_fc, mkt_fc = forecast_cache[(spec.triplet_id, spec.context)]
 
-        sc = get_preset_thermal_scenario(spec.thermal_curve, config_path=thermal_cfg_path)
-        fcfg = FacilityConfig(
-            nominal_compute_capacity_kw=500.0,
-            thermal_scenario=sc,
-            model_kind=spec.facility_model,
-        )
+            sc = get_preset_thermal_scenario(spec.thermal_curve, config_path=thermal_cfg_path)
+            fcfg = FacilityConfig(
+                nominal_compute_capacity_kw=500.0,
+                thermal_scenario=sc,
+                model_kind=spec.facility_model,
+            )
 
-        row = execute_p6_confirmatory_cell(
-            spec=spec,
-            realized_window_df=w_df,
-            workload_df=workload,
-            temp_forecasts=temp_fc,
-            mkt_forecasts=mkt_fc,
-            fcfg=fcfg,
-            provenance_hashes=provenance_hashes,
-            repo_root=root,
-            execution_commit=execution_commit,
-        )
+            row = execute_p6_confirmatory_cell(
+                spec=spec,
+                realized_window_df=w_df,
+                workload_df=workload,
+                temp_forecasts=temp_fc,
+                mkt_forecasts=mkt_fc,
+                fcfg=fcfg,
+                provenance_hashes=provenance_hashes,
+                repo_root=root,
+                execution_commit=execution_commit,
+            )
+        except Exception as prep_exc:
+            # Cell-specific preparation exception captured as explicit FAILED row
+            expected_wl = workload_cache.get((spec.seed, spec.workload_multiplier))
+            if expected_wl is not None and not expected_wl.empty and "workload_trace_id" in expected_wl.columns:
+                fallback_trace_id = str(expected_wl["workload_trace_id"].iloc[0])
+                fallback_proc = int(expected_wl["processing_requirement"].sum())
+                fallback_energy = float(expected_wl["energy_kwh"].sum())
+            else:
+                fallback_trace_id = f"trace_unknown_seed_{spec.seed}_wl_{spec.workload_multiplier:.1f}x"
+                fallback_proc = 0
+                fallback_energy = 0.0
+
+            row = {
+                "run_id": spec.run_id,
+                "triplet_id": spec.triplet_id,
+                "context": spec.context,
+                "window_id": spec.window_id,
+                "cohort": spec.cohort,
+                "facility_model": spec.facility_model,
+                "thermal_curve": spec.thermal_curve,
+                "workload_multiplier": float(spec.workload_multiplier),
+                "seed": int(spec.seed),
+                "workload_trace_id": fallback_trace_id,
+                "objective": spec.objective,
+                "policy_id": spec.policy_id,
+                "policy_version": spec.policy_version,
+                "deployable": bool(spec.deployable),
+                "margin_mode": spec.margin_mode or "none",
+                "applied_margin": None,
+                "status": "FAILED",
+                "error_class": type(prep_exc).__name__,
+                "error_message": str(prep_exc)[:200],
+                "runtime_seconds": 0.0,
+                "demanded_processing_slots": fallback_proc,
+                "demanded_energy_kwh": round(fallback_energy, 4),
+                "completed_processing_slots": None,
+                "completed_energy_kwh": None,
+                "unfinished_processing_slots": None,
+                "unmet_deadlines_count": None,
+                "allocation_count": None,
+                "facility_power_violation_hours": None,
+                "total_facility_power_excess_kwh": None,
+                "maximum_facility_power_excess_kw": None,
+                "realized_facility_energy_kwh": None,
+                "cooling_adjusted_cost_usd": None,
+                "cooling_adjusted_carbon_kg": None,
+                "scheduler_feasible": False,
+                "thermally_feasible": False,
+                "p6_config_sha256": provenance_hashes["p6_config_sha256"],
+                "p6_thermal_config_sha256": provenance_hashes["p6_thermal_config_sha256"],
+                "p6_protocol_sha256": provenance_hashes["p6_protocol_sha256"],
+                "benchmark_parquet_sha256": provenance_hashes["benchmark_parquet_sha256"],
+                "benchmark_index_sha256": provenance_hashes["benchmark_index_sha256"],
+                "phase_overlay_sha256": provenance_hashes["phase_overlay_sha256"],
+                "p4_manifest_sha256": provenance_hashes["p4_manifest_sha256"],
+                "p4_checkpoint_sha256": provenance_hashes["p4_checkpoint_sha256"],
+                "calibration_manifest_sha256": provenance_hashes["calibration_manifest_sha256"],
+                "workload_sha256": provenance_hashes[f"workload_sha256_{spec.seed}_{spec.workload_multiplier}"],
+                "execution_commit": execution_commit,
+            }
 
         current_results[spec.run_id] = row
         cells_executed_in_session += 1

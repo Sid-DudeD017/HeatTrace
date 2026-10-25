@@ -883,32 +883,122 @@ def test_p8_zero_development_contamination():
         assert DEV_TRIPLET_ID not in s.canonical_key
 
 
-def test_p8_no_execution_when_final_output_exists(tmp_path):
-    """Verify no execution occurs and zero cells are scheduled when final parquet already exists."""
-    from heattrace.experiments.p6_validity_runner import (
-        EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS,
-        execute_frozen_confirmation,
-    )
+def test_p8_valid_finalized_package_validation_and_immutability(tmp_path):
+    """Verify a valid finalized package returns ALREADY_COMPLETED, scheduled_cells == 0, and mutates nothing."""
+    import shutil
+    from heattrace.experiments.p6_validity_runner import execute_frozen_confirmation
+    from heattrace.ingest.provenance import sha256_file
+
     out_dir = tmp_path / "results"
     out_dir.mkdir(parents=True)
-    final_pq = out_dir / "p6_validity_runs.parquet"
 
-    # Create dummy 756-row final parquet
-    dummy_data = {col: ["test"] * 756 for col in EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS}
-    pd.DataFrame(dummy_data).to_parquet(final_pq)
+    # Copy authentic finalized files
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_runs.parquet", out_dir / "p6_validity_runs.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_checkpoint.parquet", out_dir / "p6_validity_checkpoint.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_manifest.json", out_dir / "p6_validity_manifest.json")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_execution.jsonl", out_dir / "p6_validity_execution.jsonl")
 
-    # Valid commit in git history
-    test_commit = "8fe9b5667ad7ec803cc9c4c36e13fad2c6509905"
+    # Hashes before
+    before_hashes = {p.name: sha256_file(p) for p in out_dir.iterdir()}
 
+    test_commit = "1ec25f707c2a5922c80ec4bc9f3045ebaa28a6c5"
     df, meta = execute_frozen_confirmation(
         repo_root=REPO_ROOT,
         execution_commit=test_commit,
         output_dir=out_dir,
         require_clean_git=False,
     )
+
     assert meta["status"] == "ALREADY_COMPLETED"
-    assert "scheduled zero cells" in meta["message"]
+    assert meta["scheduled_cells"] == 0
+    assert meta["total_confirmatory_cells"] == 756
+    assert meta["unique_run_ids"] == 756
+    assert meta["successful_runs"] == 756
+    assert meta["failed_runs"] == 0
     assert len(df) == 756
+
+    # Hashes after
+    after_hashes = {p.name: sha256_file(p) for p in out_dir.iterdir()}
+    assert before_hashes == after_hashes, "Files were mutated during validation-only call!"
+
+
+def test_p8_tampered_final_outputs_fail_closed(tmp_path):
+    """Verify 756 garbage rows, missing manifest, corrupted hashes, or wrong commit fail closed."""
+    import json
+    import shutil
+    from heattrace.experiments.p6_validity_runner import (
+        EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS,
+        execute_frozen_confirmation,
+    )
+
+    out_dir = tmp_path / "results"
+    out_dir.mkdir(parents=True)
+
+    # 1. 756 garbage rows (filled with 'test') without valid manifest
+    garbage_pq = out_dir / "p6_validity_runs.parquet"
+    dummy_data = {col: ["test"] * 756 for col in EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS}
+    pd.DataFrame(dummy_data).to_parquet(garbage_pq)
+
+    test_commit = "1ec25f707c2a5922c80ec4bc9f3045ebaa28a6c5"
+    with pytest.raises(FileNotFoundError, match="manifest is missing"):
+        execute_frozen_confirmation(
+            repo_root=REPO_ROOT,
+            execution_commit=test_commit,
+            output_dir=out_dir,
+            require_clean_git=False,
+        )
+
+    # 2. Add authentic manifest and execution log, but parquet is garbage
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_manifest.json", out_dir / "p6_validity_manifest.json")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_execution.jsonl", out_dir / "p6_validity_execution.jsonl")
+
+    with pytest.raises(ValueError, match="(duplicate run_id|unknown run_id)"):
+        execute_frozen_confirmation(
+            repo_root=REPO_ROOT,
+            execution_commit=test_commit,
+            output_dir=out_dir,
+            require_clean_git=False,
+        )
+
+    # 3. Restore valid parquet, but wrong commit
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_runs.parquet", out_dir / "p6_validity_runs.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_checkpoint.parquet", out_dir / "p6_validity_checkpoint.parquet")
+
+    wrong_commit = "8fe9b5667ad7ec803cc9c4c36e13fad2c6509905"
+    with pytest.raises(ValueError, match="Execution commit mismatch"):
+        execute_frozen_confirmation(
+            repo_root=REPO_ROOT,
+            execution_commit=wrong_commit,
+            output_dir=out_dir,
+            require_clean_git=False,
+        )
+
+    # 4. Manifest hash tampering
+    with open(out_dir / "p6_validity_manifest.json", "r") as mf:
+        bad_meta = json.load(mf)
+    bad_meta["output_artifacts"]["runs_parquet"]["sha256"] = "0" * 64
+    with open(out_dir / "p6_validity_manifest.json", "w") as mf:
+        json.dump(bad_meta, mf)
+
+    with pytest.raises(ValueError, match="Final parquet hash mismatch"):
+        execute_frozen_confirmation(
+            repo_root=REPO_ROOT,
+            execution_commit=test_commit,
+            output_dir=out_dir,
+            require_clean_git=False,
+        )
+
+    # 5. Checkpoint / runs disagreement
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_manifest.json", out_dir / "p6_validity_manifest.json")
+    # Write garbage to checkpoint
+    pd.DataFrame(dummy_data).to_parquet(out_dir / "p6_validity_checkpoint.parquet")
+    with pytest.raises(ValueError, match="Checkpoint parquet is not byte-identical"):
+        execute_frozen_confirmation(
+            repo_root=REPO_ROOT,
+            execution_commit=test_commit,
+            output_dir=out_dir,
+            require_clean_git=False,
+        )
 
 
 def test_p8_checkpoint_resume_and_skip(tmp_path):
@@ -1122,8 +1212,8 @@ def test_p8_checkpoint_tampering_fails_closed(tmp_path):
         validate_existing_confirmatory_parquet(p5, expected_specs, prov_hashes, wl_cache, test_commit)
 
 
-def test_p8_cell_exception_becomes_explicit_failed_row():
-    """Verify an exception during preparation or execution becomes an explicit FAILED row."""
+def test_p8_pre_cell_preparation_exception_becomes_explicit_failed_row():
+    """Verify an exception during pre-cell preparation produces an explicit FAILED row."""
     from heattrace.experiments.p6_validity_runner import (
         ConfirmatoryCellSpec,
         execute_p6_confirmatory_cell,
@@ -1145,18 +1235,14 @@ def test_p8_cell_exception_becomes_explicit_failed_row():
         fixed_margin=None,
     )
 
-    # Pass an invalid empty realized DataFrame that will raise in preprocessing
+    # Pass None for fcfg to simulate facility config construction failure
     res = execute_p6_confirmatory_cell(
         spec=spec,
-        realized_window_df=pd.DataFrame(),
+        realized_window_df=pd.DataFrame({"timestamp_utc": ["2024-06-01T00:00:00Z"], "temperature_c": [25.0]}),
         workload_df=pd.DataFrame({"workload_trace_id": ["trace_0"], "processing_requirement": [10], "energy_kwh": [5.0]}),
         temp_forecasts={},
         mkt_forecasts={},
-        fcfg=FacilityConfig(
-            model_kind="power_capped",
-            nominal_compute_capacity_kw=500.0,
-            thermal_scenario=get_preset_thermal_scenario("medium", REPO_ROOT / "configs/p6_thermal.yaml"),
-        ),
+        fcfg=None,
         provenance_hashes={
             "p6_config_sha256": "0"*64,
             "p6_thermal_config_sha256": "0"*64,
@@ -1170,21 +1256,63 @@ def test_p8_cell_exception_becomes_explicit_failed_row():
             "workload_sha256_20261016_1.0": "0"*64,
         },
         repo_root=REPO_ROOT,
-        execution_commit="8fe9b5667ad7ec803cc9c4c36e13fad2c6509905",
+        execution_commit="1ec25f707c2a5922c80ec4bc9f3045ebaa28a6c5",
     )
     assert res["status"] == "FAILED"
-    assert res["error_class"] is not None
+    assert res["error_class"] == "ValueError"
+    assert "FacilityConfig is None" in res["error_message"]
     assert res["run_id"] == spec.run_id
     assert res["cohort"] == "core_benchmark"
     assert res["scheduler_feasible"] is False
-    assert res["demanded_processing_slots"] == 10
 
 
 def test_p8_non_oracle_future_input_mutation_invariance():
-    """Verify mutating future realized rows cannot change deployable scheduling decisions."""
+    """Verify mutating future realized data at or after origin cannot change causal forecast or deployable decisions."""
+    from heattrace.forecast.historical import HistoricalPersistenceForecastProvider
     from heattrace.experiments.p6_validity_runner import run_deployable_rolling_schedule
 
-    # Build synthetic 120h workload
+    # Construct baseline 120h historical window
+    base_start = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)
+    ts_list = [base_start + timedelta(hours=h) for h in range(120)]
+    w_df = pd.DataFrame({
+        "timestamp_utc": ts_list,
+        "temperature_c": [20.0 + 10.0 * np.sin(h * 2 * np.pi / 24) for h in range(120)],
+        "price_usd_per_mwh": [40.0 + 20.0 * np.cos(h * 2 * np.pi / 24) for h in range(120)],
+        "carbon_g_per_kwh": [250.0 + 50.0 * np.sin(h * 2 * np.pi / 24) for h in range(120)],
+    })
+
+    # Mutate window at and after origin h=30 (future from perspective of origin h=30)
+    w_df_mutated = w_df.copy()
+    w_df_mutated.loc[30:, "price_usd_per_mwh"] = 9999.0
+    w_df_mutated.loc[30:, "carbon_g_per_kwh"] = 8888.0
+
+    # Production forecast construction for origin 30
+    provider = HistoricalPersistenceForecastProvider()
+    origin_30 = base_start + timedelta(hours=30)
+    fc_clean = provider.forecast(origin_30, 24, history_df=w_df, window_type="heatwave", window_id="HW_TEST")
+    fc_mutated = provider.forecast(origin_30, 24, history_df=w_df_mutated, window_type="heatwave", window_id="HW_TEST")
+
+    # Forecasts at origin 30 must be identical because they only draw from history < 30
+    assert len(fc_clean.points) == 24
+    assert len(fc_mutated.points) == 24
+    for p_c, p_m in zip(fc_clean.points, fc_mutated.points):
+        assert p_c.predicted_price_usd_per_mwh == p_m.predicted_price_usd_per_mwh
+        assert p_c.predicted_carbon_g_per_kwh == p_m.predicted_carbon_g_per_kwh
+
+    # Rolling scheduler decisions with mutated vs clean forecasts for all origins
+    temp_fc = {h: np.full(24, 25.0) for h in range(120)}
+    mkt_fc_clean = {
+        h: provider.forecast(base_start + timedelta(hours=h), 24, history_df=w_df, window_type="heatwave", window_id="HW_TEST")
+        for h in range(120)
+    }
+    mkt_fc_mutated = {
+        h: provider.forecast(base_start + timedelta(hours=h), 24, history_df=w_df_mutated, window_type="heatwave", window_id="HW_TEST")
+        for h in range(120)
+    }
+
+    # For origin 30, the mkt forecasts are identical
+    assert mkt_fc_clean[30].points[0].predicted_price_usd_per_mwh == mkt_fc_mutated[30].points[0].predicted_price_usd_per_mwh
+
     wl = pd.DataFrame([{
         "workload_trace_id": "test_wl",
         "job_id": f"j_{i}",
@@ -1197,26 +1325,6 @@ def test_p8_non_oracle_future_input_mutation_invariance():
         "preemptible": True,
     } for i in range(20)])
 
-    start_ts = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)
-    temp_fc = {h: np.full(24, 25.0) for h in range(120)}
-
-    pts = [
-        ForecastPoint(
-            timestamp_utc=start_ts + timedelta(hours=h),
-            horizon_hours=h % 24,
-            predicted_price_usd_per_mwh=50.0,
-            predicted_carbon_g_per_kwh=200.0,
-        )
-        for h in range(24)
-    ]
-    fc_res = ForecastResult(
-        origin_timestamp_utc=start_ts,
-        points=pts,
-        model_name="persistence",
-        model_version="1.0",
-    )
-    mkt_fc = {h: fc_res for h in range(120)}
-
     fcfg = FacilityConfig(
         model_kind="power_capped",
         nominal_compute_capacity_kw=500.0,
@@ -1224,20 +1332,12 @@ def test_p8_non_oracle_future_input_mutation_invariance():
     )
     constraints = SchedulingConstraints(500.0, 16, True)
 
-    res1, _ = run_deployable_rolling_schedule(
-        policy_id="static_unaware",
-        workload_df=wl,
-        temp_forecasts=temp_fc,
-        mkt_forecasts=mkt_fc,
-        fcfg=fcfg,
-        objective="carbon_first",
-        start_utc=start_ts,
-        constraints=constraints,
-    )
-
-    # run_deployable_rolling_schedule does not even receive the realized DataFrame!
-    # By contract and architecture, deployable policies only receive causal forecasts (temp_forecasts, mkt_forecasts).
-    assert len(res1.allocations) == 20
+    res1, _ = run_deployable_rolling_schedule("static_unaware", wl, temp_fc, mkt_fc_clean, fcfg, "carbon_first", base_start, constraints)
+    res2, _ = run_deployable_rolling_schedule("static_unaware", wl, temp_fc, mkt_fc_mutated, fcfg, "carbon_first", base_start, constraints)
+    assert len(res1.allocations) == len(res2.allocations)
+    for a1, a2 in zip(res1.allocations, res2.allocations):
+        assert a1.job_id == a2.job_id
+        assert a1.allocated_hour_offset == a2.allocated_hour_offset
 
 
 def test_p8_oracle_rows_are_always_non_deployable():

@@ -1668,6 +1668,9 @@ def run_run_p6_confirmation(args: argparse.Namespace) -> int:
             output_dir=repo_root / args.data_dir / "results",
         )
         print("Success! Processed confirmatory matrix.")
+        if meta.get("status") == "ALREADY_COMPLETED":
+            print(f"Status: {meta['status']} ({meta.get('message')})")
+            print(f"Scheduled cells: {meta.get('scheduled_cells', 0)}")
         print(f"Total cells: {meta['total_confirmatory_cells']} (Unique run IDs: {meta['unique_run_ids']})")
         print(f"Successful: {meta['successful_runs']}, Failed: {meta['failed_runs']}")
         print(f"Execution commit: {meta['execution_commit']}")
