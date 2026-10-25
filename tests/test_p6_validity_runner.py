@@ -1001,6 +1001,91 @@ def test_p8_tampered_final_outputs_fail_closed(tmp_path):
         )
 
 
+def test_p8_contradictory_manifest_metadata_rejected(tmp_path):
+    """Verify that contradictory manifest metadata (counts, cohorts, digests, status, etc.) is rejected."""
+    import json
+    import shutil
+    from heattrace.experiments.p6_validity_runner import execute_frozen_confirmation
+
+    out_dir = tmp_path / "results"
+    out_dir.mkdir(parents=True)
+
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_runs.parquet", out_dir / "p6_validity_runs.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_checkpoint.parquet", out_dir / "p6_validity_checkpoint.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_manifest.json", out_dir / "p6_validity_manifest.json")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_execution.jsonl", out_dir / "p6_validity_execution.jsonl")
+
+    test_commit = "1ec25f707c2a5922c80ec4bc9f3045ebaa28a6c5"
+
+    with open(REPO_ROOT / "data/results/p6_validity_manifest.json", "r") as f:
+        canonical_meta = json.load(f)
+
+    def assert_mutation_fails(mutator, match_regex):
+        bad_meta = copy.deepcopy(canonical_meta)
+        mutator(bad_meta)
+        with open(out_dir / "p6_validity_manifest.json", "w") as mf:
+            json.dump(bad_meta, mf)
+        with pytest.raises(ValueError, match=match_regex):
+            execute_frozen_confirmation(
+                repo_root=REPO_ROOT,
+                execution_commit=test_commit,
+                output_dir=out_dir,
+                require_clean_git=False,
+            )
+
+    # 1. Confirmation status
+    assert_mutation_fails(lambda m: m.update({"confirmation_status": "draft"}), "confirmation_status mismatch")
+
+    # 2. Total count
+    assert_mutation_fails(lambda m: m.update({"total_confirmatory_cells": 755}), "total_confirmatory_cells mismatch")
+
+    # 3. Unique count
+    assert_mutation_fails(lambda m: m.update({"unique_run_ids": 1}), "unique_run_ids mismatch")
+
+    # 4. Success count
+    assert_mutation_fails(lambda m: m.update({"successful_runs": 0, "failed_runs": 756}), "Manifest success count")
+
+    # 5. Failure count sum != 756
+    assert_mutation_fails(lambda m: m.update({"successful_runs": 700, "failed_runs": 50}), "!= 756")
+
+    # 6. Cohort counts map
+    assert_mutation_fails(lambda m: m.update({"cohort_counts": {"garbage": 756}}), "cohort_counts mismatch")
+
+    # 7. Actual run_id_digest
+    assert_mutation_fails(lambda m: m.update({"run_id_digest": "0" * 64}), "Manifest run_id_digest")
+
+    # 8. Expected run_id_digest
+    assert_mutation_fails(lambda m: m.update({"expected_run_id_digest": "0" * 64}), "expected_run_id_digest mismatch")
+
+    # 9. Primary objective
+    assert_mutation_fails(lambda m: m.update({"primary_confirmatory_objective": "cost_first"}), "primary_confirmatory_objective mismatch")
+
+    # 10. P7 implementation commit
+    assert_mutation_fails(lambda m: m.update({"p7_implementation_commit": "0" * 40}), "p7_implementation_commit mismatch")
+
+    # 11. Output artifact runs count
+    assert_mutation_fails(lambda m: m["output_artifacts"]["runs_parquet"].update({"rows": 755}), "output_artifacts.runs_parquet.rows mismatch")
+
+    # 12. Malformed count types (e.g. string or boolean instead of int)
+    assert_mutation_fails(lambda m: m.update({"total_confirmatory_cells": "756"}), "must be an integer")
+    assert_mutation_fails(lambda m: m.update({"unique_run_ids": True}), "must be an integer")
+
+    # 13. Combined adversarial case (reproducing demonstrated multi-field tampering)
+    assert_mutation_fails(
+        lambda m: m.update({
+            "total_confirmatory_cells": 755,
+            "unique_run_ids": 1,
+            "successful_runs": 0,
+            "failed_runs": 756,
+            "cohort_counts": {"garbage": 756},
+            "run_id_digest": "bad_digest",
+            "expected_run_id_digest": "bad_digest",
+            "confirmation_status": "unverified",
+        }),
+        "(confirmation_status mismatch|total_confirmatory_cells mismatch)",
+    )
+
+
 def test_p8_checkpoint_resume_and_skip(tmp_path):
     """Verify completed checkpoint IDs are skipped and missing IDs execute exactly once."""
     from heattrace.experiments.p6_validity_runner import (
@@ -1266,64 +1351,130 @@ def test_p8_pre_cell_preparation_exception_becomes_explicit_failed_row():
     assert res["scheduler_feasible"] is False
 
 
-def test_p8_non_oracle_future_input_mutation_invariance():
-    """Verify mutating future realized data at or after origin cannot change causal forecast or deployable decisions."""
+def test_p8_production_path_future_input_mutation_invariance():
+    """Verify mutating future realized data at or after origin cannot change causal forecasts or deployable decisions in forecast-sensitive policies."""
+    from unittest.mock import patch
+    from heattrace.forecast.dataset import ScalerMetadata
     from heattrace.forecast.historical import HistoricalPersistenceForecastProvider
-    from heattrace.experiments.p6_validity_runner import run_deployable_rolling_schedule
+    from heattrace.experiments.p6_validity_runner import (
+        precompute_confirmatory_forecasts,
+        run_deployable_rolling_schedule,
+    )
+    from heattrace.thermal.facility import FacilityConfig, build_forecast_facility_state
 
-    # Construct baseline 120h historical window
-    base_start = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)
+    base_start = datetime(2022, 6, 19, 7, 0, tzinfo=timezone.utc)
     ts_list = [base_start + timedelta(hours=h) for h in range(120)]
-    w_df = pd.DataFrame({
-        "timestamp_utc": ts_list,
-        "temperature_c": [20.0 + 10.0 * np.sin(h * 2 * np.pi / 24) for h in range(120)],
-        "price_usd_per_mwh": [40.0 + 20.0 * np.cos(h * 2 * np.pi / 24) for h in range(120)],
-        "carbon_g_per_kwh": [250.0 + 50.0 * np.sin(h * 2 * np.pi / 24) for h in range(120)],
-    })
 
-    # Mutate window at and after origin h=30 (future from perspective of origin h=30)
-    w_df_mutated = w_df.copy()
-    w_df_mutated.loc[30:, "price_usd_per_mwh"] = 9999.0
-    w_df_mutated.loc[30:, "carbon_g_per_kwh"] = 8888.0
+    # 1. Clean window dataframe with all 3 contexts
+    clean_rows = []
+    for ctx, wid in [("heatwave", "HW_20220620"), ("control", "CTRL_20240610"), ("event_blind", "BLIND_9511c8fdb71a")]:
+        for h in range(120):
+            clean_rows.append({
+                "timestamp_utc": base_start + timedelta(hours=h),
+                "triplet_id": "TRIPLET_CONF_1_f5c700",
+                "window_type": ctx,
+                "window_id": wid,
+                "temperature_c": 22.0 + 8.0 * np.sin(h * 2 * np.pi / 24),
+                "price_usd_per_mwh": 45.0 + 15.0 * np.cos(h * 2 * np.pi / 24),
+                "carbon_g_per_kwh": 260.0 + 40.0 * np.sin(h * 2 * np.pi / 24),
+            })
+    clean_w_df = pd.DataFrame(clean_rows)
 
-    # Production forecast construction for origin 30
-    provider = HistoricalPersistenceForecastProvider()
-    origin_30 = base_start + timedelta(hours=30)
-    fc_clean = provider.forecast(origin_30, 24, history_df=w_df, window_type="heatwave", window_id="HW_TEST")
-    fc_mutated = provider.forecast(origin_30, 24, history_df=w_df_mutated, window_type="heatwave", window_id="HW_TEST")
+    # Mutated copy: at or after origin h=35 in heatwave, mutate temperature, price, and carbon dramatically
+    mutated_w_df = clean_w_df.copy()
+    hw_mask = (mutated_w_df["window_type"] == "heatwave") & (mutated_w_df["timestamp_utc"] >= base_start + timedelta(hours=35))
+    mutated_w_df.loc[hw_mask, "temperature_c"] = 99.0
+    mutated_w_df.loc[hw_mask, "price_usd_per_mwh"] = 9999.0
+    mutated_w_df.loc[hw_mask, "carbon_g_per_kwh"] = 8888.0
 
-    # Forecasts at origin 30 must be identical because they only draw from history < 30
-    assert len(fc_clean.points) == 24
-    assert len(fc_mutated.points) == 24
-    for p_c, p_m in zip(fc_clean.points, fc_mutated.points):
+    # Synthetic NOAA series covering [origin-72, origin+144]
+    hist_start = base_start - timedelta(hours=72)
+    hist_end = base_start + timedelta(hours=144)
+    noaa_hours = int((hist_end - hist_start).total_seconds() // 3600) + 1
+    noaa_ts = [hist_start + timedelta(hours=i) for i in range(noaa_hours)]
+    clean_noaa = pd.DataFrame(
+        {"temperature_c": [20.0 + 5.0 * np.sin(i * 2 * np.pi / 24) for i in range(noaa_hours)]},
+        index=pd.DatetimeIndex(noaa_ts, tz=timezone.utc),
+    )
+    # Mutate NOAA series at and after origin h=35
+    mut_origin_ts = base_start + timedelta(hours=35)
+    mutated_noaa = clean_noaa.copy()
+    mutated_noaa.loc[mut_origin_ts:, "temperature_c"] = 99.0
+
+    # Mock LSTM model and checkpoint
+    class MockModel:
+        pass
+
+    dummy_scaler = ScalerMetadata(
+        mean=20.0,
+        std=5.0,
+        count=1000,
+        p95=30.0,
+        fitted_at_utc="2026-10-16T00:00:00Z",
+        train_start_utc="2022-01-01T00:00:00Z",
+        train_end_exclusive_utc="2024-01-01T00:00:00Z",
+    )
+    dummy_ckpt = {
+        "scaler": {
+            "mean": 20.0,
+            "std": 5.0,
+            "count": 1000,
+            "p95": 30.0,
+            "fitted_at_utc": "2026-10-16T00:00:00Z",
+            "train_start_utc": "2022-01-01T00:00:00Z",
+            "train_end_exclusive_utc": "2024-01-01T00:00:00Z",
+        }
+    }
+
+    # Deterministic prediction: returns unscaled prediction derived strictly from the lookback feature matrix
+    def mock_predict(model, X, scaler):
+        # Derive forecast deterministically from input features (X shape: [batch, 72, 5])
+        # Return 24-step forecast based on mean of lookback temperature feature
+        preds = []
+        for b in range(X.shape[0]):
+            lb_mean_temp = float(X[b, :, 0].mean()) * scaler.std + scaler.mean
+            preds.append(np.full(24, lb_mean_temp, dtype=np.float32))
+        return np.stack(preds, axis=0)
+
+    with patch("heattrace.experiments.p6_validity_runner.load_verified_checkpoint", return_value=(MockModel(), dummy_ckpt)), \
+         patch("heattrace.experiments.p6_validity_runner.predict_unscaled", side_effect=mock_predict):
+
+        # Precompute forecasts for clean window
+        with patch("heattrace.experiments.p6_validity_runner.load_noaa_hourly_series", return_value=clean_noaa):
+            clean_cache = precompute_confirmatory_forecasts(REPO_ROOT, {"TRIPLET_CONF_1_f5c700": clean_w_df})
+
+        # Precompute forecasts for mutated window
+        with patch("heattrace.experiments.p6_validity_runner.load_noaa_hourly_series", return_value=mutated_noaa):
+            mutated_cache = precompute_confirmatory_forecasts(REPO_ROOT, {"TRIPLET_CONF_1_f5c700": mutated_w_df})
+
+    clean_temp_fc, clean_mkt_fc = clean_cache[("TRIPLET_CONF_1_f5c700", "heatwave")]
+    mut_temp_fc, mut_mkt_fc = mutated_cache[("TRIPLET_CONF_1_f5c700", "heatwave")]
+
+    # Assert that at the selected origin h=35:
+    # 1. 24-step temperature forecasts are identical
+    np.testing.assert_allclose(clean_temp_fc[35], mut_temp_fc[35], rtol=1e-5)
+
+    # 2. 24-step price and carbon forecasts are identical
+    clean_pts = clean_mkt_fc[35].points
+    mut_pts = mut_mkt_fc[35].points
+    assert len(clean_pts) == 24
+    assert len(mut_pts) == 24
+    for p_c, p_m in zip(clean_pts, mut_pts):
         assert p_c.predicted_price_usd_per_mwh == p_m.predicted_price_usd_per_mwh
         assert p_c.predicted_carbon_g_per_kwh == p_m.predicted_carbon_g_per_kwh
 
-    # Rolling scheduler decisions with mutated vs clean forecasts for all origins
-    temp_fc = {h: np.full(24, 25.0) for h in range(120)}
-    mkt_fc_clean = {
-        h: provider.forecast(base_start + timedelta(hours=h), 24, history_df=w_df, window_type="heatwave", window_id="HW_TEST")
-        for h in range(120)
-    }
-    mkt_fc_mutated = {
-        h: provider.forecast(base_start + timedelta(hours=h), 24, history_df=w_df_mutated, window_type="heatwave", window_id="HW_TEST")
-        for h in range(120)
-    }
-
-    # For origin 30, the mkt forecasts are identical
-    assert mkt_fc_clean[30].points[0].predicted_price_usd_per_mwh == mkt_fc_mutated[30].points[0].predicted_price_usd_per_mwh
-
+    # Exercise a forecast-sensitive policy: capacity_aware
     wl = pd.DataFrame([{
         "workload_trace_id": "test_wl",
         "job_id": f"j_{i}",
         "processing_requirement": 1,
         "arrival_offset_hours": i,
-        "deadline_offset_hours": i + 5,
+        "deadline_offset_hours": i + 6,
         "energy_kwh": 10.0,
         "maximum_parallelism": 1,
         "priority": 0,
         "preemptible": True,
-    } for i in range(20)])
+    } for i in range(50)])
 
     fcfg = FacilityConfig(
         model_kind="power_capped",
@@ -1332,12 +1483,17 @@ def test_p8_non_oracle_future_input_mutation_invariance():
     )
     constraints = SchedulingConstraints(500.0, 16, True)
 
-    res1, _ = run_deployable_rolling_schedule("static_unaware", wl, temp_fc, mkt_fc_clean, fcfg, "carbon_first", base_start, constraints)
-    res2, _ = run_deployable_rolling_schedule("static_unaware", wl, temp_fc, mkt_fc_mutated, fcfg, "carbon_first", base_start, constraints)
-    assert len(res1.allocations) == len(res2.allocations)
-    for a1, a2 in zip(res1.allocations, res2.allocations):
-        assert a1.job_id == a2.job_id
-        assert a1.allocated_hour_offset == a2.allocated_hour_offset
+    res_clean, _ = run_deployable_rolling_schedule("capacity_aware", wl, clean_temp_fc, clean_mkt_fc, fcfg, "carbon_first", base_start, constraints)
+    res_mutated, _ = run_deployable_rolling_schedule("capacity_aware", wl, mut_temp_fc, mut_mkt_fc, fcfg, "carbon_first", base_start, constraints)
+
+    # The committed allocation at origin h=35 must be identical
+    allocs_35_clean = [a for a in res_clean.allocations if a.allocated_hour_offset == 35]
+    allocs_35_mut = [a for a in res_mutated.allocations if a.allocated_hour_offset == 35]
+    assert len(allocs_35_clean) == len(allocs_35_mut)
+    for ac, am in zip(allocs_35_clean, allocs_35_mut):
+        assert ac.job_id == am.job_id
+        assert ac.allocated_hour_offset == am.allocated_hour_offset
+        assert ac.allocated_energy_kwh == am.allocated_energy_kwh
 
 
 def test_p8_oracle_rows_are_always_non_deployable():

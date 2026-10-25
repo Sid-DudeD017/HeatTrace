@@ -2327,6 +2327,7 @@ def execute_frozen_confirmation(
             "cohort_counts",
             "run_id_digest",
             "expected_run_id_digest",
+            "primary_confirmatory_objective",
             "execution_commit",
             "p7_implementation_commit",
             "frozen_hashes",
@@ -2335,6 +2336,58 @@ def execute_frozen_confirmation(
         for fld in req_manifest_fields:
             if fld not in manifest_meta:
                 raise ValueError(f"Manifest missing required field: '{fld}'")
+
+        # Strict scalar integer count type checks (reject bools, strings, floats, NaN, negative)
+        def _check_strict_int(fld_name: str, val: Any) -> int:
+            if isinstance(val, bool) or not isinstance(val, (int, np.integer)):
+                raise ValueError(f"Manifest scalar field '{fld_name}' must be an integer, got {type(val).__name__} ({val!r})")
+            int_val = int(val)
+            if int_val < 0:
+                raise ValueError(f"Manifest scalar field '{fld_name}' must be non-negative, got {int_val}")
+            return int_val
+
+        m_total = _check_strict_int("total_confirmatory_cells", manifest_meta["total_confirmatory_cells"])
+        m_unique = _check_strict_int("unique_run_ids", manifest_meta["unique_run_ids"])
+        m_success = _check_strict_int("successful_runs", manifest_meta["successful_runs"])
+        m_failed = _check_strict_int("failed_runs", manifest_meta["failed_runs"])
+
+        if manifest_meta.get("manifest_version") != "1.0":
+            raise ValueError(f"Manifest version mismatch: got '{manifest_meta.get('manifest_version')}', expected '1.0'")
+        if manifest_meta.get("study_phase") != "Phase 8 (Day 10 Frozen Confirmatory Execution)":
+            raise ValueError(f"Manifest study_phase mismatch: got '{manifest_meta.get('study_phase')}'")
+        if manifest_meta.get("confirmation_status") != "executed_and_finalized":
+            raise ValueError(f"Manifest confirmation_status mismatch: got '{manifest_meta.get('confirmation_status')}', expected 'executed_and_finalized'")
+        if m_total != 756:
+            raise ValueError(f"Manifest total_confirmatory_cells mismatch: got {m_total}, expected 756")
+        if m_unique != 756:
+            raise ValueError(f"Manifest unique_run_ids mismatch: got {m_unique}, expected 756")
+        if m_success + m_failed != 756:
+            raise ValueError(f"Manifest success ({m_success}) + failed ({m_failed}) != 756")
+        if manifest_meta.get("primary_confirmatory_objective") != "carbon_first":
+            raise ValueError(f"Manifest primary_confirmatory_objective mismatch: got '{manifest_meta.get('primary_confirmatory_objective')}'")
+        if manifest_meta.get("expected_run_id_digest") != "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1":
+            raise ValueError(f"Manifest expected_run_id_digest mismatch: got '{manifest_meta.get('expected_run_id_digest')}'")
+        if manifest_meta.get("p7_implementation_commit") != IMPLEMENTATION_COMMIT:
+            raise ValueError(f"Manifest p7_implementation_commit mismatch: got '{manifest_meta.get('p7_implementation_commit')}', expected '{IMPLEMENTATION_COMMIT}'")
+
+        exp_cohort_map = {
+            "core_benchmark": 432,
+            "event_blind_benchmark": 216,
+            "algorithm_comparators": 72,
+            "oracle_reference": 36,
+        }
+        if manifest_meta.get("cohort_counts") != exp_cohort_map:
+            raise ValueError(f"Manifest cohort_counts mismatch: got {manifest_meta.get('cohort_counts')}, expected {exp_cohort_map}")
+
+        out_arts = manifest_meta.get("output_artifacts")
+        if not isinstance(out_arts, dict) or "runs_parquet" not in out_arts or "execution_log" not in out_arts:
+            raise ValueError("Manifest output_artifacts missing runs_parquet or execution_log")
+        runs_art = out_arts["runs_parquet"]
+        if not isinstance(runs_art, dict) or "rows" not in runs_art or "sha256" not in runs_art:
+            raise ValueError("Manifest runs_parquet missing rows or sha256")
+        m_out_rows = _check_strict_int("output_artifacts.runs_parquet.rows", runs_art["rows"])
+        if m_out_rows != 756:
+            raise ValueError(f"Manifest output_artifacts.runs_parquet.rows mismatch: got {m_out_rows}, expected 756")
 
         # 2. Require caller execution commit to match manifest
         if manifest_meta["execution_commit"] != execution_commit:
@@ -2365,6 +2418,15 @@ def execute_frozen_confirmation(
             raise FileNotFoundError(f"P7 confirmatory dry-run manifest missing: {p7_manifest_path}")
         with p7_manifest_path.open("r", encoding="utf-8") as f:
             p7_manifest = json.load(f)
+
+        if p7_manifest.get("git_commit") != IMPLEMENTATION_COMMIT:
+            raise ValueError(f"P7 manifest git_commit mismatch: {p7_manifest.get('git_commit')} != {IMPLEMENTATION_COMMIT}")
+        if p7_manifest.get("total_confirmatory_cells") != 756:
+            raise ValueError(f"P7 manifest total_confirmatory_cells mismatch: {p7_manifest.get('total_confirmatory_cells')} != 756")
+        if p7_manifest.get("cohort_counts") != exp_cohort_map:
+            raise ValueError(f"P7 manifest cohort_counts mismatch: {p7_manifest.get('cohort_counts')} != {exp_cohort_map}")
+        if p7_manifest.get("run_id_digest") != "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1":
+            raise ValueError(f"P7 manifest run_id_digest mismatch: {p7_manifest.get('run_id_digest')}")
 
         _, p6_validity_hash, p6_thermal_hash = verify_and_validate_configs(root, validity_cfg_path, thermal_cfg_path)
         p6_protocol_hash = sha256_file(protocol_path)
@@ -2491,6 +2553,13 @@ def execute_frozen_confirmation(
 
         success_count = int((final_df["status"] == "SUCCESS").sum())
         failed_count = int((final_df["status"] == "FAILED").sum())
+
+        if m_success != success_count:
+            raise ValueError(f"Manifest success count ({m_success}) does not match recomputed ({success_count})")
+        if m_failed != failed_count:
+            raise ValueError(f"Manifest failed count ({m_failed}) does not match recomputed ({failed_count})")
+        if manifest_meta.get("run_id_digest") != actual_run_id_digest:
+            raise ValueError(f"Manifest run_id_digest ({manifest_meta.get('run_id_digest')}) does not match recomputed ({actual_run_id_digest})")
 
         return final_df, {
             "status": "ALREADY_COMPLETED",
