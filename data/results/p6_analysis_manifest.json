@@ -1,16 +1,16 @@
 {
-  "analysis_label": "p6_confirmatory_validity_analysis",
+  "analysis_label": "p6_confirmatory_validity_analysis_corrected",
   "equal_service_accounting": {
-    "eligible_pairs": 1070,
+    "eligible_pairs": 530,
     "rejected_pairs": 10,
     "rejection_reasons": {
-      "NONE": 1070,
-      "policy_a uncompleted service (291/303); unequal completed service (291 vs 303)": 2,
-      "policy_b uncompleted service (291/303); unequal completed service (303 vs 291)": 8
+      "NONE": 530,
+      "oracle_full_thermal_aware seed 20261016 incomplete (291/303); unequal completed slots seed 20261016 (291 vs 303)": 2,
+      "oracle_full_thermal_aware seed 20261016 incomplete (291/303); unequal completed slots seed 20261016 (303 vs 291)": 8
     },
-    "total_pairwise_rows": 1080
+    "total_seed_aggregated_pairwise_rows": 540
   },
-  "equal_service_predicate": "demanded_processing_slots == completed_processing_slots for both policies AND completed_a == completed_b",
+  "equal_service_predicate": "demanded_processing_slots == completed_processing_slots for both policies across all constituent seeds AND completed_a == completed_b",
   "estimability_status": {
     "F1": "ESTIMABLE",
     "F2_allocation_distance": "NOT_ESTIMABLE_MISSING_ALLOCATION_VECTORS",
@@ -32,10 +32,11 @@
   "hypothesis_classifications": {
     "H1": "SUPPORTED",
     "H2": "NOT_SUPPORTED",
-    "H3": "SUPPORTED",
+    "H3": "PARTIALLY_SUPPORTED",
     "H4": "NOT_ESTIMABLE",
     "H5": "NOT_SUPPORTED"
   },
+  "implementation_git_commit": "6c193cb070667b1c9967b5fea23c398a9381ad65",
   "input_artifacts": {
     "p6_validity_checkpoint_parquet": {
       "expected_sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f",
@@ -59,30 +60,36 @@
     }
   },
   "output_artifacts": {
-    "event_level_metrics_csv_sha256": "071ded8d50a9d833ddabbc961a425a70288b52f40f60dac02c16940d184ac7bb",
-    "f1_png_sha256": "e9db0fa6ded8f6b4f51a613dc556b42b18a65814adeb70e64c4eec3628ddf72a",
+    "event_level_metrics_csv_sha256": "05bbe336f61ff08e0f5654e3cf0f5f35a20464de3eca81ca87800e587c361e6b",
+    "f1_png_sha256": "d58be76f27605d47307b753fc0baa120f45ab4e92fed838a9a4d169996826114",
     "f2_status_md_sha256": "36ddfd6e57247cb7610d406af05dcd98f21d3802a3c2f7176b66382ce79ac202",
     "f3_status_md_sha256": "c1d199ec6c6159580942b6b2073de2bc257b748ab53059ddd56aee3abc39934b",
-    "f4_png_sha256": "892d51835118c1985d8f88987bc3c3e8d9178eff75639d953bb39468c6844f90",
-    "h1_h5_assessment_csv_sha256": "a5e2e535b0f9dd6956a8e3b7afc90a380ea4c4df3548059012808149d014e91f",
-    "policy_pairwise_metrics_csv_sha256": "23de5663764799627cf612be29e63967f4139a76caf361f7f68deaca737e4fe1",
-    "t1_cohort_provenance_csv_sha256": "f850f0813b7b8f7e526b83c3dcec420e7bbf41f4d19fb46d0f73f1eff3739bcb",
-    "t2_event_feasibility_csv_sha256": "71676caceb2d23aa35b278e0ef0ac92671784180efab29e52848f7acaef0ba1b",
-    "t3_equal_service_gaps_csv_sha256": "e1b8f010506873f62f54f2a7310c0ced97cd1defb1626f7c6362a2d71d344ece",
-    "t4_forecast_evidence_csv_sha256": "1ca79b6b57f02c33dda32c487a0be4a8b420873ec96842064fedd3c11234491c"
+    "f4_png_sha256": "d5e6b96d20da98c8e31731dcece8ed2c8db5ba351545f0ae3156fce9df87634e",
+    "h1_h5_assessment_csv_sha256": "609356fbf1b8448c753e3073ca9481fb0f95c62642d942b7e7769f1f109a5a24",
+    "policy_pairwise_metrics_csv_sha256": "261dadaf4a8c6939448927d66cd91a68b6a4eca89811eb547386995f59774e73",
+    "t1_cohort_provenance_csv_sha256": "86ccf8243a67b1cf3c904efc026dd084376ef97fd90cd1c2292608b2e66164a0",
+    "t2_event_feasibility_csv_sha256": "40dda3001aacd21aaa0aa3babbee734b7e9b5292742be5abd9c78e0347a800cd",
+    "t3_equal_service_gaps_csv_sha256": "88a68d83b14eda33e90e704ba3c25e896c98b8622f059e695d812253e430a0fc",
+    "t4_forecast_evidence_csv_sha256": "6c479ce5f12d916bdbe2074e965ce815ae5788c8533fc89a62f15aeca16fe676"
   },
   "phase": "P9",
   "row_counts": {
     "h1_h5_assessment_csv": 5,
     "p6_event_level_metrics_csv": 378,
-    "p6_policy_pairwise_metrics_csv": 1080,
+    "p6_policy_pairwise_metrics_csv": 540,
     "p6_validity_runs_parquet": 756,
     "t1_cohort_provenance_csv": 5,
     "t2_event_feasibility_csv": 72,
-    "t3_equal_service_gaps_csv": 33,
+    "t3_equal_service_gaps_csv": 27,
     "t4_forecast_evidence_csv": 17
   },
   "run_id_digest": "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1",
-  "schema_version": "1.0",
-  "seed_aggregation_rule": "arithmetic_mean_of_seed_specific_boundaries_prior_to_pair_contrast"
+  "schema_version": "2.0",
+  "seed_aggregation_rule": "arithmetic_mean_of_seed_specific_boundaries_and_outcomes_prior_to_pair_contrast",
+  "source_provenance": {
+    "frozen_config_sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+    "frozen_protocol_sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+    "p6_validity_analysis_py_sha256": "55356d36af57df6aed1567ab2255c2cfa253650eac69773426267c732328738d",
+    "test_p6_validity_analysis_py_sha256": "867529348af075536af6712dd2b1081b1e4c81878aef563c5d3cb1b3e3bff0eb"
+  }
 }

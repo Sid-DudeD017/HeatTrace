@@ -1234,9 +1234,9 @@ def generate_figures(
     f2_md = out_p / "p6_f2_allocation_distance_status.md"
     f2_content = """# F2 Status Artifact: Allocation Distance Matrix
 
-**Status:** NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION  
-**Reason:** The finalized P8 runs schema (`data/results/p6_validity_runs.parquet`) records scalar `allocation_count` (integer) but does not preserve hourly job allocation vectors or schedule execution traces.  
-**Constraint Rule:** Per Phase 9 specification, normalized L1 allocation distance $D_{ij}(e) = \\frac{||x_i - x_j||_1}{\\max(||x_i||_1, ||x_j||_1, \\epsilon)}$ requires comparable schedule vectors with identical indexing and units. Substituting `allocation_count` or fabricating vector data is strictly prohibited.  
+**Status:** NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION
+**Reason:** The finalized P8 runs schema (`data/results/p6_validity_runs.parquet`) records scalar `allocation_count` (integer) but does not preserve hourly job allocation vectors or schedule execution traces.
+**Constraint Rule:** Per Phase 9 specification, normalized L1 allocation distance $D_{ij}(e) = \\frac{||x_i - x_j||_1}{\\max(||x_i||_1, ||x_j||_1, \\epsilon)}$ requires comparable schedule vectors with identical indexing and units. Substituting `allocation_count` or fabricating vector data is strictly prohibited.
 **Scientific Conclusion:** Policy allocation divergence cannot be quantitatively mapped from confirmation parquet rows alone.
 """
     f2_md.write_text(f2_content, encoding="utf-8")
@@ -1245,8 +1245,8 @@ def generate_figures(
     f3_md = out_p / "p6_f3_forecast_regret_status.md"
     f3_content = """# F3 Status Artifact: Forecast-Sensitive Scheduling Regret
 
-**Status:** NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION  
-**Reason:** Calculating causal scheduling regret requires a controlled counterfactual forecast intervention under the identical scheduler, facility model, and workload.  
+**Status:** NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION
+**Reason:** Calculating causal scheduling regret requires a controlled counterfactual forecast intervention under the identical scheduler, facility model, and workload.
 **Constraint Rule:**
 1. The oracle reference policy (`oracle_full_thermal_aware`) is strictly marked `deployable: false` and cannot serve as a deployable regret reference.
 2. In 2 of 36 control runs, the oracle itself experienced unfinished processing slots (infeasible service), violating the equal-service baseline requirement.
@@ -1439,11 +1439,11 @@ def run_phase_9_analysis(
 
     report_content = f"""# HeatTrace Phase 9 Confirmatory Analysis Report
 
-**Phase:** Phase 9 / Day 11 (Corrected Event-Level Analysis)  
-**Protocol Reference:** `docs/p6_frozen_protocol.md`  
-**Configuration Reference:** `configs/p6_validity.yaml`  
-**Implementation Commit:** `{analysis_manifest['implementation_git_commit']}`  
-**Status:** COMPLETE (PASS_WITH_BOUNDED_LIMITATIONS)  
+**Phase:** Phase 9 / Day 11 (Corrected Event-Level Analysis)
+**Protocol Reference:** `docs/p6_frozen_protocol.md`
+**Configuration Reference:** `configs/p6_validity.yaml`
+**Implementation Commit:** `{analysis_manifest['implementation_git_commit']}`
+**Status:** COMPLETE (PASS_WITH_BOUNDED_LIMITATIONS)
 
 ---
 
