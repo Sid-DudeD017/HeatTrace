@@ -1387,6 +1387,7 @@ def run_phase_9_analysis(
     override_implementation_commit: str | None = None,
     override_src_hash: str | None = None,
     override_test_hash: str | None = None,
+    check_baseline_hashes: bool = True,
 ) -> dict[str, Any]:
     """Execute complete Phase 9 confirmatory analysis and generate all required artifacts."""
     res_dir = Path(results_dir)
@@ -1394,7 +1395,7 @@ def run_phase_9_analysis(
     d_dir = Path(docs_dir)
     d_dir.mkdir(parents=True, exist_ok=True)
 
-    df = verify_p8_baseline(runs_path, manifest_path, execution_path, checkpoint_path)
+    df = verify_p8_baseline(runs_path, manifest_path, execution_path, checkpoint_path, check_hashes=check_baseline_hashes)
 
     with open(manifest_path, "r", encoding="utf-8") as f:
         p8_manifest_meta = json.load(f)

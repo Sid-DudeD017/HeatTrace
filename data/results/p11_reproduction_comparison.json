@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "phase": "Phase 11 (Days 13-14)",
+  "reproduction_timestamp_utc": "2026-10-25T17:34:30Z",
+  "verdict": "PASS",
+  "scientific_decision": "LIMITED RESULT",
+  "implementation_commit": "d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d",
+  "archive_manifest_path": "data/archive/heattrace_v1_d5b3c86/archive_manifest.json",
+  "archive_manifest_sha256": "950d56120c39a8f71b4a6e4bb55d804c27fcec0c7da5d5c3f8be7be9f8d93ab4",
+  "execution_metrics": {
+    "total_cells": 756,
+    "unique_run_ids": 756,
+    "run_id_digest": "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1",
+    "cohort_counts": {
+      "core_benchmark": 432,
+      "event_blind_benchmark": 216,
+      "algorithm_comparators": 72,
+      "oracle_reference": 36
+    },
+    "zero_development_leakage": true,
+    "oracle_deployable_all_false": true
+  },
+  "scientific_comparison": {
+    "scientific_differences_count": 0,
+    "operational_differences": [
+      "execution_commit",
+      "timestamp_utc",
+      "runtime_seconds"
+    ],
+    "max_runtime_jitter_seconds": 0.2026
+  },
+  "hypothesis_verdicts": {
+    "H1": {
+      "verdict": "SUPPORTED",
+      "event_effects": {
+        "TRIPLET_CONF_1_f5c700": -0.5,
+        "TRIPLET_CONF_2_2a6e22": -0.5,
+        "TRIPLET_CONF_3_628624": 0.0
+      }
+    },
+    "H2": {
+      "verdict": "PARTIALLY_SUPPORTED",
+      "boundary_recovery": 0.0,
+      "violation_hours_reduction": {
+        "TRIPLET_CONF_1_f5c700": 1.0,
+        "TRIPLET_CONF_2_2a6e22": 0.5,
+        "TRIPLET_CONF_3_628624": "NOT_APPLICABLE_NO_PREREQUISITE_LOSS"
+      }
+    },
+    "H3": {
+      "verdict": "PARTIALLY_SUPPORTED",
+      "discrimination": {
+        "TRIPLET_CONF_1_f5c700": "24/36 non-zero pairs",
+        "TRIPLET_CONF_2_2a6e22": "23/36 non-zero pairs",
+        "TRIPLET_CONF_3_628624": "0/36 non-zero pairs (null)"
+      },
+      "strict_reversals": "0/54 eligible pairs"
+    },
+    "H4": {
+      "verdict": "NOT_ESTIMABLE",
+      "reason": "Missing controlled forecast intervention traces"
+    },
+    "H5": {
+      "verdict": "NOT_SUPPORTED",
+      "reason": "Calibrated dynamic margin does not outperform fixed engineering margin"
+    }
+  },
+  "adversarial_probes": {
+    "missing_run_id_failed_closed": true,
+    "duplicate_run_id_failed_closed": true,
+    "dev_triplet_leakage_detected": true,
+    "oracle_deployable_failed_closed": true,
+    "dropped_work_h2_rejection": true,
+    "incomplete_demanded_service_h2_rejection": true,
+    "altered_frozen_hash_failed_closed": true,
+    "omitted_failure_failed_closed": true
+  },
+  "canonical_p8_hashes_preserved": true,
+  "v2_work_performed": false
+}
