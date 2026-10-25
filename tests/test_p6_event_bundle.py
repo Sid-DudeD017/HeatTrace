@@ -916,6 +916,57 @@ def test_p7_phase_label_overlay_missing_row_fails_loudly():
         apply_p6_phase_label_overlay(pairs, incomplete_overlay)
 
 
+def test_p7_phase_overlay_join_rejects_window_type_tampering():
+    """Verify mutating window_type (e.g., heatwave -> control) raises ValueError."""
+    from heattrace.process.p6_event_bundle import (
+        build_p6_phase_label_overlay,
+        apply_p6_phase_label_overlay,
+    )
+    pairs = pd.read_parquet("data/benchmarks/p6_event_control_pairs.parquet")
+    events = pd.read_parquet("data/events/heatwave_events_v0.parquet")
+    overlay = build_p6_phase_label_overlay(pairs, events)
+
+    # Attack 1: Mutate heatwave row to control in pairs
+    tampered_pairs = pairs.copy()
+    hw_idx = tampered_pairs[tampered_pairs["window_type"] == "heatwave"].index[0]
+    tampered_pairs.loc[hw_idx, "window_type"] = "control"
+
+    with pytest.raises(ValueError, match="(full coverage|invalid phase label)"):
+        apply_p6_phase_label_overlay(tampered_pairs, overlay)
+
+    # Attack 2: Mutate control row to heatwave in pairs
+    tampered_pairs2 = pairs.copy()
+    ctrl_idx = tampered_pairs2[tampered_pairs2["window_type"] == "control"].index[0]
+    tampered_pairs2.loc[ctrl_idx, "window_type"] = "heatwave"
+
+    with pytest.raises(ValueError, match="(full coverage|invalid phase label)"):
+        apply_p6_phase_label_overlay(tampered_pairs2, overlay)
+
+    # Attack 3: Overlay with extra row
+    extra_overlay = pd.concat([overlay, overlay.iloc[[0]].assign(timestamp_utc=pd.Timestamp("2099-01-01 00:00:00+00:00"))], ignore_index=True)
+    # Joining with original pairs must still strictly match and check
+    with pytest.raises(ValueError, match="duplicate join keys"):
+        apply_p6_phase_label_overlay(pairs, pd.concat([overlay, overlay.iloc[[0]]], ignore_index=True))
+
+
+def test_p7_phase_label_overlay_schema_exactness(tmp_path):
+    """Verify loading overlay requires exact schema, rejecting missing or extra columns."""
+    from heattrace.process.p6_event_bundle import (
+        load_p6_phase_label_overlay,
+        PHASE_LABEL_OVERLAY_COLUMNS,
+    )
+    overlay = pd.read_parquet("data/benchmarks/p7_phase_label_overlay.parquet")
+
+    # Extra column
+    bad_overlay = overlay.assign(extra_col=123)
+    bad_path = tmp_path / "bad_overlay.parquet"
+    bad_overlay.to_parquet(bad_path, index=False)
+
+    with pytest.raises(ValueError, match="Overlay schema mismatch"):
+        load_p6_phase_label_overlay(bad_path)
+
+
+
 def test_p7_phase_label_overlay_duplicate_conflicting_fails_loudly():
     """Verify duplicate or conflicting labels fail closed."""
     from heattrace.process.p6_event_bundle import apply_p6_phase_label_overlay

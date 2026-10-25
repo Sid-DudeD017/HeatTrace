@@ -722,3 +722,89 @@ def test_p7_confirmatory_dry_run_fails_closed_on_tampering(tmp_path):
     with pytest.raises(ValueError, match="(Expected exactly 3 confirmatory triplets|Confirmatory triplets in fallback mode must contain exactly 3 items)"):
         enumerate_p7_confirmatory_matrix(bad_yaml)
 
+
+def test_p7_confirmatory_matrix_rejects_fake_identities(tmp_path):
+    """Adversarial probe: fake pair, heatwave, control, or blind IDs fail closed."""
+    import yaml
+    from heattrace.experiments.p6_validity_runner import enumerate_p7_confirmatory_matrix
+
+    with (REPO_ROOT / "configs/p6_validity.yaml").open("r") as f:
+        cfg = yaml.safe_load(f)
+
+    # 1. Fake pair ID
+    bad_cfg1 = yaml.safe_load(yaml.dump(cfg))
+    bad_cfg1["triplets"]["confirmatory"][0]["pair_id"] = "TRIPLET_CONF_FAKE"
+    p1 = tmp_path / "bad1.yaml"
+    with p1.open("w") as f: yaml.dump(bad_cfg1, f)
+    with pytest.raises(ValueError, match="pair_id mismatch"):
+        enumerate_p7_confirmatory_matrix(p1)
+
+    # 2. Fake heatwave window ID
+    bad_cfg2 = yaml.safe_load(yaml.dump(cfg))
+    bad_cfg2["triplets"]["confirmatory"][0]["heatwave_window_id"] = "HW_FAKE"
+    p2 = tmp_path / "bad2.yaml"
+    with p2.open("w") as f: yaml.dump(bad_cfg2, f)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        enumerate_p7_confirmatory_matrix(p2)
+
+    # 3. Fake control window ID
+    bad_cfg3 = yaml.safe_load(yaml.dump(cfg))
+    bad_cfg3["triplets"]["confirmatory"][0]["matched_control_window_id"] = "CTRL_FAKE"
+    p3 = tmp_path / "bad3.yaml"
+    with p3.open("w") as f: yaml.dump(bad_cfg3, f)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        enumerate_p7_confirmatory_matrix(p3)
+
+    # 4. Fake blind window ID
+    bad_cfg4 = yaml.safe_load(yaml.dump(cfg))
+    bad_cfg4["triplets"]["confirmatory"][0]["event_blind_window_id"] = "BLIND_FAKE"
+    p4 = tmp_path / "bad4.yaml"
+    with p4.open("w") as f: yaml.dump(bad_cfg4, f)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        enumerate_p7_confirmatory_matrix(p4)
+
+
+def test_p7_authoritative_loader_triplet_isolation_and_provenance(tmp_path):
+    """Verify authoritative loader reads only requested triplet and enforces overlay hash."""
+    from heattrace.experiments.p6_validity_runner import load_p7_triplet_benchmark_with_overlay
+
+    pairs_path = REPO_ROOT / "data/benchmarks/p6_event_control_pairs.parquet"
+    overlay_path = REPO_ROOT / "data/benchmarks/p7_phase_label_overlay.parquet"
+
+    # Valid load of development triplet
+    loaded_dev = load_p7_triplet_benchmark_with_overlay(
+        pairs_path,
+        overlay_path,
+        "TRIPLET_DEV_ae821c",
+    )
+    assert len(loaded_dev) == 360
+    assert set(loaded_dev["triplet_id"].unique()) == {"TRIPLET_DEV_ae821c"}
+    # Canonical phases present
+    hw_rows = loaded_dev[loaded_dev["window_type"] == "heatwave"]
+    assert set(hw_rows["phase_label"].unique()) == {"onset", "peak", "sustained", "recovery"}
+
+    # Rejection of mismatched overlay hash
+    with pytest.raises(ValueError, match="Phase overlay hash mismatch"):
+        load_p7_triplet_benchmark_with_overlay(
+            pairs_path,
+            overlay_path,
+            "TRIPLET_DEV_ae821c",
+            expected_overlay_sha256="0" * 64,
+        )
+
+
+def test_p7_confirmatory_dry_run_rejects_pending_or_invalid_commit():
+    """Verify dry-run rejects PENDING_COMMIT or malformed commit hashes."""
+    from heattrace.experiments.p6_validity_runner import run_p7_confirmatory_dry_run
+
+    with pytest.raises(ValueError, match="Invalid implementation git_commit"):
+        run_p7_confirmatory_dry_run(
+            repo_root=REPO_ROOT,
+            git_commit="PENDING_COMMIT",
+        )
+
+    with pytest.raises(ValueError, match="Invalid implementation git_commit"):
+        run_p7_confirmatory_dry_run(
+            repo_root=REPO_ROOT,
+            git_commit="not_a_valid_commit",
+        )

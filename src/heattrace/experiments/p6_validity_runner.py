@@ -68,6 +68,31 @@ FROZEN_P4_MANIFEST_HASH = "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d16
 FROZEN_P4_CHECKPOINT_HASH = "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed"
 FROZEN_CALIBRATION_MANIFEST_HASH = "bdf291a1db7c7c232f19e8aa22c59db6772ccd095caf5f1853b67e402e12096c"
 
+FROZEN_P6_VALIDITY_YAML_HASH = "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1"
+FROZEN_P6_THERMAL_YAML_HASH = "250f1b07daa6a19bcc9fe7415c7034b5ade240d69095cf3b539b7ee6ba001551"
+FROZEN_P6_PROTOCOL_HASH = "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede"
+FROZEN_BENCHMARK_PARQUET_HASH = "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109"
+FROZEN_INDEX_CSV_HASH = "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72"
+FROZEN_PHASE_OVERLAY_HASH = "7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23"
+
+FROZEN_CONFIRMATORY_TRIPLETS: dict[str, dict[str, str]] = {
+    "TRIPLET_CONF_1_f5c700": {
+        "heatwave": "HW_20220620",
+        "control": "CTRL_20240610",
+        "event_blind": "BLIND_9511c8fdb71a",
+    },
+    "TRIPLET_CONF_2_2a6e22": {
+        "heatwave": "HW_20220904",
+        "control": "CTRL_20240615",
+        "event_blind": "BLIND_ec5ea1727f70",
+    },
+    "TRIPLET_CONF_3_628624": {
+        "heatwave": "HW_20220922",
+        "control": "CTRL_20240620",
+        "event_blind": "BLIND_0a5ab2aec053",
+    },
+}
+
 DEV_TRIPLET_ID = "TRIPLET_DEV_ae821c"
 DEV_WINDOWS = {
     "heatwave": "HW_20240702",
@@ -539,6 +564,27 @@ def enumerate_p7_confirmatory_matrix(
     if len(conf_triplets) != 3:
         raise ValueError(f"Expected exactly 3 confirmatory triplets in config, found {len(conf_triplets)}")
 
+    # Enforce exact frozen confirmatory identities (order-independent)
+    observed_triplets = {}
+    for t in conf_triplets:
+        pid = str(t.get("pair_id"))
+        observed_triplets[pid] = {
+            "heatwave": str(t.get("heatwave_window_id")),
+            "control": str(t.get("matched_control_window_id")),
+            "event_blind": str(t.get("event_blind_window_id")),
+        }
+
+    if set(observed_triplets.keys()) != set(FROZEN_CONFIRMATORY_TRIPLETS.keys()):
+        diff = set(observed_triplets.keys()) ^ set(FROZEN_CONFIRMATORY_TRIPLETS.keys())
+        raise ValueError(f"Confirmatory triplet pair_id mismatch: {diff}")
+
+    for pid, exp_windows in FROZEN_CONFIRMATORY_TRIPLETS.items():
+        act_windows = observed_triplets[pid]
+        if act_windows != exp_windows:
+            raise ValueError(
+                f"Confirmatory window identity mismatch for {pid}: got {act_windows}, expected {exp_windows}"
+            )
+
     dims = cfg.get("dimensions", {})
     facility_models = dims.get("facility_models", ["energy_only", "power_capped"])
     thermal_curves = dims.get("thermal_curves", ["low", "medium"])
@@ -708,7 +754,7 @@ def enumerate_p7_confirmatory_matrix(
 def run_p7_confirmatory_dry_run(
     repo_root: Path | str = ".",
     output_manifest_path: Path | str = "data/manifests/p7_confirmatory_dry_run_manifest.json",
-    git_commit: str = "PENDING_COMMIT",
+    git_commit: str = "92f4b5739acf96ad837e54b9631f6ac974a1c7e6",
 ) -> dict[str, Any]:
     """Execute sealed, non-executing confirmatory dry run and generate provenance manifest.
 
@@ -718,11 +764,21 @@ def run_p7_confirmatory_dry_run(
     - Verified against disk hashes of configs, protocol, and frozen models.
     - Verifies exact 756 count and cohort breakdown.
     - Writes data/manifests/p7_confirmatory_dry_run_manifest.json with zero outcome data.
+    - Binds explicitly to the implementation commit (rejecting PENDING_COMMIT or malformed hashes).
     """
     root = Path(repo_root)
     validity_cfg_path = root / "configs" / "p6_validity.yaml"
     thermal_cfg_path = root / "configs" / "p6_thermal.yaml"
     protocol_path = root / "docs" / "p6_frozen_protocol.md"
+    benchmark_pairs_path = root / "data" / "benchmarks" / "p6_event_control_pairs.parquet"
+    index_csv_path = root / "data" / "benchmarks" / "p6_event_control_index.csv"
+    phase_overlay_path = root / "data" / "benchmarks" / "p7_phase_label_overlay.parquet"
+
+    # Validate implementation commit identity
+    if not git_commit or git_commit == "PENDING_COMMIT" or not _is_valid_sha256(git_commit) and len(git_commit) != 40:
+        raise ValueError(
+            f"Invalid implementation git_commit: '{git_commit}'. Must be a valid 40-character commit hash."
+        )
 
     # 1. Verify frozen artifact hashes
     verified_hashes = verify_frozen_hashes(root)
@@ -731,13 +787,38 @@ def run_p7_confirmatory_dry_run(
     cfg, validity_hash, thermal_hash = verify_and_validate_configs(
         root, validity_cfg_path, thermal_cfg_path
     )
+    if validity_hash != FROZEN_P6_VALIDITY_YAML_HASH:
+        raise ValueError(f"p6_validity.yaml hash mismatch: got {validity_hash}, expected {FROZEN_P6_VALIDITY_YAML_HASH}")
+    if thermal_hash != FROZEN_P6_THERMAL_YAML_HASH:
+        raise ValueError(f"p6_thermal.yaml hash mismatch: got {thermal_hash}, expected {FROZEN_P6_THERMAL_YAML_HASH}")
 
     # 3. Protocol hash
     if not protocol_path.exists():
         raise FileNotFoundError(f"Missing protocol file: {protocol_path}")
     protocol_hash = sha256_file(protocol_path)
+    if protocol_hash != FROZEN_P6_PROTOCOL_HASH:
+        raise ValueError(f"p6_frozen_protocol.md hash mismatch: got {protocol_hash}, expected {FROZEN_P6_PROTOCOL_HASH}")
 
-    # 4. Enumerate confirmatory matrix
+    # 4. Benchmark & overlay file hashes
+    if not benchmark_pairs_path.exists():
+        raise FileNotFoundError(f"Benchmark parquet missing: {benchmark_pairs_path}")
+    benchmark_pairs_hash = sha256_file(benchmark_pairs_path)
+    if benchmark_pairs_hash != FROZEN_BENCHMARK_PARQUET_HASH:
+        raise ValueError(f"p6_event_control_pairs.parquet hash mismatch: got {benchmark_pairs_hash}, expected {FROZEN_BENCHMARK_PARQUET_HASH}")
+
+    if not index_csv_path.exists():
+        raise FileNotFoundError(f"Benchmark index CSV missing: {index_csv_path}")
+    index_csv_hash = sha256_file(index_csv_path)
+    if index_csv_hash != FROZEN_INDEX_CSV_HASH:
+        raise ValueError(f"p6_event_control_index.csv hash mismatch: got {index_csv_hash}, expected {FROZEN_INDEX_CSV_HASH}")
+
+    if not phase_overlay_path.exists():
+        raise FileNotFoundError(f"Phase overlay parquet missing: {phase_overlay_path}")
+    phase_overlay_hash = sha256_file(phase_overlay_path)
+    if phase_overlay_hash != FROZEN_PHASE_OVERLAY_HASH:
+        raise ValueError(f"p7_phase_label_overlay.parquet hash mismatch: got {phase_overlay_hash}, expected {FROZEN_PHASE_OVERLAY_HASH}")
+
+    # 5. Enumerate confirmatory matrix
     specs = enumerate_p7_confirmatory_matrix(validity_cfg_path)
 
     # Subtotals
@@ -782,6 +863,9 @@ def run_p7_confirmatory_dry_run(
             "p6_validity_yaml_sha256": validity_hash,
             "p6_thermal_yaml_sha256": thermal_hash,
             "p6_frozen_protocol_sha256": protocol_hash,
+            "frozen_benchmark_parquet_sha256": benchmark_pairs_hash,
+            "frozen_index_csv_sha256": index_csv_hash,
+            "phase_overlay_parquet_sha256": phase_overlay_hash,
             **verified_hashes,
         },
         "enumerator_version": "1.0",
@@ -794,6 +878,75 @@ def run_p7_confirmatory_dry_run(
         json.dump(manifest_data, f, indent=2)
 
     return manifest_data
+
+
+def load_p7_triplet_benchmark_with_overlay(
+    pairs_path: Path | str,
+    overlay_path: Path | str,
+    target_triplet_id: str,
+    expected_overlay_sha256: str = FROZEN_PHASE_OVERLAY_HASH,
+) -> pd.DataFrame:
+    """Authoritative fail-closed benchmark loader with read-time triplet filtering and phase overlay.
+
+    Enforces:
+    - Read-time pushdown filtering: only the requested authorized triplet is read into memory.
+    - Zero loading of non-target triplets.
+    - Verification of phase overlay on-disk SHA-256 provenance against expected hash.
+    - Read-time pushdown filtering of overlay to the same requested triplet.
+    - Strict relational join binding (triplet_id, window_type, window_id, timestamp_utc).
+    - Fails closed on missing, extra, mismatched, or non-covering rows.
+    """
+    pairs_p = Path(pairs_path)
+    overlay_p = Path(overlay_path)
+
+    if not pairs_p.exists():
+        raise FileNotFoundError(f"Benchmark pairs file missing: {pairs_p}")
+    if not overlay_p.exists():
+        raise FileNotFoundError(f"Phase overlay file missing: {overlay_p}")
+
+    # Validate overlay provenance hash
+    actual_overlay_hash = sha256_file(overlay_p)
+    if expected_overlay_sha256 and actual_overlay_hash != expected_overlay_sha256:
+        raise ValueError(
+            f"Phase overlay hash mismatch: got {actual_overlay_hash}, expected {expected_overlay_sha256}"
+        )
+
+    # 1. Read target triplet rows with pyarrow pushdown filtering
+    pairs_table = pq.read_table(
+        str(pairs_p),
+        filters=[("triplet_id", "=", target_triplet_id)],
+    )
+    triplet_pairs_df = pairs_table.to_pandas()
+    if triplet_pairs_df.empty:
+        raise ValueError(f"No rows returned for triplet '{target_triplet_id}' from {pairs_p}")
+
+    # Verify no leak of other triplets
+    observed_triplets = triplet_pairs_df["triplet_id"].unique()
+    if len(observed_triplets) != 1 or observed_triplets[0] != target_triplet_id:
+        raise ValueError(f"Triplet isolation breach: expected [{target_triplet_id}], found {observed_triplets}")
+
+    # 2. Read overlay rows for the same target triplet with pushdown filtering
+    overlay_table = pq.read_table(
+        str(overlay_p),
+        filters=[("triplet_id", "=", target_triplet_id)],
+    )
+    triplet_overlay_df = overlay_table.to_pandas()
+    if triplet_overlay_df.empty:
+        raise ValueError(f"No overlay rows returned for triplet '{target_triplet_id}' from {overlay_p}")
+
+    # Validate overlay schema exactly
+    from heattrace.process.p6_event_bundle import (
+        PHASE_LABEL_OVERLAY_COLUMNS,
+        apply_p6_phase_label_overlay,
+    )
+    if list(triplet_overlay_df.columns) != PHASE_LABEL_OVERLAY_COLUMNS:
+        raise ValueError(
+            f"Overlay schema mismatch: got {list(triplet_overlay_df.columns)}, expected {PHASE_LABEL_OVERLAY_COLUMNS}"
+        )
+
+    # 3. Apply fail-closed overlay join
+    joined_df = apply_p6_phase_label_overlay(triplet_pairs_df, triplet_overlay_df)
+    return joined_df
 
 
 

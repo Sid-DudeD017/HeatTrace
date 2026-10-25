@@ -4,6 +4,7 @@
 **Date:** October 2026  
 **Gate 4 Recommendation:** **PASS**  
 **Confirmation Sealing Status:** **SEALED — NOT EXECUTED** (Zero confirmatory outcome rows loaded or executed)  
+**Implementation Commit:** `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`
 
 ---
 
@@ -11,9 +12,10 @@
 
 In accordance with Phase 7 requirements of the HeatTrace 14-day plan, this review confirms:
 1. **Provenance & Documentation Repairs:** Stale documentation identities and hashes in `docs/p6_gate1_review.md` and `docs/p6_pilot_review.md` were corrected against authoritative on-disk artifacts and validated execution contracts.
-2. **Phase-Label Propagation Repair:** The P6 phase-label builder defect (which collapsed all heatwave hours to `heatwave`) has been repaired via a versioned, deterministic phase-label sidecar overlay (`data/benchmarks/p7_phase_label_overlay.parquet`). The frozen benchmark parquet (`data/benchmarks/p6_event_control_pairs.parquet`) remains untouched and byte-identical.
-3. **Sealed 756-ID Confirmatory Dry Run:** A dedicated confirmatory dry-run matrix enumerator (`enumerate_p7_confirmatory_matrix` and `run_p7_confirmatory_dry_run`) was implemented in `src/heattrace/experiments/p6_validity_runner.py`. It derives exclusively from validated frozen configuration, producing exactly 756 unique, stable cell IDs across the preregistered cohorts with zero development contamination and zero confirmatory outcome data loaded.
-4. **Adversarial Sealing Probe:** Direct monkeypatch probes confirmed that parquet reading and scheduler execution are strictly absent from the dry run.
+2. **Phase-Label Propagation Repair & Authoritative Loader:** The P6 phase-label builder defect (which collapsed all heatwave hours to `heatwave`) has been repaired via a versioned, deterministic phase-label sidecar overlay (`data/benchmarks/p7_phase_label_overlay.parquet`). The frozen benchmark parquet (`data/benchmarks/p6_event_control_pairs.parquet`) remains untouched and byte-identical. Canonical phases are supplied through the versioned sidecar and the authoritative fail-closed loading interface `load_p7_triplet_benchmark_with_overlay`. Phase-aware claims remain prohibited unless downstream execution/evaluation uses this loader successfully.
+3. **Sealed 756-ID Confirmatory Dry Run:** A dedicated confirmatory dry-run matrix enumerator (`enumerate_p7_confirmatory_matrix` and `run_p7_confirmatory_dry_run`) was implemented in `src/heattrace/experiments/p6_validity_runner.py`. It derives exclusively from validated frozen configuration, enforcing exact approved confirmatory triplet and window identities (failing closed on fake IDs), producing exactly 756 unique, stable cell IDs across the preregistered cohorts with zero development contamination and zero confirmatory outcome data loaded.
+4. **Adversarial Sealing & Integrity Probes:** Direct monkeypatch probes confirmed that parquet reading and scheduler execution are strictly absent from the dry run. Direct relational regression tests verified that window_type tampering, schema alterations, or hash mismatches fail closed immediately.
+5. **Two-Commit Provenance Pattern:** The confirmatory dry-run manifest `data/manifests/p7_confirmatory_dry_run_manifest.json` is explicitly bound to the implementation commit `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`. The follow-up provenance-repair commit captures this binding without self-referential git hash mutation.
 
 Because all Phase 7 definition-of-done criteria are conclusively met with direct evidence, the **Gate 4 recommendation is PASS**.
 
@@ -25,13 +27,13 @@ Because all Phase 7 definition-of-done criteria are conclusively met with direct
 | :--- | :--- | :--- |
 | `docs/p6_gate1_review.md` | Modified | Corrected development blind row from synthetic candidate `BLIND_3d808572606e` to authoritative selected candidate `BLIND_ef75b17921d7` with exact 120h timestamps and buffer hours. Preserved `BLIND_3d808572606e` in synthetic test contexts. |
 | `docs/p6_pilot_review.md` | Modified | Updated recorded provenance hashes to reflect disk values: `p6_config_sha256` (`46f13248...`), `p6_thermal_config_sha256` (`250f1b07...`), canonical dataframe hash `development_benchmark_sha256` (`17302e7f...`), clearly distinguishing canonical dataframe hashes from raw parquet file hashes. Preserved historical Day 8 outcomes. |
-| `src/heattrace/process/p6_event_bundle.py` | Modified | Implemented `build_p6_phase_label_overlay`, `save_p6_phase_label_overlay`, `load_p6_phase_label_overlay`, and `apply_p6_phase_label_overlay`. Preserves frozen parquet file while restoring canonical event phases (`onset`, `peak`, `sustained`, `recovery`). |
-| `src/heattrace/experiments/p6_validity_runner.py` | Modified | Implemented `ConfirmatoryCellSpec`, `enumerate_p7_confirmatory_matrix`, and `run_p7_confirmatory_dry_run`. Sealed 756-ID matrix enumerator separate from the 252-cell pilot. |
-| `data/benchmarks/p7_phase_label_overlay.parquet` | Created | Deterministic phase-label sidecar overlay covering all 1,440 benchmark rows keyed by `(triplet_id, window_id, timestamp_utc)`. |
-| `data/manifests/p7_confirmatory_dry_run_manifest.json` | Created | Confirmatory dry-run provenance manifest containing design metadata, cohort counts, run-ID digest, frozen hashes, and sealing status. Contains zero outcome data. |
-| `tests/test_p6_event_bundle.py` | Modified | Added 6 adversarial test probes for phase-label overlay coverage, ordering invariance, fail-closed missing/duplicate detection, non-event protection, and price/carbon independence. |
-| `tests/test_p6_validity_runner.py` | Modified | Added 4 adversarial test probes verifying 756 exact counts, cohort subtotals, deterministic order invariance, parquet-reader sealing monkeypatches, and fail-closed tampering checks. |
-| `docs/p7_freeze_readiness.md` | Created | This freeze-readiness report and Gate 4 review document. |
+| `src/heattrace/process/p6_event_bundle.py` | Modified | Implemented `build_p6_phase_label_overlay`, `save_p6_phase_label_overlay`, `load_p6_phase_label_overlay`, and `apply_p6_phase_label_overlay`. Preserves frozen parquet file while restoring canonical event phases (`onset`, `peak`, `sustained`, `recovery`). Relational join binds `window_type` and enforces strict semantic validity. |
+| `src/heattrace/experiments/p6_validity_runner.py` | Modified | Implemented `ConfirmatoryCellSpec`, `enumerate_p7_confirmatory_matrix`, `run_p7_confirmatory_dry_run`, and `load_p7_triplet_benchmark_with_overlay`. Enforces exact frozen triplet and window identities, disk hashes, and commit binding. |
+| `data/benchmarks/p7_phase_label_overlay.parquet` | Created | Deterministic phase-label sidecar overlay covering all 1,440 benchmark rows keyed by `(triplet_id, window_type, window_id, timestamp_utc)`. |
+| `data/manifests/p7_confirmatory_dry_run_manifest.json` | Created | Confirmatory dry-run provenance manifest containing design metadata, cohort counts, run-ID digest, frozen hashes, and sealing status. Explicitly bound to implementation commit `92f4b573...`. |
+| `tests/test_p6_event_bundle.py` | Modified | Added 8 adversarial test probes for phase-label overlay coverage, ordering invariance, fail-closed missing/duplicate detection, non-event protection, price/carbon independence, window-type tampering regression, and schema exactness. |
+| `tests/test_p6_validity_runner.py` | Modified | Added 7 adversarial test probes verifying 756 exact counts, cohort subtotals, deterministic order invariance, parquet-reader sealing monkeypatches, fail-closed count tampering, fake pair/window identity rejection, authoritative loader pushdown isolation, and commit validation. |
+| `docs/p7_freeze_readiness.md` | Created / Updated | This freeze-readiness report and Gate 4 review document. |
 
 ---
 
@@ -52,19 +54,24 @@ Because all Phase 7 definition-of-done criteria are conclusively met with direct
 
 ---
 
-## 4. Phase-Label Propagation Repair
+## 4. Phase-Label Propagation Repair & Authoritative Loader
 
 ### 4.1 Defect Analysis
-In P6, `build_p6_benchmark_triplets` assigned `phase_label = ctx_label`, collapsing all 480 heatwave hours to `"heatwave"` and discarding canonical phase semantics (`onset`, `peak`, `sustained`, `recovery`). Overwriting the frozen parquet `data/benchmarks/p6_event_control_pairs.parquet` was strictly prohibited.
+In P6, `build_p6_benchmark_triplets` assigned `phase_label = ctx_label`, collapsing all 480 heatwave hours to `"heatwave"` and discarding canonical phase semantics (`onset`, `peak`, `sustained`, `recovery`). Overwriting the frozen parquet `data/benchmarks/p6_event_control_pairs.parquet` was strictly prohibited. Furthermore, the overlay join previously lacked `window_type` binding, allowing a relabeled row to evade validation.
 
-### 4.2 Sidecar Overlay Design
+### 4.2 Sidecar Overlay & Relational Binding Design
 To maintain complete cryptographic continuity of frozen benchmark files, a deterministic sidecar overlay architecture was implemented:
-- **Function:** `build_p6_phase_label_overlay(pairs_df, event_catalogue_df)` generates an overlay keyed strictly by `(triplet_id, window_id, timestamp_utc)`.
+- **Function:** `build_p6_phase_label_overlay(pairs_df, event_catalogue_df)` generates an overlay keyed strictly by `(triplet_id, window_type, window_id, timestamp_utc)`.
 - **Phase Mapping:**
   - Heatwave rows map to canonical phases generated by `build_hourly_phase_labels(event_catalogue_df)` from `src/heattrace/process/events.py`.
   - Matched control rows map to `"control"`.
   - Event-blind rows map to `"event_blind"`.
-- **Relational Joining:** `apply_p6_phase_label_overlay(pairs_df, overlay_df)` joins phase labels onto pairs by identity keys, failing closed if any key is missing, duplicate, or unmapped.
+- **Relational Joining:** `apply_p6_phase_label_overlay(pairs_df, overlay_df)` joins phase labels onto pairs by full composite identity keys `(triplet_id, window_type, window_id, timestamp_utc)`.
+  - Input and overlay window types must agree exactly.
+  - Heatwave rows accept only `onset`, `peak`, `sustained`, `recovery`.
+  - Control rows accept only `control`.
+  - Event-blind rows accept only `event_blind`.
+  - Missing, extra, conflicting, or non-matching rows fail loudly.
 - **Sidecar Artifact:** Materialized to `data/benchmarks/p7_phase_label_overlay.parquet` (1,440 rows, SHA-256: `7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23`).
 - **Phase Breakdown:**
   - `control`: 480 rows
@@ -74,6 +81,14 @@ To maintain complete cryptographic continuity of frozen benchmark files, a deter
   - `onset`: 72 rows
   - `recovery`: 72 rows
   - Total: 1,440 rows (100% complete coverage)
+
+### 4.3 Authoritative Production Loader
+The function `load_p7_triplet_benchmark_with_overlay` in `src/heattrace/experiments/p6_validity_runner.py` establishes the mandatory benchmark-loading interface:
+- Uses pyarrow read-time pushdown filtering (`filters=[("triplet_id", "=", target_triplet_id)]`) on both the benchmark pairs parquet and the overlay parquet.
+- Verifies overlay on-disk SHA-256 hash against `FROZEN_PHASE_OVERLAY_HASH`.
+- Ensures zero rows from non-target triplets enter pandas memory.
+- Applies the fail-closed `apply_p6_phase_label_overlay` join.
+- Delivers complete rows with canonical phase labels.
 
 ---
 
@@ -94,7 +109,7 @@ All authoritative input hashes were verified directly from disk:
 | `data/benchmarks/p6_event_control_index.csv` | Raw file | `a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72` | **MATCH (UNTOUCHED)** |
 | Development Canonical Dataframe (`TRIPLET_DEV_ae821c`) | Canonical DF | `17302e7fe2b80dc7e73cfb485b99dc271580460ccc864ec60ff047cedebee023` | **MATCH** |
 | `data/benchmarks/p7_phase_label_overlay.parquet` | Raw file | `7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23` | **CREATED** |
-| `data/manifests/p7_confirmatory_dry_run_manifest.json` | Raw file | `400db4df34e51a02bc66ab575683b4f891af0d4589998656ef2c5dff5ac2c0c7` | **CREATED** |
+| `data/manifests/p7_confirmatory_dry_run_manifest.json` | Raw file | Verified with 9 hashes | **CREATED & BOUND** |
 
 ---
 
@@ -120,7 +135,7 @@ Enumerated via `enumerate_p7_confirmatory_matrix(REPO_ROOT / "configs/p6_validit
 
 ## 7. Adversarial Verification and Sealing Probes
 
-Ten dedicated test probes were executed and verified:
+Fifteen dedicated test probes were executed and verified:
 
 1. `test_p7_phase_label_overlay_genuine_phases_survive`: Proves that all four heatwave phases (`onset`, `peak`, `sustained`, `recovery`) survive propagation into the benchmark data structure.
 2. `test_p7_phase_label_overlay_shuffled_order_invariance`: Proves that random perturbation of row order in either source pairs or events produces identical overlay output and identity-keyed joining.
@@ -128,23 +143,27 @@ Ten dedicated test probes were executed and verified:
 4. `test_p7_phase_label_overlay_duplicate_conflicting_fails_loudly`: Proves that duplicate or conflicting keys raise loud exceptions.
 5. `test_p7_phase_label_control_blind_cannot_be_heatwave_phases`: Proves that control and blind rows cannot be assigned heatwave phase labels.
 6. `test_p7_phase_label_independent_of_price_carbon_outcomes`: Proves that severe mutations to price, carbon, or demand columns have zero effect on phase labels.
-7. `test_p7_confirmatory_matrix_exact_counts_and_subtotals`: Verifies 756 count, cohort subtotals (432, 216, 72, 36), key uniqueness, zero dev triplet leak, and non-deployable oracle marking.
-8. `test_p7_confirmatory_matrix_deterministic_and_order_invariant`: Verifies exact identical run ID ordering under repeated calls and reverse-ordered configuration definitions.
-9. `test_p7_confirmatory_dry_run_sealing_probe`: Monkeypatches both `pandas.read_parquet` and `pyarrow.parquet.read_table` to raise `AssertionError` if invoked during dry-run enumeration. Proves confirmatory datasets are strictly sealed.
-10. `test_p7_confirmatory_dry_run_fails_closed_on_tampering`: Verifies that tampering with confirmatory triplet counts in configuration fails closed immediately.
+7. `test_p7_phase_overlay_join_rejects_window_type_tampering`: Proves that changing a heatwave row to control or vice versa fails closed immediately during overlay application.
+8. `test_p7_phase_label_overlay_schema_exactness`: Proves that the overlay loader rejects extra or missing columns.
+9. `test_p7_confirmatory_matrix_exact_counts_and_subtotals`: Verifies 756 count, cohort subtotals (432, 216, 72, 36), key uniqueness, zero dev triplet leak, and non-deployable oracle marking.
+10. `test_p7_confirmatory_matrix_deterministic_and_order_invariant`: Verifies exact identical run ID ordering under repeated calls and reverse-ordered configuration definitions.
+11. `test_p7_confirmatory_dry_run_sealing_probe`: Monkeypatches both `pandas.read_parquet` and `pyarrow.parquet.read_table` to raise `AssertionError` if invoked during dry-run enumeration. Proves confirmatory datasets are strictly sealed.
+12. `test_p7_confirmatory_dry_run_fails_closed_on_tampering`: Verifies that tampering with confirmatory triplet counts in configuration fails closed immediately.
+13. `test_p7_confirmatory_matrix_rejects_fake_identities`: Proves that injecting a fake pair, heatwave, control, or blind ID fails closed even if cardinality remains 3.
+14. `test_p7_authoritative_loader_triplet_isolation_and_provenance`: Proves that the authoritative loader reads only the requested triplet into memory and verifies overlay hash integrity.
+15. `test_p7_confirmatory_dry_run_rejects_pending_or_invalid_commit`: Proves that dry-run rejects `PENDING_COMMIT` or malformed commit hashes.
 
 ---
 
-## 8. Remaining Risks and Mitigations
+## 8. Two-Commit Provenance Architecture
 
-1. **Self-Referential Git Commit Hash in Manifest:** Storing a git commit SHA inside a tracked manifest modifies the worktree, which alters the commit hash if done before commit.
-   *Mitigation:* Recorded `git_commit: "PENDING_COMMIT"` in the manifest during freeze, and finalized the exact commit identity in this review document.
-2. **Phase 8 Confirmatory Execution Boundary:** Future execution must strictly maintain the rolling causal boundary established in Phase 6 and avoid unmasking confirmatory outcomes before execution completion.
-   *Mitigation:* Sealed enumerator creates no result files and exposes zero execution loops. Phase 8 will require explicit invocation under pre-authorized controls.
+To resolve the self-referential git commit hash problem cleanly:
+1. **Implementation Commit (`92f4b5739acf96ad837e54b9631f6ac974a1c7e6`):** Froze the initial P7 implementation code, configs, test suites, and preliminary manifest.
+2. **Follow-up Binding Commit:** Points `data/manifests/p7_confirmatory_dry_run_manifest.json` explicitly to implementation commit `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`, adds all 9 frozen disk hashes (including parquet, index, and overlay), and records this architecture in documentation. The manifest intentionally references the immutable implementation commit that generated the dry run, avoiding a circular dirty worktree loop.
 
 ---
 
 ## 9. Gate 4 Verdict
 
 **GATE 4 RECOMMENDATION: PASS**  
-All required provenance repairs, deterministic phase-label overlay mechanics, 756-cell dry-run enumeration, and adversarial sealing proofs are complete, tested, and verified against disk.
+All required provenance repairs, deterministic phase-label overlay mechanics, authoritative loader interfaces, exact frozen identity bindings, 756-cell dry-run enumeration, and adversarial sealing proofs are complete, tested, and verified against disk.

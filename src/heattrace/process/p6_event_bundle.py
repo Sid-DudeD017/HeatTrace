@@ -1742,14 +1742,18 @@ def save_p6_phase_label_overlay(
 
 
 def load_p6_phase_label_overlay(overlay_path: Path | str) -> pd.DataFrame:
-    """Load and validate phase label overlay parquet."""
+    """Load and validate phase label overlay parquet.
+
+    Fails closed if the schema does not match PHASE_LABEL_OVERLAY_COLUMNS exactly.
+    """
     path = Path(overlay_path)
     if not path.exists():
         raise FileNotFoundError(f"Phase label overlay missing: {path}")
     df = pd.read_parquet(path)
-    req = set(PHASE_LABEL_OVERLAY_COLUMNS)
-    if not req.issubset(df.columns):
-        raise ValueError(f"Overlay missing required columns: {req - set(df.columns)}")
+    if list(df.columns) != PHASE_LABEL_OVERLAY_COLUMNS:
+        raise ValueError(
+            f"Overlay schema mismatch: got columns {list(df.columns)}, expected exactly {PHASE_LABEL_OVERLAY_COLUMNS}"
+        )
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
     return df
 
@@ -1760,15 +1764,27 @@ def apply_p6_phase_label_overlay(
 ) -> pd.DataFrame:
     """Deterministically join phase_label from overlay onto pairs dataframe by identity keys.
 
-    Keyed strictly by (triplet_id, window_id, timestamp_utc), failing closed if
-    any rows are unmapped, duplicate, or mismatched.
+    Keyed strictly by (triplet_id, window_type, window_id, timestamp_utc).
+    Fails closed if:
+    - window_type differs between pairs and overlay
+    - any rows are unmapped, duplicate, extra, or conflicting
+    - heatwave rows have non-heatwave phases (onset/peak/sustained/recovery required)
+    - control rows have non-control phases (must be 'control')
+    - event_blind rows have non-event_blind phases (must be 'event_blind')
     """
     p_df = pairs_df.copy()
     p_df["timestamp_utc"] = pd.to_datetime(p_df["timestamp_utc"], utc=True)
     o_df = overlay_df.copy()
     o_df["timestamp_utc"] = pd.to_datetime(o_df["timestamp_utc"], utc=True)
 
-    join_keys = ["triplet_id", "window_id", "timestamp_utc"]
+    join_keys = ["triplet_id", "window_type", "window_id", "timestamp_utc"]
+
+    # Verify join keys are present in both
+    for k in join_keys:
+        if k not in p_df.columns:
+            raise ValueError(f"pairs_df missing required join key: {k}")
+        if k not in o_df.columns:
+            raise ValueError(f"overlay_df missing required join key: {k}")
 
     # Verify no duplicate keys in either
     if p_df.duplicated(subset=join_keys).any():
@@ -1780,15 +1796,33 @@ def apply_p6_phase_label_overlay(
         p_df.drop(columns=["phase_label"], errors="ignore"),
         o_df[join_keys + ["phase_label"]],
         on=join_keys,
-        how="left",
+        how="inner",
     )
+
+    if len(merged) != len(p_df):
+        raise ValueError(
+            f"Phase label overlay join failed full coverage: merged count {len(merged)} != input pairs count {len(p_df)}"
+        )
 
     if merged["phase_label"].isna().any():
         n_missing = int(merged["phase_label"].isna().sum())
         raise ValueError(f"Phase label overlay failed full coverage: {n_missing} rows unmapped")
 
-    if len(merged) != len(p_df):
-        raise ValueError(f"Merged row count {len(merged)} != original pairs count {len(p_df)}")
+    # Semantic phase validation by window_type
+    hw_rows = merged[merged["window_type"] == "heatwave"]
+    invalid_hw = set(hw_rows["phase_label"].unique()) - VALID_HEATWAVE_PHASES
+    if invalid_hw:
+        raise ValueError(f"Heatwave rows received invalid phase label(s): {invalid_hw}")
+
+    ctrl_rows = merged[merged["window_type"] == "control"]
+    invalid_ctrl = set(ctrl_rows["phase_label"].unique()) - {"control"}
+    if invalid_ctrl:
+        raise ValueError(f"Control rows received invalid phase label(s): {invalid_ctrl}")
+
+    blind_rows = merged[merged["window_type"] == "event_blind"]
+    invalid_blind = set(blind_rows["phase_label"].unique()) - {"event_blind"}
+    if invalid_blind:
+        raise ValueError(f"Event-blind rows received invalid phase label(s): {invalid_blind}")
 
     return merged
 
