@@ -324,22 +324,22 @@
         {
           "canonical_source_path": "data/raw/noaa/GHCNh_USW00023234_2022.psv",
           "sha256": "7b2c0793e99761763ffc3930114a64837b4680301e2a415f2a7940ac0d0a066e",
-          "bytes": 4349787
+          "bytes": 10672117
         },
         {
           "canonical_source_path": "data/raw/noaa/GHCNh_USW00023234_2023.psv",
           "sha256": "0da86c7a7b03424af1542da0eee3fb54d5a9ba4675e8e6dd95df19c9d23c7880",
-          "bytes": 4310068
+          "bytes": 11186249
         },
         {
           "canonical_source_path": "data/raw/noaa/GHCNh_USW00023234_2024.psv",
           "sha256": "5f4b0c8513e5793698886836795aa8b8a7dac5793ef4e4cb6a9368e7c4e7c1f3",
-          "bytes": 4353427
+          "bytes": 11970018
         },
         {
           "canonical_source_path": "data/raw/noaa/GHCNh_USW00023234_2025.psv",
           "sha256": "ea78ad944f2409713f51482c900aad8fdbcb1082777f79d1e8566517f6ddcf65",
-          "bytes": 487778
+          "bytes": 11571236
         }
       ]
     }
