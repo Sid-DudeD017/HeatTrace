@@ -1,0 +1,17 @@
+{
+  "calibrated_margin": 0.015999984741210893,
+  "calibration_end_exclusive_utc": "2022-06-16T00:00:00+00:00",
+  "calibration_start_utc": "2022-06-01T00:00:00+00:00",
+  "checkpoint_hash": "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed",
+  "created_at_utc": "2026-10-24T18:30:00+00:00",
+  "facility_scenario_id": "medium",
+  "fallback_reason": null,
+  "forecast_config_hash": "bda89d3baf3f9c1cade93aca5d43f8c5bb64de4fc07b548e0e8cf2349578d1d7",
+  "is_fallback": false,
+  "origin_count": 265,
+  "p4_artifact_manifest_hash": "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d161d373160a79",
+  "q": 0.9,
+  "quantile_method": "higher",
+  "residual_count": 6360,
+  "split_hash": "59fdcf783d2b2d825e44d5a9eaf29a87fa96f262b921e4b6394c2f96c6a4284c"
+}

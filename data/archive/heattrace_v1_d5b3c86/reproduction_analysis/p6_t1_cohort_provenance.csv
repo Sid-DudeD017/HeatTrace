@@ -1,0 +1,6 @@
+cohort,row_count,unique_run_ids,success_count,failure_count,deployable,policies,contexts,triplets,run_id_sha256_digest
+core_benchmark,432,432,432,0,True,"capacity_aware, full_thermal_aware, static_unaware","control, heatwave","TRIPLET_CONF_1_f5c700, TRIPLET_CONF_2_2a6e22, TRIPLET_CONF_3_628624",c50a64032ba2b5730721b361e16e69136cb75e4f826e12f44eacb3a5e4603bc3
+event_blind_benchmark,216,216,216,0,True,"capacity_aware, full_thermal_aware, static_unaware",event_blind,"TRIPLET_CONF_1_f5c700, TRIPLET_CONF_2_2a6e22, TRIPLET_CONF_3_628624",4a02c16d09f75b6d3f5acf2c454efb3394b9bece597ccba4cc9b4f1508c5dfb7
+algorithm_comparators,72,72,72,0,True,"heatguard_calibrated, heatguard_fixed","control, heatwave","TRIPLET_CONF_1_f5c700, TRIPLET_CONF_2_2a6e22, TRIPLET_CONF_3_628624",7d9d7b37bcbe8dbe999f280f9ba6c498af09164263d46c6612fe7898858961f2
+oracle_reference,36,36,36,0,False,oracle_full_thermal_aware,"control, heatwave","TRIPLET_CONF_1_f5c700, TRIPLET_CONF_2_2a6e22, TRIPLET_CONF_3_628624",4bd0841cf4a869a0cc777abd85d01ca8934823d1f14d13d6a48852dc12427db2
+TOTAL_CONFIRMATORY_SUITE,756,756,756,0,MIXED,6 distinct,"control, event_blind, heatwave","TRIPLET_CONF_1_f5c700, TRIPLET_CONF_2_2a6e22, TRIPLET_CONF_3_628624",1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1

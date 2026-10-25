@@ -1,0 +1,48 @@
+version: "1.0"
+experiment_label: controlled_thermal_stress
+random_seed: 20261016
+
+thermal_model:
+  interpretation: controlled_sensitivity_not_calibrated
+  disclaimer: >
+    WARNING: These PUE curves and thermal sensitivities are preregistered
+    controlled sensitivity levels for research evaluation and must not be
+    described as calibrated empirical facility behavior.
+  base_pue: 1.20
+  threshold_temperature_c: 22.0
+
+  scenarios:
+    low:
+      slope_per_c: 0.010
+      max_pue: 1.45
+    medium:
+      slope_per_c: 0.020
+      max_pue: 1.70
+    high:
+      slope_per_c: 0.035
+      max_pue: 2.00
+
+facility:
+  nominal_compute_capacity_kw: 500.0
+  base_pue: 1.20
+  max_concurrent_jobs: 16
+  facility_cap_rule:
+    description: >
+      For each existing compute-capacity scenario, derive the nominal
+      facility cap as max_cluster_power_kw multiplied by base_pue.
+  violation_tolerance_kw: 0.000001
+
+windows:
+  event: HW_20240702
+  control: CTRL_20240605
+  expected_horizon_hours: 120
+
+policy_classes:
+  - temperature_unaware
+  - heat_aware
+
+integrity:
+  require_identical_workload_digest: true
+  require_identical_nominal_limits: true
+  require_complete_temperature: true
+  require_contiguous_hourly_timestamps: true

@@ -1,0 +1,169 @@
+# Frozen P6 Benchmark-Validity Configuration Contract
+# Phase 1 Fallback Freeze (Approved 4-triplet bounded case series)
+
+version: "1.0"
+contract_label: "p6_validity_frozen_contract"
+design_mode: "fallback"
+approval_notes: "Authorized fallback design: 1 development triplet (HW_20240702) + 3 confirmatory triplets (2022 events) due to authentic 4-event catalogue constraint."
+
+triplets:
+  development:
+    pair_id: "TRIPLET_DEV_ae821c"
+    heatwave_window_id: "HW_20240702"
+    matched_control_window_id: "CTRL_20240605"
+    event_blind_window_id: "BLIND_ef75b17921d7"
+    duration_hours: 120
+  confirmatory:
+    - pair_id: "TRIPLET_CONF_1_f5c700"
+      heatwave_window_id: "HW_20220620"
+      matched_control_window_id: "CTRL_20240610"
+      event_blind_window_id: "BLIND_9511c8fdb71a"
+      duration_hours: 120
+    - pair_id: "TRIPLET_CONF_2_2a6e22"
+      heatwave_window_id: "HW_20220904"
+      matched_control_window_id: "CTRL_20240615"
+      event_blind_window_id: "BLIND_ec5ea1727f70"
+      duration_hours: 120
+    - pair_id: "TRIPLET_CONF_3_628624"
+      heatwave_window_id: "HW_20220922"
+      matched_control_window_id: "CTRL_20240620"
+      event_blind_window_id: "BLIND_0a5ab2aec053"
+      duration_hours: 120
+
+dimensions:
+  contexts:
+    - heatwave
+    - matched_control
+    - event_blind
+
+  facility_models:
+    - energy_only
+    - power_capped
+
+  thermal_curves:
+    - low
+    - medium
+
+  workload_multipliers:
+    - 1.0
+    - 2.0
+    - 3.0
+
+  seeds:
+    - 20261016
+    - 20261017
+
+  objectives:
+    - cost_first
+    - carbon_first
+
+policies:
+  deployable:
+    - static_unaware
+    - capacity_aware
+    - full_thermal_aware
+  reference:
+    id: oracle_full_thermal_aware
+    deployable: false
+
+deadline_regime:
+  processing_requirement_unit: "hourly_discrete_slot"
+  arrival_semantics: "window_relative_hour_inclusive"
+  deadline_semantics: "window_relative_hour_exclusive"
+  slack_distribution: "canonical_deterministic_generator_seed_drawn"
+  slack_bounds_hours: "effective_range_0_to_24_hours"
+
+parameter_sources:
+  # Required scientific fields for parameter derivation & provenance sources
+  low_curve_source: "synthetic_controlled_sensitivity_low_slope_0_010_max_pue_1_45"
+  medium_curve_source: "synthetic_controlled_sensitivity_medium_slope_0_020_max_pue_1_70"
+  base_pue_source: "synthetic_controlled_base_pue_1_20"
+  facility_cap_interpretation_source: "nominal_times_base_pue"
+
+primary_analysis:
+  hypothesis: "H1"
+  facility_model: "power_capped"
+  policy: "static_unaware"
+  outcome: "grid_bounded_lambda_star"
+  thermal_curve_rule: "medium_primary_low_sensitivity"
+  objective_rule: "carbon_first_primary_confirmatory_cost_first_optional_secondary"
+  seed_aggregation_rule: "aggregate_within_pair_context_configuration_before_contrast"
+  pair_contrast: "heatwave_minus_matched_control"
+  across_pair_support_rule: "three_pair_bounded_case_series_at_least_two_negative_contrasts_and_negative_median"
+
+temperature_forecast:
+  splits:
+    boundary_semantics: "half_open_start_inclusive_end_exclusive"
+    training:
+      start_utc: "2022-01-01T00:00:00+00:00"
+      end_exclusive_utc: "2022-05-01T00:00:00+00:00"
+    validation:
+      start_utc: "2022-05-01T00:00:00+00:00"
+      end_exclusive_utc: "2022-06-01T00:00:00+00:00"
+    calibration_reservation:
+      start_utc: "2022-06-01T00:00:00+00:00"
+      end_exclusive_utc: "2022-06-16T00:00:00+00:00"
+  architecture:
+    model: "TinyTemperatureLSTM"
+    input_size: 5
+    hidden_size: 32
+    num_layers: 1
+    horizon: 24
+    dropout: 0.1
+  training:
+    device: "cpu"
+    seed: 20261016
+    optimizer: "AdamW"
+    learning_rate: 0.001
+    loss: "SmoothL1"
+    batch_size: 64
+    max_epochs: 50
+    early_stopping_patience: 5
+    early_stopping_min_delta: 0.0001
+  baselines:
+    methods:
+      - "last_observation"
+      - "same_hour_previous_day"
+      - "ewma_0.20"
+    ewma_alpha: 0.20
+  extreme_temperature:
+    threshold_rule: "training_p95_strictly"
+  gate:
+    rmse_improvement_threshold: 0.02
+    extreme_improvement_threshold: 0.05
+    extreme_rmse_slack: -0.02
+
+heatguard:
+  calibration:
+    quantile: 0.90
+    quantile_method: "higher"
+    residual_definition: "realized_pue_minus_forecast_pue"
+    calibrated_margin_rule: "max(0, quantile(residuals, 0.90, method='higher'))"
+    thermal_curve: "medium"
+    fixed_pue_margin: 0.10
+    forecast_horizon_hours: 24
+    commit_hours: 1
+    replan_frequency_hours: 1
+    min_calibration_origins: 100
+    allow_fixed_fallback: false
+    coverage_status: "heuristic_upper_pue_buffer_not_formal_guarantee"
+    calibration_reservation:
+      start_utc: "2022-06-01T00:00:00+00:00"
+      end_exclusive_utc: "2022-06-16T00:00:00+00:00"
+    provenance:
+      model_artifact: "p6_temperature_v2"
+      artifact_manifest_hash: "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d161d373160a79"
+      forecast_config_hash: "bda89d3baf3f9c1cade93aca5d43f8c5bb64de4fc07b548e0e8cf2349578d1d7"
+      split_hash: "59fdcf783d2b2d825e44d5a9eaf29a87fa96f262b921e4b6394c2f96c6a4284c"
+      checkpoint_hash: "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed"
+      calibration_artifact: "p6_heatguard_calibration_v3"
+      manifest_hash: "bdf291a1db7c7c232f19e8aa22c59db6772ccd095caf5f1853b67e402e12096c"
+  rolling:
+    forecast_horizon_hours: 24
+    commit_hours: 1
+    replan_frequency_hours: 1
+    primary_objective: "carbon_first"
+    secondary_objective: "cost_first"
+    no_composite_policy: true
+
+

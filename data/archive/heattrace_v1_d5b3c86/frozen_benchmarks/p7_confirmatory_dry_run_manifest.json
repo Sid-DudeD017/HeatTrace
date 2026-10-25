@@ -1,0 +1,49 @@
+{
+  "manifest_version": "1.0",
+  "study_phase": "Phase 7 (Day 9 Provenance Repair and Confirmatory Freeze)",
+  "confirmation_status": "sealed_not_executed",
+  "confirmatory_outcome_rows_loaded": false,
+  "confirmatory_execution_performed": false,
+  "total_confirmatory_cells": 756,
+  "cohort_counts": {
+    "core_benchmark": 432,
+    "event_blind_benchmark": 216,
+    "algorithm_comparators": 72,
+    "oracle_reference": 36
+  },
+  "run_id_digest": "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1",
+  "primary_confirmatory_objective": "carbon_first",
+  "frozen_pair_identities": [
+    {
+      "pair_id": "TRIPLET_CONF_1_f5c700",
+      "heatwave_window_id": "HW_20220620",
+      "matched_control_window_id": "CTRL_20240610",
+      "event_blind_window_id": "BLIND_9511c8fdb71a"
+    },
+    {
+      "pair_id": "TRIPLET_CONF_2_2a6e22",
+      "heatwave_window_id": "HW_20220904",
+      "matched_control_window_id": "CTRL_20240615",
+      "event_blind_window_id": "BLIND_ec5ea1727f70"
+    },
+    {
+      "pair_id": "TRIPLET_CONF_3_628624",
+      "heatwave_window_id": "HW_20220922",
+      "matched_control_window_id": "CTRL_20240620",
+      "event_blind_window_id": "BLIND_0a5ab2aec053"
+    }
+  ],
+  "frozen_hashes": {
+    "p6_validity_yaml_sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+    "p6_thermal_yaml_sha256": "250f1b07daa6a19bcc9fe7415c7034b5ade240d69095cf3b539b7ee6ba001551",
+    "p6_frozen_protocol_sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+    "frozen_benchmark_parquet_sha256": "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109",
+    "frozen_index_csv_sha256": "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72",
+    "phase_overlay_parquet_sha256": "7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23",
+    "p4_manifest_sha256": "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d161d373160a79",
+    "p4_checkpoint_sha256": "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed",
+    "calibration_manifest_sha256": "bdf291a1db7c7c232f19e8aa22c59db6772ccd095caf5f1853b67e402e12096c"
+  },
+  "enumerator_version": "1.0",
+  "git_commit": "92f4b5739acf96ad837e54b9631f6ac974a1c7e6"
+}

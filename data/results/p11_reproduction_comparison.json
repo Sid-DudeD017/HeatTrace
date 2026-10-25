@@ -4,9 +4,9 @@
   "reproduction_timestamp_utc": "2026-10-25T17:34:30Z",
   "verdict": "PASS",
   "scientific_decision": "LIMITED RESULT",
-  "implementation_commit": "d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d",
+  "runner_execution_commit": "d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d",
+  "analysis_implementation_commit": "995a5b76a5cc1233213c52cdf5b8443d849e23f3",
   "archive_manifest_path": "data/archive/heattrace_v1_d5b3c86/archive_manifest.json",
-  "archive_manifest_sha256": "950d56120c39a8f71b4a6e4bb55d804c27fcec0c7da5d5c3f8be7be9f8d93ab4",
   "execution_metrics": {
     "total_cells": 756,
     "unique_run_ids": 756,
@@ -17,8 +17,15 @@
       "algorithm_comparators": 72,
       "oracle_reference": 36
     },
-    "zero_development_leakage": true,
+    "development_leakage_absent": true,
+    "development_leakage_probe_failed_closed": true,
     "oracle_deployable_all_false": true
+  },
+  "reproduction_artifact_hashes": {
+    "runs_parquet": "2a41634a318193f8fcde624bd0dd0e023a9da19d1e4fd682cb32895fba9033fa",
+    "checkpoint_parquet": "2a41634a318193f8fcde624bd0dd0e023a9da19d1e4fd682cb32895fba9033fa",
+    "manifest_json": "29e60aee534bb3f91ab9aecf4704bea85a2d80ba5043996c8fc94579effc8b32",
+    "execution_jsonl": "d1df535a3ee1a0be2404afd03dfb35803af06528b239225d4f6932ca204e7935"
   },
   "scientific_comparison": {
     "scientific_differences_count": 0,
@@ -32,6 +39,7 @@
   "hypothesis_verdicts": {
     "H1": {
       "verdict": "SUPPORTED",
+      "status": "frozen_primary",
       "event_effects": {
         "TRIPLET_CONF_1_f5c700": -0.5,
         "TRIPLET_CONF_2_2a6e22": -0.5,
@@ -40,6 +48,7 @@
     },
     "H2": {
       "verdict": "PARTIALLY_SUPPORTED",
+      "status": "frozen_secondary",
       "boundary_recovery": 0.0,
       "violation_hours_reduction": {
         "TRIPLET_CONF_1_f5c700": 1.0,
@@ -49,6 +58,7 @@
     },
     "H3": {
       "verdict": "PARTIALLY_SUPPORTED",
+      "status": "frozen_secondary",
       "discrimination": {
         "TRIPLET_CONF_1_f5c700": "24/36 non-zero pairs",
         "TRIPLET_CONF_2_2a6e22": "23/36 non-zero pairs",
@@ -58,17 +68,19 @@
     },
     "H4": {
       "verdict": "NOT_ESTIMABLE",
+      "status": "exploratory_post_day8",
       "reason": "Missing controlled forecast intervention traces"
     },
     "H5": {
       "verdict": "NOT_SUPPORTED",
+      "status": "frozen_secondary",
       "reason": "Calibrated dynamic margin does not outperform fixed engineering margin"
     }
   },
   "adversarial_probes": {
     "missing_run_id_failed_closed": true,
     "duplicate_run_id_failed_closed": true,
-    "dev_triplet_leakage_detected": true,
+    "development_leakage_probe_failed_closed": true,
     "oracle_deployable_failed_closed": true,
     "dropped_work_h2_rejection": true,
     "incomplete_demanded_service_h2_rejection": true,

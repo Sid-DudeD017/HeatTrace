@@ -7,10 +7,11 @@
 
 ---
 
-## 1. Implementation Checkpoint & Environment
+## 1. Implementation Checkpoints & Environment
 
-- **Stage 1 Implementation Commit:** `d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d`
-- **Git Tree Status:** Clean tracked tree verified before reproduction.
+- **Runner Execution Commit:** `d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d`
+- **Analysis Implementation Commit:** `995a5b76a5cc1233213c52cdf5b8443d849e23f3`
+- **Git Tree Status:** Clean tracked tree verified.
 - **Python Runtime:** Python 3.13.3 (macOS darwin arm64).
 
 ---
@@ -43,7 +44,7 @@
 
 ---
 
-## 3. Reproduction Execution Metrics
+## 3. Reproduction Execution Metrics & Recomputed Hashes
 
 The clean execution was performed via `execute_frozen_confirmation` with zero checkpoint resumption:
 - **Total Executed Cells:** 756
@@ -58,11 +59,11 @@ The clean execution was performed via `execute_frozen_confirmation` with zero ch
 - **Zero Development Leakage:** 0 rows matching `DEV` triplet or windows.
 - **Failures Retained:** Explicitly audited; zero unhandled errors.
 
-### Reproduction Artifact Hashes
+### Accurate Observed Reproduction Artifact Hashes
 - **reproduction runs.parquet:** `2a41634a318193f8fcde624bd0dd0e023a9da19d1e4fd682cb32895fba9033fa`
 - **reproduction checkpoint.parquet:** `2a41634a318193f8fcde624bd0dd0e023a9da19d1e4fd682cb32895fba9033fa`
-- **reproduction manifest.json:** `7f34384a3237ebc5d64ff19eb0b0aa447dca08d6677f2d5a3eb7fa475727038e`
-- **reproduction execution.jsonl:** `9bfeaa1cbbbc68114f86d63c45759efc78c89dc3ea7ec99f7d2f95fc72702a46`
+- **reproduction manifest.json:** `29e60aee534bb3f91ab9aecf4704bea85a2d80ba5043996c8fc94579effc8b32`
+- **reproduction execution.jsonl:** `d1df535a3ee1a0be2404afd03dfb35803af06528b239225d4f6932ca204e7935`
 
 ---
 
@@ -90,15 +91,15 @@ The clean execution was performed via `execute_frozen_confirmation` with zero ch
 
 ## 5. Hypothesis Evidence Regeneration (H1–H5)
 
-Phase 9 analysis executed on reproduction outputs reproduced all hypothesis conclusions and derived tables:
+Phase 9 analysis rerun on reproduction outputs from committed analysis source (`995a5b7`) regenerated all hypothesis conclusions and derived tables:
 
-| Hypothesis | Canonical Status | Reproduced Status | Event Effects / Discrimination | Conclusion Match |
+| Hypothesis | Status | Verdict | Event Effects / Discrimination | Conclusion Match |
 |---|---|---|---|---|
-| **H1** | SUPPORTED | SUPPORTED | CONF_1: -0.5x, CONF_2: -0.5x, CONF_3: 0.0x | EXACT MATCH |
-| **H2** | PARTIALLY_SUPPORTED | PARTIALLY_SUPPORTED | 0/2 boundary recovery; 2/2 full-thermal violation reduction | EXACT MATCH |
-| **H3** | PARTIALLY_SUPPORTED | PARTIALLY_SUPPORTED | CONF_1: 24/36, CONF_2: 23/36, CONF_3: 0/36; 0 reversals | EXACT MATCH |
-| **H4** | NOT_ESTIMABLE | NOT_ESTIMABLE | Missing controlled forecast intervention traces | EXACT MATCH |
-| **H5** | NOT_SUPPORTED | NOT_SUPPORTED | Dynamic margin does not beat fixed 0.10 margin | EXACT MATCH |
+| **H1** | Frozen Primary | SUPPORTED | CONF_1: -0.5x, CONF_2: -0.5x, CONF_3: 0.0x | EXACT MATCH |
+| **H2** | Frozen Secondary | PARTIALLY_SUPPORTED | 0/2 boundary recovery; 2/2 full-thermal violation reduction | EXACT MATCH |
+| **H3** | Frozen Secondary | PARTIALLY_SUPPORTED | CONF_1: 24/36, CONF_2: 23/36, CONF_3: 0/36; 0 reversals | EXACT MATCH |
+| **H4** | Exploratory (Post-Day 8) | NOT_ESTIMABLE | Missing controlled forecast intervention traces | EXACT MATCH |
+| **H5** | Frozen Secondary | NOT_SUPPORTED | Dynamic margin does not beat fixed 0.10 margin | EXACT MATCH |
 
 ### Table and Figure Cryptographic Hashes
 All reproduced tables and deterministic figures match canonical outputs byte-for-byte:
@@ -141,10 +142,13 @@ Direct adversarial probes executed against the verification pipeline:
 ## 8. Immutable v1 Archive
 
 - **Archive Location:** `data/archive/heattrace_v1_d5b3c86/`
-- **Total Archived Artifacts:** 46 files (content-addressed, no symlinks, relative portable paths).
+- **Total Archived Artifacts:** 54 files (content-addressed, no symlinks, relative portable paths).
+- **Complete Model Dependencies Included:**
+  - HeatGuard v3: calibration.json, forecast_temperatures.npy, origins.json, realized_temperatures.npy, residuals.npy, manifest.json.
+  - Temperature model v2: artifact_manifest.json, tiny_lstm_checkpoint.pt, scaler.json, split_manifest.json, training_history.json, evaluation_metrics.csv.
+  - External raw NOAA sources explicitly categorized under `external_source_inputs`.
 - **Archive Manifest:** `data/archive/heattrace_v1_d5b3c86/archive_manifest.json`
-- **Archive Manifest SHA-256:** `950d56120c39a8f71b4a6e4bb55d804c27fcec0c7da5d5c3f8be7be9f8d93ab4`
-- **Self-Verification Command:** `python3 data/archive/heattrace_v1_d5b3c86/verify_archive.py` (Result: PASS, 46/46 verified).
+- **Self-Verification Command:** `python3 data/archive/heattrace_v1_d5b3c86/verify_archive.py` (Result: PASS, 54/54 verified).
 
 ---
 
@@ -154,5 +158,6 @@ Direct adversarial probes executed against the verification pipeline:
 - Zero v2 or Phase 12 work performed: **CONFIRMED**.
 - Limited Result verdict preserved without upgrade: **CONFIRMED**.
 - Equal-service and independence rules strictly preserved: **CONFIRMED**.
+- 756 cells were not rerun: **CONFIRMED**.
 
 **Phase 11 Verdict:** **PASS**
