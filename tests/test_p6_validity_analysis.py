@@ -24,6 +24,7 @@ from heattrace.evaluation.p6_validity import (
     evaluate_h3,
     evaluate_h4,
     evaluate_h5,
+    generate_h1_h5_assessment_table,
     is_row_feasible,
     run_phase_9_analysis,
     sha256_file,
@@ -104,7 +105,6 @@ def test_failure_rows_retained_in_feasibility():
     }
     assert is_row_feasible(row_ok) is True
 
-    # Variations of failure
     for field, bad_val in [
         ("status", "FAILED"),
         ("scheduler_feasible", False),
@@ -119,26 +119,16 @@ def test_failure_rows_retained_in_feasibility():
         assert is_row_feasible(row_bad) is False, f"Failed to reject bad {field}={bad_val}"
 
 
-def test_seed_aggregation_before_pair_contrast(p8_df):
-    """Verify that seeds are aggregated before computing event-level contrast."""
-    # Check H1 evaluation
-    h1 = evaluate_h1(p8_df)
-    # 3 pairs
-    assert len(h1["medium_primary"]["pair_effects"]) == 3
-    # Check that pair effects use seed-aggregated boundary (mean of seed boundaries)
-    triplet_1 = "TRIPLET_CONF_1_f5c700"
-    b_hw = compute_tested_feasible_boundary(
-        p8_df, triplet_1, "heatwave", "power_capped", "medium", "carbon_first", "static_unaware"
-    )
-    b_ctrl = compute_tested_feasible_boundary(
-        p8_df, triplet_1, "control", "power_capped", "medium", "carbon_first", "static_unaware"
-    )
-    # HW: seed 20261016=3.0, seed 20261017=2.0 -> mean = 2.5
-    # CTRL: seed 20261016=3.0, seed 20261017=3.0 -> mean = 3.0
-    assert b_hw == 2.5
-    assert b_ctrl == 3.0
-    assert b_hw - b_ctrl == -0.5
-    assert h1["medium_primary"]["pair_effects"][triplet_1] == -0.5
+def test_seed_aggregation_before_policy_contrasts(p8_df):
+    """Verify that seeds are aggregated before computing policy contrasts in p6_policy_pairwise_metrics."""
+    pairwise_df = compute_policy_pairwise_metrics(p8_df)
+    # Total seed-aggregated pairwise combinations = 540
+    assert len(pairwise_df) == 540
+    # Every row aggregates exactly 2 seeds
+    assert (pairwise_df["seed_count"] == 2).all()
+    assert "source_run_ids_a" in pairwise_df.columns
+    assert "source_run_ids_b" in pairwise_df.columns
+    assert "triplet_id" in pairwise_df.columns
 
 
 def test_h1_support_rule_and_outcome(p8_df):
@@ -154,25 +144,49 @@ def test_h1_support_rule_and_outcome(p8_df):
     assert med_res["classification"] == "SUPPORTED"
 
 
-def test_h2_recovery_classification(p8_df):
-    """Verify H2 evaluation correctly classifies recovery as NOT_SUPPORTED on tested boundary."""
+def test_h2_recovery_classification_and_prerequisites(p8_df):
+    """Verify H2 evaluation handles prerequisite static loss and reports exact recovery numbers."""
     h2 = evaluate_h2(p8_df)
     assert h2["classification"] == "NOT_SUPPORTED"
-    # Neither policy expands the tested boundary beyond static (recovery <= 0.0)
-    for pol in ["capacity_aware", "full_thermal_aware"]:
-        for t in ["TRIPLET_CONF_1_f5c700", "TRIPLET_CONF_2_2a6e22"]:
-            assert h2[pol][t]["boundary_recovery"] <= 0.0
-            assert h2[pol][t]["is_boundary_recovery"] is False
+
+    # CONF_3 has no prerequisite static loss -> NOT_APPLICABLE
+    assert h2["capacity_aware"]["TRIPLET_CONF_3_628624"]["status"] == "NOT_APPLICABLE_NO_PREREQUISITE_LOSS"
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_3_628624"]["status"] == "NOT_APPLICABLE_NO_PREREQUISITE_LOSS"
+
+    # CONF_1 and CONF_2 have prerequisite loss
+    assert h2["capacity_aware"]["TRIPLET_CONF_1_f5c700"]["boundary_recovery"] == 0.0
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["boundary_recovery"] == -0.5
+    assert h2["capacity_aware"]["TRIPLET_CONF_2_2a6e22"]["boundary_recovery"] == 0.0
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_2_2a6e22"]["boundary_recovery"] == 0.0
+
+    # Violation reduction
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_2_2a6e22"]["violation_hours_reduction"] == 0.5
+    assert h2["full_thermal_aware"]["TRIPLET_CONF_1_f5c700"]["violation_hours_reduction"] == 1.0
 
 
-def test_h3_benchmark_discriminability(p8_df):
-    """Verify H3 shows heatwave exposes differences that event-blind windows obscure."""
+def test_h3_event_level_independence_and_mixed_evidence(p8_df):
+    """Verify H3 evaluates 3 historical pairs independently and classifies PARTIALLY_SUPPORTED due to CONF-3 null."""
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
     h3 = evaluate_h3(pairwise_df)
-    assert h3["classification"] == "SUPPORTED"
-    assert h3["understatement_demonstrated"] is True
-    assert h3["context_summary"]["event_blind"]["nonzero_cost_diff_count"] == 0
-    assert h3["context_summary"]["heatwave"]["nonzero_cost_diff_count"] == 96
+
+    assert h3["classification"] == "PARTIALLY_SUPPORTED"
+    assert h3["discriminating_triplet_count"] == 2
+    assert h3["total_triplets"] == 3
+    assert h3["sign_consistency"] == "2/3 events discriminating"
+
+    # CONF_1 and CONF_2 discriminating
+    assert h3["event_results"]["TRIPLET_CONF_1_f5c700"]["is_heatwave_more_discriminating"] is True
+    assert h3["event_results"]["TRIPLET_CONF_2_2a6e22"]["is_heatwave_more_discriminating"] is True
+
+    # CONF_3 is null event (not discriminating)
+    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["is_heatwave_more_discriminating"] is False
+    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["heatwave_nonzero_cost_comparisons"] == 0
+    assert h3["event_results"]["TRIPLET_CONF_3_628624"]["blind_nonzero_cost_comparisons"] == 0
+
+    # Leave one out
+    assert "excl_628624" in h3["leave_one_pair_out"]
+    assert h3["leave_one_pair_out"]["excl_628624"] == "2/2 discriminating"
+    assert h3["leave_one_pair_out"]["excl_f5c700"] == "1/2 discriminating"
 
 
 def test_h4_not_estimable_without_controlled_forecast_mutation(p8_df):
@@ -183,21 +197,29 @@ def test_h4_not_estimable_without_controlled_forecast_mutation(p8_df):
     assert "controlled forecast-source intervention" in h4["missing_comparison"]
 
 
-def test_h5_heatguard_comparator_classification(p8_df):
-    """Verify H5 evaluates calibrated vs fixed margin and classifies NOT_SUPPORTED."""
+def test_h5_comparator_event_level_and_zero_margin_equivalence(p8_df):
+    """Verify H5 evaluates against both comparators per event and documents zero-margin equivalence."""
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
     h5 = evaluate_h5(p8_df, pairwise_df)
+
     assert h5["classification"] == "NOT_SUPPORTED"
-    assert h5["heatwave_violation_hours"]["heatguard_calibrated"] == 3
-    assert h5["heatwave_violation_hours"]["heatguard_fixed"] == 1
+    assert "full_thermal_aware verified equivalent to zero-margin HeatGuard" in h5["no_margin_comparator_equivalence"]
+    assert len(h5["event_comparisons"]) == 3
+
+    # In CONF_1: calibrated = 1.0h, fixed = 0.0h -> does not improve over fixed
+    assert h5["event_comparisons"]["TRIPLET_CONF_1_f5c700"]["improves_over_fixed_margin"] is False
+    # In CONF_2: calibrated = 0.5h, fixed = 0.5h -> ties fixed, does not improve
+    assert h5["event_comparisons"]["TRIPLET_CONF_2_2a6e22"]["improves_over_fixed_margin"] is False
+    # In CONF_3: calibrated = 0.0h, fixed = 0.0h -> ties fixed
+    assert h5["event_comparisons"]["TRIPLET_CONF_3_628624"]["improves_over_fixed_margin"] is False
 
 
-def test_equal_service_rejection_logic(p8_df):
-    """Verify equal-service enforcement correctly rejects unequal work and permits equal work."""
+def test_equal_service_rejection_after_aggregation(p8_df):
+    """Verify equal-service enforcement correctly rejects aggregated comparisons if any seed failed."""
     pairwise_df = compute_policy_pairwise_metrics(p8_df)
-    assert len(pairwise_df) == 1080
+    assert len(pairwise_df) == 540
 
-    # Rejected pairs should be exactly 10 (all involving oracle with 12 unfinished slots in control)
+    # Rejected pairs should be exactly 10 (all involving oracle in control where seed 20261016 had unfinished slots)
     rejected = pairwise_df[pairwise_df["equal_service_eligible"] == False]
     assert len(rejected) == 10
     for _, row in rejected.iterrows():
@@ -206,21 +228,16 @@ def test_equal_service_rejection_logic(p8_df):
         assert pd.isna(row["carbon_gap_kg"])
         assert row["cost_rank_order"] == "NULL_UNEQUAL_SERVICE"
 
-    # Eligible pairs
     eligible = pairwise_df[pairwise_df["equal_service_eligible"] == True]
-    assert len(eligible) == 1070
+    assert len(eligible) == 530
     assert eligible["cost_gap_usd"].notnull().all()
 
 
 def test_relative_gap_zero_and_near_zero_denominators():
     """Direct probe of zero and near-zero denominators in relative gap calculation."""
-    # Both zero -> 0.0
     assert compute_relative_gap(0.0, 0.0) == 0.0
     assert compute_relative_gap(1e-8, 1e-8) == 0.0
-
-    # Near-zero denominator with difference -> None / guarded
     assert compute_relative_gap(1e-5, 1e-8) is not None
-    # Regular values
     assert pytest.approx(compute_relative_gap(10.0, 5.0)) == 5.0 / 10.0
     assert pytest.approx(compute_relative_gap(5.0, 10.0)) == -5.0 / 10.0
 
@@ -236,7 +253,30 @@ def test_exact_ties_and_rankings():
         "seed": 20261016,
         "workload_trace_id": "trace_1",
         "objective": "carbon_first",
-        "run_id": "run_a",
+        "run_id": "run_a1",
+        "policy_id": "policy_a",
+        "deployable": True,
+        "status": "SUCCESS",
+        "scheduler_feasible": True,
+        "thermally_feasible": True,
+        "demanded_processing_slots": 100,
+        "completed_processing_slots": 100,
+        "unfinished_processing_slots": 0,
+        "unmet_deadlines_count": 0,
+        "facility_power_violation_hours": 0,
+        "total_facility_power_excess_kwh": 0,
+        "cooling_adjusted_cost_usd": 150.0,
+        "cooling_adjusted_carbon_kg": 200.0,
+    }, {
+        "triplet_id": "TRIPLET_CONF_1_f5c700",
+        "context": "heatwave",
+        "facility_model": "power_capped",
+        "thermal_curve": "medium",
+        "workload_multiplier": 1.0,
+        "seed": 20261017,
+        "workload_trace_id": "trace_1",
+        "objective": "carbon_first",
+        "run_id": "run_a2",
         "policy_id": "policy_a",
         "deployable": True,
         "status": "SUCCESS",
@@ -259,7 +299,30 @@ def test_exact_ties_and_rankings():
         "seed": 20261016,
         "workload_trace_id": "trace_1",
         "objective": "carbon_first",
-        "run_id": "run_b",
+        "run_id": "run_b1",
+        "policy_id": "policy_b",
+        "deployable": True,
+        "status": "SUCCESS",
+        "scheduler_feasible": True,
+        "thermally_feasible": True,
+        "demanded_processing_slots": 100,
+        "completed_processing_slots": 100,
+        "unfinished_processing_slots": 0,
+        "unmet_deadlines_count": 0,
+        "facility_power_violation_hours": 0,
+        "total_facility_power_excess_kwh": 0,
+        "cooling_adjusted_cost_usd": 150.0,
+        "cooling_adjusted_carbon_kg": 200.0,
+    }, {
+        "triplet_id": "TRIPLET_CONF_1_f5c700",
+        "context": "heatwave",
+        "facility_model": "power_capped",
+        "thermal_curve": "medium",
+        "workload_multiplier": 1.0,
+        "seed": 20261017,
+        "workload_trace_id": "trace_1",
+        "objective": "carbon_first",
+        "run_id": "run_b2",
         "policy_id": "policy_b",
         "deployable": True,
         "status": "SUCCESS",
@@ -284,47 +347,77 @@ def test_exact_ties_and_rankings():
 
 def test_allocation_distance_math():
     """Verify allocation distance formula ||x - y||_1 / max(||x||_1, ||y||_1, eps)."""
-    # Identical vectors yield zero
     v1 = [1.0, 2.0, 3.0]
     assert compute_allocation_distance(v1, v1) == 0.0
 
-    # Orthogonal vectors with equal norm
     va = [1.0, 0.0]
     vb = [0.0, 1.0]
     assert pytest.approx(compute_allocation_distance(va, vb)) == 2.0 / 1.0
 
-    # Differing lengths raise
     with pytest.raises(ValueError):
         compute_allocation_distance([1.0], [1.0, 2.0])
 
 
-def test_deterministic_full_generation(tmp_path):
-    """Verify full end-to-end analysis runs deterministically and produces expected artifacts."""
-    res_dir = tmp_path / "results"
-    fig_dir = tmp_path / "figures"
-    doc_dir = tmp_path / "docs"
+def test_synthetic_mutation_changes_evaluator_classification(p8_df):
+    """Regression test proving classification changes dynamically when synthetic data changes."""
+    # Mutate p8_df to make H3 fully supported (make CONF_3 also discriminating)
+    mutated_df = p8_df.copy()
+    mask = (
+        (mutated_df["triplet_id"] == "TRIPLET_CONF_3_628624")
+        & (mutated_df["context"] == "heatwave")
+        & (mutated_df["policy_id"] == "full_thermal_aware")
+    )
+    mutated_df.loc[mask, "cooling_adjusted_cost_usd"] += 50.0
 
-    out = run_phase_9_analysis(
-        results_dir=res_dir,
-        figures_dir=fig_dir,
-        docs_dir=doc_dir,
+    pw_mut = compute_policy_pairwise_metrics(mutated_df)
+    h3_mut = evaluate_h3(pw_mut)
+    assert h3_mut["classification"] == "SUPPORTED"
+    assert h3_mut["discriminating_triplet_count"] == 3
+
+    # Generate assessment table on mutated data and verify text changed
+    t_mut = generate_h1_h5_assessment_table(mutated_df, pw_mut)
+    h3_row = t_mut[t_mut["hypothesis"].str.startswith("H3")].iloc[0]
+    assert h3_row["classification"] == "SUPPORTED"
+    assert "3/3 events discriminating" in h3_row["sign_consistency"]
+
+
+def test_deterministic_full_generation(tmp_path):
+    """Verify full end-to-end analysis runs deterministically and produces identical hashes across clean dirs."""
+    dir1 = tmp_path / "run1"
+    dir2 = tmp_path / "run2"
+
+    out1 = run_phase_9_analysis(
+        results_dir=dir1 / "results",
+        figures_dir=dir1 / "figures",
+        docs_dir=dir1 / "docs",
+    )
+    out2 = run_phase_9_analysis(
+        results_dir=dir2 / "results",
+        figures_dir=dir2 / "figures",
+        docs_dir=dir2 / "docs",
     )
 
-    # Check files exist
-    assert (res_dir / "p6_event_level_metrics.csv").exists()
-    assert (res_dir / "p6_policy_pairwise_metrics.csv").exists()
-    assert (res_dir / "p6_analysis_manifest.json").exists()
-    assert (res_dir / "p6_t1_cohort_provenance.csv").exists()
-    assert (res_dir / "p6_t2_event_feasibility.csv").exists()
-    assert (res_dir / "p6_t3_equal_service_gaps.csv").exists()
-    assert (res_dir / "p6_t4_forecast_evidence.csv").exists()
-    assert (res_dir / "p6_h1_h5_assessment.csv").exists()
-    assert (fig_dir / "p6_f1_event_policy_contrasts.png").exists()
-    assert (fig_dir / "p6_f4_h1_sensitivity.png").exists()
-    assert (fig_dir / "p6_f2_allocation_distance_status.md").exists()
-    assert (fig_dir / "p6_f3_forecast_regret_status.md").exists()
-    assert (doc_dir / "p6_phase9_analysis_report.md").exists()
+    # Check row counts
+    assert len(out1["event_metrics_df"]) == 378
+    assert len(out1["pairwise_df"]) == 540
+    assert len(out1["tables"]["T3"]) == 27  # 3 triplets * 3 policy pairs * 3 workloads
 
-    # Verify primary output row counts
-    assert len(out["event_metrics_df"]) == 378
-    assert len(out["pairwise_df"]) == 1080
+    # Check identical CSV outputs
+    for filename in [
+        "p6_event_level_metrics.csv",
+        "p6_policy_pairwise_metrics.csv",
+        "p6_t1_cohort_provenance.csv",
+        "p6_t2_event_feasibility.csv",
+        "p6_t3_equal_service_gaps.csv",
+        "p6_t4_forecast_evidence.csv",
+        "p6_h1_h5_assessment.csv",
+    ]:
+        h1 = sha256_file(dir1 / "results" / filename)
+        h2 = sha256_file(dir2 / "results" / filename)
+        assert h1 == h2, f"Nondeterministic CSV output for {filename}"
+
+    # Check markdown status artifacts
+    for filename in ["p6_f2_allocation_distance_status.md", "p6_f3_forecast_regret_status.md"]:
+        h1 = sha256_file(dir1 / "figures" / filename)
+        h2 = sha256_file(dir2 / "figures" / filename)
+        assert h1 == h2, f"Nondeterministic status artifact for {filename}"
