@@ -6,7 +6,9 @@
 **Confirmation Sealing Status:** **SEALED — NOT EXECUTED** (Zero confirmatory outcome rows loaded or executed)
 **Implementation Commit:** `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`
 **First Repair Commit:** `af3443bcc8f33c3812b6832e8b6efedd68f0449c`
-**Final Repair Commit:** `62ddab36d1c4aa9cba248c82305ca7b370609b55`
+
+> [!NOTE]
+> The repository tip containing the final documentation correction is intentionally reported externally rather than embedded here, avoiding a self-referential commit-hash cycle.
 
 ---
 
