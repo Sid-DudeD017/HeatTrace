@@ -765,7 +765,7 @@ def test_p7_confirmatory_matrix_rejects_fake_identities(tmp_path):
 
 
 def test_p7_authoritative_loader_triplet_isolation_and_provenance(tmp_path):
-    """Verify authoritative loader reads only requested triplet and enforces overlay hash."""
+    """Verify authoritative loader reads only requested triplet and enforces benchmark & overlay hashes."""
     from heattrace.experiments.p6_validity_runner import load_p7_triplet_benchmark_with_overlay
 
     pairs_path = REPO_ROOT / "data/benchmarks/p6_event_control_pairs.parquet"
@@ -792,19 +792,64 @@ def test_p7_authoritative_loader_triplet_isolation_and_provenance(tmp_path):
             expected_overlay_sha256="0" * 64,
         )
 
+    # Rejection of mutated benchmark parquet copy (price value changed)
+    dev_pairs = pd.read_parquet(pairs_path)
+    mutated_pairs = dev_pairs.copy()
+    mutated_pairs.loc[0, "price_da_per_mwh"] = 999.99
+    mutated_pairs_path = tmp_path / "mutated_pairs.parquet"
+    mutated_pairs.to_parquet(mutated_pairs_path, index=False)
+
+    with pytest.raises(ValueError, match="Benchmark pairs hash mismatch"):
+        load_p7_triplet_benchmark_with_overlay(
+            mutated_pairs_path,
+            overlay_path,
+            "TRIPLET_DEV_ae821c",
+        )
+
 
 def test_p7_confirmatory_dry_run_rejects_pending_or_invalid_commit():
-    """Verify dry-run rejects PENDING_COMMIT or malformed commit hashes."""
+    """Verify dry-run rejects PENDING_COMMIT, arbitrary 40-char hashes, and non-implementation commits."""
     from heattrace.experiments.p6_validity_runner import run_p7_confirmatory_dry_run
 
+    # PENDING_COMMIT
     with pytest.raises(ValueError, match="Invalid implementation git_commit"):
         run_p7_confirmatory_dry_run(
             repo_root=REPO_ROOT,
             git_commit="PENDING_COMMIT",
         )
 
+    # Arbitrary non-hex string
     with pytest.raises(ValueError, match="Invalid implementation git_commit"):
         run_p7_confirmatory_dry_run(
             repo_root=REPO_ROOT,
             git_commit="not_a_valid_commit",
         )
+
+    # 40-char non-hex strings like "z" * 40
+    with pytest.raises(ValueError, match="Invalid implementation git_commit"):
+        run_p7_confirmatory_dry_run(
+            repo_root=REPO_ROOT,
+            git_commit="z" * 40,
+        )
+
+    # 40-char hex string that is not the implementation commit, e.g. "0" * 40
+    with pytest.raises(ValueError, match="Commit mismatch"):
+        run_p7_confirmatory_dry_run(
+            repo_root=REPO_ROOT,
+            git_commit="0" * 40,
+        )
+
+    # Valid git commit in history that is not the implementation commit (e.g. 563f6ac...)
+    with pytest.raises(ValueError, match="Commit mismatch"):
+        run_p7_confirmatory_dry_run(
+            repo_root=REPO_ROOT,
+            git_commit="563f6ac0b0de33b379d628ef9717214f18665416",
+        )
+
+    # Expected implementation commit succeeds
+    res = run_p7_confirmatory_dry_run(
+        repo_root=REPO_ROOT,
+        git_commit="92f4b5739acf96ad837e54b9631f6ac974a1c7e6",
+    )
+    assert res["total_confirmatory_cells"] == 756
+    assert res["git_commit"] == "92f4b5739acf96ad837e54b9631f6ac974a1c7e6"

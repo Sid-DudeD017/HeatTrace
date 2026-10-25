@@ -912,7 +912,7 @@ def test_p7_phase_label_overlay_missing_row_fails_loudly():
     # Drop one row from overlay
     incomplete_overlay = overlay.iloc[:-1].copy()
 
-    with pytest.raises(ValueError, match="full coverage"):
+    with pytest.raises(ValueError, match="(full coverage|Relational row count mismatch|missing required keys)"):
         apply_p6_phase_label_overlay(pairs, incomplete_overlay)
 
 
@@ -931,7 +931,7 @@ def test_p7_phase_overlay_join_rejects_window_type_tampering():
     hw_idx = tampered_pairs[tampered_pairs["window_type"] == "heatwave"].index[0]
     tampered_pairs.loc[hw_idx, "window_type"] = "control"
 
-    with pytest.raises(ValueError, match="(full coverage|invalid phase label)"):
+    with pytest.raises(ValueError, match="(full coverage|invalid phase label|Relational key mismatch)"):
         apply_p6_phase_label_overlay(tampered_pairs, overlay)
 
     # Attack 2: Mutate control row to heatwave in pairs
@@ -939,14 +939,31 @@ def test_p7_phase_overlay_join_rejects_window_type_tampering():
     ctrl_idx = tampered_pairs2[tampered_pairs2["window_type"] == "control"].index[0]
     tampered_pairs2.loc[ctrl_idx, "window_type"] = "heatwave"
 
-    with pytest.raises(ValueError, match="(full coverage|invalid phase label)"):
+    with pytest.raises(ValueError, match="(full coverage|invalid phase label|Relational key mismatch)"):
         apply_p6_phase_label_overlay(tampered_pairs2, overlay)
 
-    # Attack 3: Overlay with extra row
-    extra_overlay = pd.concat([overlay, overlay.iloc[[0]].assign(timestamp_utc=pd.Timestamp("2099-01-01 00:00:00+00:00"))], ignore_index=True)
-    # Joining with original pairs must still strictly match and check
+    # Attack 3: Overlay with extra unique row
+    extra_row = overlay.iloc[[0]].copy()
+    extra_row["timestamp_utc"] = pd.Timestamp("2099-01-01 00:00:00+00:00")
+    extra_overlay = pd.concat([overlay, extra_row], ignore_index=True)
+    with pytest.raises(ValueError, match="(Relational row count mismatch|extra unexpected keys)"):
+        apply_p6_phase_label_overlay(pairs, extra_overlay)
+
+    # Attack 4: Overlay with missing row
+    missing_overlay = overlay.iloc[1:].copy()
+    with pytest.raises(ValueError, match="(Relational row count mismatch|missing required keys)"):
+        apply_p6_phase_label_overlay(pairs, missing_overlay)
+
+    # Attack 5: Overlay with replaced key (same count, different keys)
+    replaced_overlay = overlay.copy()
+    replaced_overlay.iloc[0, replaced_overlay.columns.get_loc("timestamp_utc")] = pd.Timestamp("2099-01-01 00:00:00+00:00")
+    with pytest.raises(ValueError, match="Relational key mismatch"):
+        apply_p6_phase_label_overlay(pairs, replaced_overlay)
+
+    # Attack 6: Overlay with duplicate key
+    dup_overlay = pd.concat([overlay, overlay.iloc[[0]]], ignore_index=True)
     with pytest.raises(ValueError, match="duplicate join keys"):
-        apply_p6_phase_label_overlay(pairs, pd.concat([overlay, overlay.iloc[[0]]], ignore_index=True))
+        apply_p6_phase_label_overlay(pairs, dup_overlay)
 
 
 def test_p7_phase_label_overlay_schema_exactness(tmp_path):

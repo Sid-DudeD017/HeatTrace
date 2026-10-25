@@ -21,6 +21,8 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
+import subprocess
 import time
 from typing import Any, Callable
 
@@ -74,6 +76,7 @@ FROZEN_P6_PROTOCOL_HASH = "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215
 FROZEN_BENCHMARK_PARQUET_HASH = "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109"
 FROZEN_INDEX_CSV_HASH = "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72"
 FROZEN_PHASE_OVERLAY_HASH = "7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23"
+IMPLEMENTATION_COMMIT = "92f4b5739acf96ad837e54b9631f6ac974a1c7e6"
 
 FROZEN_CONFIRMATORY_TRIPLETS: dict[str, dict[str, str]] = {
     "TRIPLET_CONF_1_f5c700": {
@@ -775,9 +778,23 @@ def run_p7_confirmatory_dry_run(
     phase_overlay_path = root / "data" / "benchmarks" / "p7_phase_label_overlay.parquet"
 
     # Validate implementation commit identity
-    if not git_commit or git_commit == "PENDING_COMMIT" or not _is_valid_sha256(git_commit) and len(git_commit) != 40:
+    if not git_commit or not re.fullmatch(r"[0-9a-f]{40}", str(git_commit)):
         raise ValueError(
-            f"Invalid implementation git_commit: '{git_commit}'. Must be a valid 40-character commit hash."
+            f"Invalid implementation git_commit: '{git_commit}'. Must be a 40-character lowercase hexadecimal hash."
+        )
+    if git_commit != IMPLEMENTATION_COMMIT:
+        raise ValueError(
+            f"Commit mismatch: git_commit '{git_commit}' != expected implementation commit '{IMPLEMENTATION_COMMIT}'"
+        )
+    commit_res = subprocess.run(
+        ["git", "cat-file", "-e", f"{git_commit}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    if commit_res.returncode != 0:
+        raise ValueError(
+            f"Commit '{git_commit}' does not resolve locally in the repository: {commit_res.stderr.strip()}"
         )
 
     # 1. Verify frozen artifact hashes
@@ -884,14 +901,16 @@ def load_p7_triplet_benchmark_with_overlay(
     pairs_path: Path | str,
     overlay_path: Path | str,
     target_triplet_id: str,
+    expected_pairs_sha256: str = FROZEN_BENCHMARK_PARQUET_HASH,
     expected_overlay_sha256: str = FROZEN_PHASE_OVERLAY_HASH,
 ) -> pd.DataFrame:
     """Authoritative fail-closed benchmark loader with read-time triplet filtering and phase overlay.
 
     Enforces:
+    - Benchmark parquet SHA-256 hash verification against expected frozen benchmark hash before reading.
+    - Phase overlay SHA-256 hash verification against expected frozen overlay hash before reading.
     - Read-time pushdown filtering: only the requested authorized triplet is read into memory.
     - Zero loading of non-target triplets.
-    - Verification of phase overlay on-disk SHA-256 provenance against expected hash.
     - Read-time pushdown filtering of overlay to the same requested triplet.
     - Strict relational join binding (triplet_id, window_type, window_id, timestamp_utc).
     - Fails closed on missing, extra, mismatched, or non-covering rows.
@@ -904,7 +923,14 @@ def load_p7_triplet_benchmark_with_overlay(
     if not overlay_p.exists():
         raise FileNotFoundError(f"Phase overlay file missing: {overlay_p}")
 
-    # Validate overlay provenance hash
+    # Validate benchmark parquet provenance hash before reading
+    actual_pairs_hash = sha256_file(pairs_p)
+    if expected_pairs_sha256 and actual_pairs_hash != expected_pairs_sha256:
+        raise ValueError(
+            f"Benchmark pairs hash mismatch: got {actual_pairs_hash}, expected {expected_pairs_sha256}"
+        )
+
+    # Validate overlay provenance hash before reading
     actual_overlay_hash = sha256_file(overlay_p)
     if expected_overlay_sha256 and actual_overlay_hash != expected_overlay_sha256:
         raise ValueError(

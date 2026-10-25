@@ -1792,6 +1792,24 @@ def apply_p6_phase_label_overlay(
     if o_df.duplicated(subset=join_keys).any():
         raise ValueError("overlay_df contains duplicate join keys for phase overlay")
 
+    # Enforce exact row count equality and exact key set equality
+    if len(p_df) != len(o_df):
+        raise ValueError(
+            f"Relational row count mismatch: pairs count {len(p_df)} != overlay count {len(o_df)}"
+        )
+
+    p_keys = set(p_df[join_keys].itertuples(index=False, name=None))
+    o_keys = set(o_df[join_keys].itertuples(index=False, name=None))
+    if p_keys != o_keys:
+        extra_overlay = o_keys - p_keys
+        missing_overlay = p_keys - o_keys
+        err_msg = []
+        if extra_overlay:
+            err_msg.append(f"Overlay contains {len(extra_overlay)} extra unexpected keys")
+        if missing_overlay:
+            err_msg.append(f"Overlay is missing {len(missing_overlay)} required keys")
+        raise ValueError(f"Relational key mismatch between pairs and overlay: {'; '.join(err_msg)}")
+
     merged = pd.merge(
         p_df.drop(columns=["phase_label"], errors="ignore"),
         o_df[join_keys + ["phase_label"]],

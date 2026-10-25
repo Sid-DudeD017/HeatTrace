@@ -2,9 +2,11 @@
 
 **Milestone:** Phase 7 (Day 9 Provenance Repair & Confirmatory Freeze)  
 **Date:** October 2026  
-**Gate 4 Recommendation:** **PASS**  
-**Confirmation Sealing Status:** **SEALED — NOT EXECUTED** (Zero confirmatory outcome rows loaded or executed)  
+**Gate 4 Recommendation:** **PASS**
+**Confirmation Sealing Status:** **SEALED — NOT EXECUTED** (Zero confirmatory outcome rows loaded or executed)
 **Implementation Commit:** `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`
+**First Repair Commit:** `af3443bcc8f33c3812b6832e8b6efedd68f0449c`
+**Final Repair Commit:** `62ddab36d1c4aa9cba248c82305ca7b370609b55`
 
 ---
 
@@ -14,8 +16,8 @@ In accordance with Phase 7 requirements of the HeatTrace 14-day plan, this revie
 1. **Provenance & Documentation Repairs:** Stale documentation identities and hashes in `docs/p6_gate1_review.md` and `docs/p6_pilot_review.md` were corrected against authoritative on-disk artifacts and validated execution contracts.
 2. **Phase-Label Propagation Repair & Authoritative Loader:** The P6 phase-label builder defect (which collapsed all heatwave hours to `heatwave`) has been repaired via a versioned, deterministic phase-label sidecar overlay (`data/benchmarks/p7_phase_label_overlay.parquet`). The frozen benchmark parquet (`data/benchmarks/p6_event_control_pairs.parquet`) remains untouched and byte-identical. Canonical phases are supplied through the versioned sidecar and the authoritative fail-closed loading interface `load_p7_triplet_benchmark_with_overlay`. Phase-aware claims remain prohibited unless downstream execution/evaluation uses this loader successfully.
 3. **Sealed 756-ID Confirmatory Dry Run:** A dedicated confirmatory dry-run matrix enumerator (`enumerate_p7_confirmatory_matrix` and `run_p7_confirmatory_dry_run`) was implemented in `src/heattrace/experiments/p6_validity_runner.py`. It derives exclusively from validated frozen configuration, enforcing exact approved confirmatory triplet and window identities (failing closed on fake IDs), producing exactly 756 unique, stable cell IDs across the preregistered cohorts with zero development contamination and zero confirmatory outcome data loaded.
-4. **Adversarial Sealing & Integrity Probes:** Direct monkeypatch probes confirmed that parquet reading and scheduler execution are strictly absent from the dry run. Direct relational regression tests verified that window_type tampering, schema alterations, or hash mismatches fail closed immediately.
-5. **Two-Commit Provenance Pattern:** The confirmatory dry-run manifest `data/manifests/p7_confirmatory_dry_run_manifest.json` is explicitly bound to the implementation commit `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`. The follow-up provenance-repair commit captures this binding without self-referential git hash mutation.
+4. **Adversarial Sealing & Integrity Probes:** Direct monkeypatch probes confirmed that parquet reading and scheduler execution are strictly absent from the dry run. Direct relational regression tests verified that window_type tampering, extra/missing overlay rows, key set mismatches, schema alterations, or hash mismatches fail closed immediately.
+5. **Fail-Closed Provenance Architecture:** The confirmatory dry-run manifest `data/manifests/p7_confirmatory_dry_run_manifest.json` is explicitly bound to the implementation commit `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`. Commit validation strictly requires 40 lowercase hex characters, exact match with `92f4b5739acf96ad837e54b9631f6ac974a1c7e6`, and verified local git resolution via `git cat-file -e <sha>^{commit}`. Both benchmark parquet and phase overlay hashes are strictly verified prior to reading data. Overlay joining enforces bidirectional relational key-set equality `p_keys == o_keys`, rejecting any extra, missing, duplicate, or replaced keys.
 
 Because all Phase 7 definition-of-done criteria are conclusively met with direct evidence, the **Gate 4 recommendation is PASS**.
 
@@ -84,10 +86,11 @@ To maintain complete cryptographic continuity of frozen benchmark files, a deter
 
 ### 4.3 Authoritative Production Loader
 The function `load_p7_triplet_benchmark_with_overlay` in `src/heattrace/experiments/p6_validity_runner.py` establishes the mandatory benchmark-loading interface:
+- Verifies on-disk SHA-256 hash of `pairs_path` against `FROZEN_BENCHMARK_PARQUET_HASH` before reading any rows, rejecting tampered benchmark parquets.
+- Verifies on-disk SHA-256 hash of `overlay_path` against `FROZEN_PHASE_OVERLAY_HASH` before reading.
 - Uses pyarrow read-time pushdown filtering (`filters=[("triplet_id", "=", target_triplet_id)]`) on both the benchmark pairs parquet and the overlay parquet.
-- Verifies overlay on-disk SHA-256 hash against `FROZEN_PHASE_OVERLAY_HASH`.
 - Ensures zero rows from non-target triplets enter pandas memory.
-- Applies the fail-closed `apply_p6_phase_label_overlay` join.
+- Applies the fail-closed `apply_p6_phase_label_overlay` join, enforcing bidirectional key-set equality and rejecting extra, missing, duplicate, or replaced keys.
 - Delivers complete rows with canonical phase labels.
 
 ---
