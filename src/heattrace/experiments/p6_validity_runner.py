@@ -2330,6 +2330,9 @@ def execute_frozen_confirmation(
             "primary_confirmatory_objective",
             "execution_commit",
             "p7_implementation_commit",
+            "execution_resumed_from_checkpoint",
+            "cells_executed_in_this_session",
+            "total_wall_clock_seconds",
             "frozen_hashes",
             "output_artifacts",
         ]
@@ -2346,10 +2349,34 @@ def execute_frozen_confirmation(
                 raise ValueError(f"Manifest scalar field '{fld_name}' must be non-negative, got {int_val}")
             return int_val
 
+        # Strict finite non-negative float/int check (reject bools, strings, NaN, inf, negative)
+        def _check_strict_finite_nonneg_float(fld_name: str, val: Any) -> float:
+            if isinstance(val, bool) or not isinstance(val, (int, float, np.integer, np.floating)):
+                raise ValueError(f"Manifest scalar field '{fld_name}' must be numeric, got {type(val).__name__} ({val!r})")
+            f_val = float(val)
+            if math.isnan(f_val) or math.isinf(f_val) or f_val < 0.0:
+                raise ValueError(f"Manifest scalar field '{fld_name}' must be finite and non-negative, got {val!r}")
+            return f_val
+
         m_total = _check_strict_int("total_confirmatory_cells", manifest_meta["total_confirmatory_cells"])
         m_unique = _check_strict_int("unique_run_ids", manifest_meta["unique_run_ids"])
         m_success = _check_strict_int("successful_runs", manifest_meta["successful_runs"])
         m_failed = _check_strict_int("failed_runs", manifest_meta["failed_runs"])
+
+        # Strict boolean check for execution_resumed_from_checkpoint
+        m_resumed = manifest_meta["execution_resumed_from_checkpoint"]
+        if not isinstance(m_resumed, (bool, np.bool_)):
+            raise ValueError(f"Manifest field 'execution_resumed_from_checkpoint' must be boolean, got {type(m_resumed).__name__} ({m_resumed!r})")
+        if bool(m_resumed) is not False:
+            raise ValueError(f"Manifest 'execution_resumed_from_checkpoint' must be false for finalized fresh execution, got {m_resumed!r}")
+
+        # Strict int check for cells_executed_in_this_session
+        m_cells_session = _check_strict_int("cells_executed_in_this_session", manifest_meta["cells_executed_in_this_session"])
+        if m_cells_session != 756:
+            raise ValueError(f"Manifest 'cells_executed_in_this_session' mismatch: got {m_cells_session}, expected 756")
+
+        # Strict finite float check for total_wall_clock_seconds
+        m_wall_clock = _check_strict_finite_nonneg_float("total_wall_clock_seconds", manifest_meta["total_wall_clock_seconds"])
 
         if manifest_meta.get("manifest_version") != "1.0":
             raise ValueError(f"Manifest version mismatch: got '{manifest_meta.get('manifest_version')}', expected '1.0'")
@@ -2560,6 +2587,55 @@ def execute_frozen_confirmation(
             raise ValueError(f"Manifest failed count ({m_failed}) does not match recomputed ({failed_count})")
         if manifest_meta.get("run_id_digest") != actual_run_id_digest:
             raise ValueError(f"Manifest run_id_digest ({manifest_meta.get('run_id_digest')}) does not match recomputed ({actual_run_id_digest})")
+
+        # 9. Verify sealed execution log contents and consistency with manifest
+        cell_completed_ids = []
+        final_log_event = None
+
+        with execution_log_path.open("r", encoding="utf-8") as lf:
+            for line_no, line in enumerate(lf, start=1):
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                try:
+                    entry = json.loads(line_str)
+                except Exception as log_err:
+                    raise ValueError(f"Execution log contains invalid JSON at line {line_no}: {log_err}")
+
+                ev_type = entry.get("event_type")
+                if ev_type == "CELL_COMPLETED":
+                    rid = entry.get("run_id")
+                    if not isinstance(rid, str) or not rid:
+                        raise ValueError(f"Execution log CELL_COMPLETED event at line {line_no} missing run_id")
+                    if rid not in expected_specs:
+                        raise ValueError(f"Execution log contains unknown run_id at line {line_no}: '{rid}'")
+                    cell_completed_ids.append(rid)
+                elif ev_type == "CONFIRMATION_EXECUTION_FINISHED":
+                    final_log_event = entry
+
+        if len(cell_completed_ids) != 756:
+            raise ValueError(f"Execution log contains {len(cell_completed_ids)} CELL_COMPLETED events, expected 756")
+        if len(set(cell_completed_ids)) != 756:
+            raise ValueError(f"Execution log contains duplicate CELL_COMPLETED run IDs: {len(set(cell_completed_ids))} unique")
+
+        if final_log_event is None:
+            raise ValueError("Execution log is missing final CONFIRMATION_EXECUTION_FINISHED event")
+
+        log_commit = final_log_event.get("execution_commit")
+        if log_commit != execution_commit:
+            raise ValueError(f"Final log event execution_commit mismatch: got '{log_commit}', expected '{execution_commit}'")
+
+        log_total = _check_strict_int("final_log_event.total_cells", final_log_event.get("total_cells"))
+        if log_total != 756:
+            raise ValueError(f"Final log event total_cells mismatch: got {log_total}, expected 756")
+
+        log_parquet_sha256 = final_log_event.get("final_parquet_sha256")
+        if log_parquet_sha256 != act_runs_sha256:
+            raise ValueError(f"Final log event parquet sha256 mismatch: got '{log_parquet_sha256}', expected '{act_runs_sha256}'")
+
+        log_runtime = _check_strict_finite_nonneg_float("final_log_event.wall_clock_seconds", final_log_event.get("wall_clock_seconds"))
+        if log_runtime != m_wall_clock:
+            raise ValueError(f"Final log event wall_clock_seconds ({log_runtime}) does not equal manifest ({m_wall_clock})")
 
         return final_df, {
             "status": "ALREADY_COMPLETED",

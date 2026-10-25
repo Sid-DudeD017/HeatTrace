@@ -1085,6 +1085,138 @@ def test_p8_contradictory_manifest_metadata_rejected(tmp_path):
         "(confirmation_status mismatch|total_confirmatory_cells mismatch)",
     )
 
+    # 14. Missing execution_resumed_from_checkpoint
+    assert_mutation_fails(lambda m: m.pop("execution_resumed_from_checkpoint"), "missing required field: 'execution_resumed_from_checkpoint'")
+
+    # 15. Invalid execution_resumed_from_checkpoint types / values
+    assert_mutation_fails(lambda m: m.update({"execution_resumed_from_checkpoint": "false"}), "must be boolean")
+    assert_mutation_fails(lambda m: m.update({"execution_resumed_from_checkpoint": 0}), "must be boolean")
+    assert_mutation_fails(lambda m: m.update({"execution_resumed_from_checkpoint": 1}), "must be boolean")
+    assert_mutation_fails(lambda m: m.update({"execution_resumed_from_checkpoint": None}), "must be boolean")
+    assert_mutation_fails(lambda m: m.update({"execution_resumed_from_checkpoint": True}), "must be false for finalized fresh execution")
+
+    # 16. Missing cells_executed_in_this_session
+    assert_mutation_fails(lambda m: m.pop("cells_executed_in_this_session"), "missing required field: 'cells_executed_in_this_session'")
+
+    # 17. Invalid cells_executed_in_this_session types / values
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": "756"}), "must be an integer")
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": True}), "must be an integer")
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": 756.0}), "must be an integer")
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": None}), "must be an integer")
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": -1}), "must be non-negative")
+    assert_mutation_fails(lambda m: m.update({"cells_executed_in_this_session": 755}), "cells_executed_in_this_session' mismatch")
+
+    # 18. Missing total_wall_clock_seconds
+    assert_mutation_fails(lambda m: m.pop("total_wall_clock_seconds"), "missing required field: 'total_wall_clock_seconds'")
+
+    # 19. Invalid total_wall_clock_seconds types / values
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": "268.32"}), "must be numeric")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": True}), "must be numeric")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": None}), "must be numeric")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": float("nan")}), "must be finite and non-negative")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": float("inf")}), "must be finite and non-negative")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": float("-inf")}), "must be finite and non-negative")
+    assert_mutation_fails(lambda m: m.update({"total_wall_clock_seconds": -99.0}), "must be finite and non-negative")
+
+
+def test_p8_execution_log_tampering_rejected(tmp_path):
+    """Verify that execution log tampering (missing events, commit mismatch, hash mismatch, duplicate IDs) fails closed."""
+    import json
+    import shutil
+    from heattrace.experiments.p6_validity_runner import execute_frozen_confirmation
+
+    out_dir = tmp_path / "results"
+    out_dir.mkdir(parents=True)
+
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_runs.parquet", out_dir / "p6_validity_runs.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_checkpoint.parquet", out_dir / "p6_validity_checkpoint.parquet")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_manifest.json", out_dir / "p6_validity_manifest.json")
+    shutil.copy(REPO_ROOT / "data/results/p6_validity_execution.jsonl", out_dir / "p6_validity_execution.jsonl")
+
+    test_commit = "1ec25f707c2a5922c80ec4bc9f3045ebaa28a6c5"
+
+    with open(REPO_ROOT / "data/results/p6_validity_execution.jsonl", "r", encoding="utf-8") as f:
+        log_lines = [json.loads(l) for l in f if l.strip()]
+
+    def write_log_and_update_manifest(lines):
+        with open(out_dir / "p6_validity_execution.jsonl", "w", encoding="utf-8") as f:
+            for item in lines:
+                f.write(json.dumps(item) + "\n")
+        # Update manifest hash to match new log so we reach internal log semantic validation
+        from heattrace.ingest.provenance import sha256_file
+        new_log_hash = sha256_file(out_dir / "p6_validity_execution.jsonl")
+        with open(out_dir / "p6_validity_manifest.json", "r") as mf:
+            m = json.load(mf)
+        m["output_artifacts"]["execution_log"]["sha256"] = new_log_hash
+        with open(out_dir / "p6_validity_manifest.json", "w") as mf:
+            json.dump(m, mf)
+
+    # 1. Missing final event
+    no_final_lines = [l for l in log_lines if l.get("event_type") != "CONFIRMATION_EXECUTION_FINISHED"]
+    write_log_and_update_manifest(no_final_lines)
+    with pytest.raises(ValueError, match="missing final CONFIRMATION_EXECUTION_FINISHED event"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 2. Final event commit mismatch
+    bad_commit_lines = copy.deepcopy(log_lines)
+    for l in bad_commit_lines:
+        if l.get("event_type") == "CONFIRMATION_EXECUTION_FINISHED":
+            l["execution_commit"] = "0" * 40
+    write_log_and_update_manifest(bad_commit_lines)
+    with pytest.raises(ValueError, match="Final log event execution_commit mismatch"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 3. Final event total_cells mismatch
+    bad_total_lines = copy.deepcopy(log_lines)
+    for l in bad_total_lines:
+        if l.get("event_type") == "CONFIRMATION_EXECUTION_FINISHED":
+            l["total_cells"] = 755
+    write_log_and_update_manifest(bad_total_lines)
+    with pytest.raises(ValueError, match="Final log event total_cells mismatch"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 4. Final event parquet hash mismatch
+    bad_hash_lines = copy.deepcopy(log_lines)
+    for l in bad_hash_lines:
+        if l.get("event_type") == "CONFIRMATION_EXECUTION_FINISHED":
+            l["final_parquet_sha256"] = "0" * 64
+    write_log_and_update_manifest(bad_hash_lines)
+    with pytest.raises(ValueError, match="Final log event parquet sha256 mismatch"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 5. Final event wall_clock_seconds mismatch with manifest
+    bad_runtime_lines = copy.deepcopy(log_lines)
+    for l in bad_runtime_lines:
+        if l.get("event_type") == "CONFIRMATION_EXECUTION_FINISHED":
+            l["wall_clock_seconds"] = 9999.0
+    write_log_and_update_manifest(bad_runtime_lines)
+    with pytest.raises(ValueError, match="does not equal manifest"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 6. Duplicate CELL_COMPLETED run_id
+    dup_lines = copy.deepcopy(log_lines)
+    first_cell = next(l for l in dup_lines if l.get("event_type") == "CELL_COMPLETED")
+    dup_lines.insert(0, copy.deepcopy(first_cell))
+    write_log_and_update_manifest(dup_lines)
+    with pytest.raises(ValueError, match="(CELL_COMPLETED events, expected 756|duplicate CELL_COMPLETED run IDs)"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 7. Missing CELL_COMPLETED events
+    missing_cell_lines = [l for l in log_lines if l.get("run_id") != first_cell.get("run_id")]
+    write_log_and_update_manifest(missing_cell_lines)
+    with pytest.raises(ValueError, match="CELL_COMPLETED events, expected 756"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
+    # 8. Unknown CELL_COMPLETED run_id
+    unknown_cell_lines = copy.deepcopy(log_lines)
+    for l in unknown_cell_lines:
+        if l.get("event_type") == "CELL_COMPLETED":
+            l["run_id"] = "unknown_run_id_9999"
+            break
+    write_log_and_update_manifest(unknown_cell_lines)
+    with pytest.raises(ValueError, match="unknown run_id"):
+        execute_frozen_confirmation(repo_root=REPO_ROOT, execution_commit=test_commit, output_dir=out_dir, require_clean_git=False)
+
 
 def test_p8_checkpoint_resume_and_skip(tmp_path):
     """Verify completed checkpoint IDs are skipped and missing IDs execute exactly once."""
