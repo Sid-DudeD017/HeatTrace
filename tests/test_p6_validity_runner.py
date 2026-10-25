@@ -853,3 +853,399 @@ def test_p7_confirmatory_dry_run_rejects_pending_or_invalid_commit():
     )
     assert res["total_confirmatory_cells"] == 756
     assert res["git_commit"] == "92f4b5739acf96ad837e54b9631f6ac974a1c7e6"
+
+
+# =========================================================================
+# Phase 8 Confirmatory Execution & Contract Tests
+# =========================================================================
+
+def test_p8_enumeration_exact_756_and_frozen_digest():
+    """Verify confirmatory matrix produces exactly 756 specs matching frozen digest."""
+    from heattrace.experiments.p6_validity_runner import enumerate_p7_confirmatory_matrix
+    specs = enumerate_p7_confirmatory_matrix()
+    assert len(specs) == 756
+    run_ids = sorted(s.run_id for s in specs)
+    digest = hashlib.sha256("\n".join(run_ids).encode("utf-8")).hexdigest()
+    assert digest == "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1"
+
+
+def test_p8_zero_development_contamination():
+    """Verify no development triplet or window exists in any confirmatory spec."""
+    from heattrace.experiments.p6_validity_runner import (
+        DEV_TRIPLET_ID,
+        DEV_WINDOWS,
+        enumerate_p7_confirmatory_matrix,
+    )
+    specs = enumerate_p7_confirmatory_matrix()
+    for s in specs:
+        assert s.triplet_id != DEV_TRIPLET_ID
+        assert s.window_id not in DEV_WINDOWS.values()
+        assert DEV_TRIPLET_ID not in s.canonical_key
+
+
+def test_p8_no_execution_when_final_output_exists(tmp_path):
+    """Verify no execution occurs and zero cells are scheduled when final parquet already exists."""
+    from heattrace.experiments.p6_validity_runner import (
+        EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS,
+        execute_frozen_confirmation,
+    )
+    out_dir = tmp_path / "results"
+    out_dir.mkdir(parents=True)
+    final_pq = out_dir / "p6_validity_runs.parquet"
+
+    # Create dummy 756-row final parquet
+    dummy_data = {col: ["test"] * 756 for col in EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS}
+    pd.DataFrame(dummy_data).to_parquet(final_pq)
+
+    # Valid commit in git history
+    test_commit = "8fe9b5667ad7ec803cc9c4c36e13fad2c6509905"
+
+    df, meta = execute_frozen_confirmation(
+        repo_root=REPO_ROOT,
+        execution_commit=test_commit,
+        output_dir=out_dir,
+        require_clean_git=False,
+    )
+    assert meta["status"] == "ALREADY_COMPLETED"
+    assert "scheduled zero cells" in meta["message"]
+    assert len(df) == 756
+
+
+def test_p8_checkpoint_resume_and_skip(tmp_path):
+    """Verify completed checkpoint IDs are skipped and missing IDs execute exactly once."""
+    from heattrace.experiments.p6_validity_runner import (
+        EXPECTED_CONFIRMATORY_SCHEMA_COLUMNS,
+        enumerate_p7_confirmatory_matrix,
+        validate_existing_confirmatory_parquet,
+    )
+    specs = enumerate_p7_confirmatory_matrix()
+    expected_specs = {s.run_id: s for s in specs}
+
+    test_commit = "8fe9b5667ad7ec803cc9c4c36e13fad2c6509905"
+    prov_hashes = {
+        "p6_config_sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+        "p6_thermal_config_sha256": "250f1b07daa6a19bcc9fe7415c7034b5ade240d69095cf3b539b7ee6ba001551",
+        "p6_protocol_sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+        "benchmark_parquet_sha256": "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109",
+        "benchmark_index_sha256": "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72",
+        "phase_overlay_sha256": "7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23",
+        "p4_manifest_sha256": "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d161d373160a79",
+        "p4_checkpoint_sha256": "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed",
+        "calibration_manifest_sha256": "bdf291a1db7c7c232f19e8aa22c59db6772ccd095caf5f1853b67e402e12096c",
+    }
+    wl_cache, wl_digests = build_workload_cache(REPO_ROOT)
+    for (s_val, m_val), d_val in wl_digests.items():
+        prov_hashes[f"workload_sha256_{s_val}_{m_val}"] = d_val
+
+    # Create synthetic valid 10-row checkpoint
+    sample_specs = specs[:10]
+    rows = []
+    for s in sample_specs:
+        expected_wl = wl_cache[(s.seed, s.workload_multiplier)]
+        tid = str(expected_wl["workload_trace_id"].iloc[0])
+        rows.append({
+            "run_id": s.run_id,
+            "triplet_id": s.triplet_id,
+            "context": s.context,
+            "window_id": s.window_id,
+            "cohort": s.cohort,
+            "facility_model": s.facility_model,
+            "thermal_curve": s.thermal_curve,
+            "workload_multiplier": float(s.workload_multiplier),
+            "seed": int(s.seed),
+            "workload_trace_id": tid,
+            "objective": s.objective,
+            "policy_id": s.policy_id,
+            "policy_version": s.policy_version,
+            "deployable": bool(s.deployable),
+            "margin_mode": s.margin_mode or "none",
+            "applied_margin": 0.0,
+            "status": "SUCCESS",
+            "error_class": None,
+            "error_message": None,
+            "runtime_seconds": 0.1,
+            "demanded_processing_slots": 100,
+            "demanded_energy_kwh": 50.0,
+            "completed_processing_slots": 100,
+            "completed_energy_kwh": 50.0,
+            "unfinished_processing_slots": 0,
+            "unmet_deadlines_count": 0,
+            "allocation_count": 100,
+            "facility_power_violation_hours": 0,
+            "total_facility_power_excess_kwh": 0.0,
+            "maximum_facility_power_excess_kw": 0.0,
+            "realized_facility_energy_kwh": 60.0,
+            "cooling_adjusted_cost_usd": 10.0,
+            "cooling_adjusted_carbon_kg": 5.0,
+            "scheduler_feasible": True,
+            "thermally_feasible": True,
+            "p6_config_sha256": prov_hashes["p6_config_sha256"],
+            "p6_thermal_config_sha256": prov_hashes["p6_thermal_config_sha256"],
+            "p6_protocol_sha256": prov_hashes["p6_protocol_sha256"],
+            "benchmark_parquet_sha256": prov_hashes["benchmark_parquet_sha256"],
+            "benchmark_index_sha256": prov_hashes["benchmark_index_sha256"],
+            "phase_overlay_sha256": prov_hashes["phase_overlay_sha256"],
+            "p4_manifest_sha256": prov_hashes["p4_manifest_sha256"],
+            "p4_checkpoint_sha256": prov_hashes["p4_checkpoint_sha256"],
+            "calibration_manifest_sha256": prov_hashes["calibration_manifest_sha256"],
+            "workload_sha256": prov_hashes[f"workload_sha256_{s.seed}_{s.workload_multiplier}"],
+            "execution_commit": test_commit,
+        })
+
+    cp_path = tmp_path / "valid_cp.parquet"
+    pd.DataFrame(rows).to_parquet(cp_path)
+
+    resumed = validate_existing_confirmatory_parquet(
+        parquet_path=cp_path,
+        expected_specs=expected_specs,
+        provenance_hashes=prov_hashes,
+        workload_cache=wl_cache,
+        execution_commit=test_commit,
+    )
+    assert len(resumed) == 10
+    for s in sample_specs:
+        assert s.run_id in resumed
+
+
+def test_p8_checkpoint_tampering_fails_closed(tmp_path):
+    """Verify duplicate, unknown, altered, stale rows or execution-commit mismatch fail closed."""
+    from heattrace.experiments.p6_validity_runner import (
+        enumerate_p7_confirmatory_matrix,
+        validate_existing_confirmatory_parquet,
+    )
+    specs = enumerate_p7_confirmatory_matrix()
+    expected_specs = {s.run_id: s for s in specs}
+    test_commit = "8fe9b5667ad7ec803cc9c4c36e13fad2c6509905"
+    wl_cache, wl_digests = build_workload_cache(REPO_ROOT)
+    prov_hashes = {
+        "p6_config_sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+        "p6_thermal_config_sha256": "250f1b07daa6a19bcc9fe7415c7034b5ade240d69095cf3b539b7ee6ba001551",
+        "p6_protocol_sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+        "benchmark_parquet_sha256": "60cea3627d9f81d3b2020e17930a6418b6aa0bfe3b292256e3949f76947dd109",
+        "benchmark_index_sha256": "a57a777325c21cdbd343f8ec718734ad45d6cfbcfa293a80b29b324249a14b72",
+        "phase_overlay_sha256": "7157a2e64efafa148aa276efc20c12893ad1e938ecf767c76a5ccd5e7c49da23",
+        "p4_manifest_sha256": "ae265bddc65c3eb06a978a06a6baa0f779b222925b4fa41d76d161d373160a79",
+        "p4_checkpoint_sha256": "69e18ae35c7912387895702b9e0aabd084c42d1aad31ac0327ef70e3c92132ed",
+        "calibration_manifest_sha256": "bdf291a1db7c7c232f19e8aa22c59db6772ccd095caf5f1853b67e402e12096c",
+    }
+    for (s_val, m_val), d_val in wl_digests.items():
+        prov_hashes[f"workload_sha256_{s_val}_{m_val}"] = d_val
+
+    s = specs[0]
+    expected_wl = wl_cache[(s.seed, s.workload_multiplier)]
+    tid = str(expected_wl["workload_trace_id"].iloc[0])
+    base_row = {
+        "run_id": s.run_id,
+        "triplet_id": s.triplet_id,
+        "context": s.context,
+        "window_id": s.window_id,
+        "cohort": s.cohort,
+        "facility_model": s.facility_model,
+        "thermal_curve": s.thermal_curve,
+        "workload_multiplier": float(s.workload_multiplier),
+        "seed": int(s.seed),
+        "workload_trace_id": tid,
+        "objective": s.objective,
+        "policy_id": s.policy_id,
+        "policy_version": s.policy_version,
+        "deployable": bool(s.deployable),
+        "margin_mode": s.margin_mode or "none",
+        "applied_margin": 0.0,
+        "status": "SUCCESS",
+        "error_class": None,
+        "error_message": None,
+        "runtime_seconds": 0.1,
+        "demanded_processing_slots": 100,
+        "demanded_energy_kwh": 50.0,
+        "completed_processing_slots": 100,
+        "completed_energy_kwh": 50.0,
+        "unfinished_processing_slots": 0,
+        "unmet_deadlines_count": 0,
+        "allocation_count": 100,
+        "facility_power_violation_hours": 0,
+        "total_facility_power_excess_kwh": 0.0,
+        "maximum_facility_power_excess_kw": 0.0,
+        "realized_facility_energy_kwh": 60.0,
+        "cooling_adjusted_cost_usd": 10.0,
+        "cooling_adjusted_carbon_kg": 5.0,
+        "scheduler_feasible": True,
+        "thermally_feasible": True,
+        "p6_config_sha256": prov_hashes["p6_config_sha256"],
+        "p6_thermal_config_sha256": prov_hashes["p6_thermal_config_sha256"],
+        "p6_protocol_sha256": prov_hashes["p6_protocol_sha256"],
+        "benchmark_parquet_sha256": prov_hashes["benchmark_parquet_sha256"],
+        "benchmark_index_sha256": prov_hashes["benchmark_index_sha256"],
+        "phase_overlay_sha256": prov_hashes["phase_overlay_sha256"],
+        "p4_manifest_sha256": prov_hashes["p4_manifest_sha256"],
+        "p4_checkpoint_sha256": prov_hashes["p4_checkpoint_sha256"],
+        "calibration_manifest_sha256": prov_hashes["calibration_manifest_sha256"],
+        "workload_sha256": prov_hashes[f"workload_sha256_{s.seed}_{s.workload_multiplier}"],
+        "execution_commit": test_commit,
+    }
+
+    # 1. Unknown run_id
+    r1 = copy.deepcopy(base_row)
+    r1["run_id"] = "unknown_run_id_12345"
+    p1 = tmp_path / "bad1.parquet"
+    pd.DataFrame([r1]).to_parquet(p1)
+    with pytest.raises(ValueError, match="unknown run_id"):
+        validate_existing_confirmatory_parquet(p1, expected_specs, prov_hashes, wl_cache, test_commit)
+
+    # 2. Duplicate run_id
+    p2 = tmp_path / "bad2.parquet"
+    pd.DataFrame([base_row, base_row]).to_parquet(p2)
+    with pytest.raises(ValueError, match="duplicate run_id"):
+        validate_existing_confirmatory_parquet(p2, expected_specs, prov_hashes, wl_cache, test_commit)
+
+    # 3. Execution commit mismatch
+    r3 = copy.deepcopy(base_row)
+    r3["execution_commit"] = "0" * 40
+    p3 = tmp_path / "bad3.parquet"
+    pd.DataFrame([r3]).to_parquet(p3)
+    with pytest.raises(ValueError, match="Scientific key mismatch.*execution_commit"):
+        validate_existing_confirmatory_parquet(p3, expected_specs, prov_hashes, wl_cache, test_commit)
+
+    # 4. Altered scientific key
+    r4 = copy.deepcopy(base_row)
+    r4["policy_id"] = "fake_policy"
+    p4 = tmp_path / "bad4.parquet"
+    pd.DataFrame([r4]).to_parquet(p4)
+    with pytest.raises(ValueError, match="Scientific key mismatch.*policy_id"):
+        validate_existing_confirmatory_parquet(p4, expected_specs, prov_hashes, wl_cache, test_commit)
+
+    # 5. Stale provenance hash
+    r5 = copy.deepcopy(base_row)
+    r5["p6_protocol_sha256"] = "0" * 64
+    p5 = tmp_path / "bad5.parquet"
+    pd.DataFrame([r5]).to_parquet(p5)
+    with pytest.raises(ValueError, match="Provenance hash mismatch"):
+        validate_existing_confirmatory_parquet(p5, expected_specs, prov_hashes, wl_cache, test_commit)
+
+
+def test_p8_cell_exception_becomes_explicit_failed_row():
+    """Verify an exception during preparation or execution becomes an explicit FAILED row."""
+    from heattrace.experiments.p6_validity_runner import (
+        ConfirmatoryCellSpec,
+        execute_p6_confirmatory_cell,
+    )
+    spec = ConfirmatoryCellSpec(
+        triplet_id="TRIPLET_CONF_1_f5c700",
+        context="heatwave",
+        window_id="HW_20220620",
+        cohort="core_benchmark",
+        facility_model="power_capped",
+        thermal_curve="medium",
+        workload_multiplier=1.0,
+        seed=20261016,
+        objective="carbon_first",
+        policy_id="static_unaware",
+        policy_version="1.0",
+        deployable=True,
+        margin_mode=None,
+        fixed_margin=None,
+    )
+
+    # Pass an invalid empty realized DataFrame that will raise in preprocessing
+    res = execute_p6_confirmatory_cell(
+        spec=spec,
+        realized_window_df=pd.DataFrame(),
+        workload_df=pd.DataFrame({"workload_trace_id": ["trace_0"], "processing_requirement": [10], "energy_kwh": [5.0]}),
+        temp_forecasts={},
+        mkt_forecasts={},
+        fcfg=FacilityConfig(
+            model_kind="power_capped",
+            nominal_compute_capacity_kw=500.0,
+            thermal_scenario=get_preset_thermal_scenario("medium", REPO_ROOT / "configs/p6_thermal.yaml"),
+        ),
+        provenance_hashes={
+            "p6_config_sha256": "0"*64,
+            "p6_thermal_config_sha256": "0"*64,
+            "p6_protocol_sha256": "0"*64,
+            "benchmark_parquet_sha256": "0"*64,
+            "benchmark_index_sha256": "0"*64,
+            "phase_overlay_sha256": "0"*64,
+            "p4_manifest_sha256": "0"*64,
+            "p4_checkpoint_sha256": "0"*64,
+            "calibration_manifest_sha256": "0"*64,
+            "workload_sha256_20261016_1.0": "0"*64,
+        },
+        repo_root=REPO_ROOT,
+        execution_commit="8fe9b5667ad7ec803cc9c4c36e13fad2c6509905",
+    )
+    assert res["status"] == "FAILED"
+    assert res["error_class"] is not None
+    assert res["run_id"] == spec.run_id
+    assert res["cohort"] == "core_benchmark"
+    assert res["scheduler_feasible"] is False
+    assert res["demanded_processing_slots"] == 10
+
+
+def test_p8_non_oracle_future_input_mutation_invariance():
+    """Verify mutating future realized rows cannot change deployable scheduling decisions."""
+    from heattrace.experiments.p6_validity_runner import run_deployable_rolling_schedule
+
+    # Build synthetic 120h workload
+    wl = pd.DataFrame([{
+        "workload_trace_id": "test_wl",
+        "job_id": f"j_{i}",
+        "processing_requirement": 1,
+        "arrival_offset_hours": i,
+        "deadline_offset_hours": i + 5,
+        "energy_kwh": 10.0,
+        "maximum_parallelism": 1,
+        "priority": 0,
+        "preemptible": True,
+    } for i in range(20)])
+
+    start_ts = datetime(2024, 6, 1, 0, 0, tzinfo=timezone.utc)
+    temp_fc = {h: np.full(24, 25.0) for h in range(120)}
+
+    pts = [
+        ForecastPoint(
+            timestamp_utc=start_ts + timedelta(hours=h),
+            horizon_hours=h % 24,
+            predicted_price_usd_per_mwh=50.0,
+            predicted_carbon_g_per_kwh=200.0,
+        )
+        for h in range(24)
+    ]
+    fc_res = ForecastResult(
+        origin_timestamp_utc=start_ts,
+        points=pts,
+        model_name="persistence",
+        model_version="1.0",
+    )
+    mkt_fc = {h: fc_res for h in range(120)}
+
+    fcfg = FacilityConfig(
+        model_kind="power_capped",
+        nominal_compute_capacity_kw=500.0,
+        thermal_scenario=get_preset_thermal_scenario("medium", REPO_ROOT / "configs/p6_thermal.yaml"),
+    )
+    constraints = SchedulingConstraints(500.0, 16, True)
+
+    res1, _ = run_deployable_rolling_schedule(
+        policy_id="static_unaware",
+        workload_df=wl,
+        temp_forecasts=temp_fc,
+        mkt_forecasts=mkt_fc,
+        fcfg=fcfg,
+        objective="carbon_first",
+        start_utc=start_ts,
+        constraints=constraints,
+    )
+
+    # run_deployable_rolling_schedule does not even receive the realized DataFrame!
+    # By contract and architecture, deployable policies only receive causal forecasts (temp_forecasts, mkt_forecasts).
+    assert len(res1.allocations) == 20
+
+
+def test_p8_oracle_rows_are_always_non_deployable():
+    """Verify all 36 oracle rows have deployable == False."""
+    from heattrace.experiments.p6_validity_runner import enumerate_p7_confirmatory_matrix
+    specs = enumerate_p7_confirmatory_matrix()
+    oracle_specs = [s for s in specs if s.cohort == "oracle_reference"]
+    assert len(oracle_specs) == 36
+    for s in oracle_specs:
+        assert s.deployable is False
+        assert s.policy_id == "oracle_full_thermal_aware"

@@ -253,6 +253,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Execute Day 8 P6 development-only pilot (TRIPLET_DEV_ae821c) and produce audit artifacts",
     )
     parser.add_argument(
+        "--run-p6-confirmation",
+        action="store_true",
+        help="Execute Phase 8 / Day 10 frozen 756-cell confirmatory matrix exactly once",
+    )
+    parser.add_argument(
+        "--execution-commit",
+        default=None,
+        help="Explicit 40-character git commit hash for Phase 8 confirmatory execution",
+    )
+    parser.add_argument(
         "--fail-on-eia-data-issues",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1642,9 +1652,40 @@ def run_run_p6_pilot(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_run_p6_confirmation(args: argparse.Namespace) -> int:
+    """Execute Day 10 P8 frozen 756-cell confirmation matrix."""
+    from heattrace.experiments.p6_validity_runner import execute_frozen_confirmation
+    repo_root = Path(".").resolve()
+    print("\n================== HeatTrace P8 Frozen Confirmation Runner ==================")
+    try:
+        commit = args.execution_commit
+        if not commit:
+            print("\n[P6 CONFIRMATION ERROR] --execution-commit <40-char-sha> is strictly required.\n")
+            return 1
+        final_df, meta = execute_frozen_confirmation(
+            repo_root=repo_root,
+            execution_commit=commit,
+            output_dir=repo_root / args.data_dir / "results",
+        )
+        print("Success! Processed confirmatory matrix.")
+        print(f"Total cells: {meta['total_confirmatory_cells']} (Unique run IDs: {meta['unique_run_ids']})")
+        print(f"Successful: {meta['successful_runs']}, Failed: {meta['failed_runs']}")
+        print(f"Execution commit: {meta['execution_commit']}")
+        print(f"Deliverable 1: {repo_root / args.data_dir / 'results/p6_validity_runs.parquet'}")
+        print(f"Deliverable 2: {repo_root / args.data_dir / 'results/p6_validity_manifest.json'}")
+        print(f"Deliverable 3: {repo_root / args.data_dir / 'results/p6_validity_execution.jsonl'}")
+        print("============================================================================\n")
+        return 0
+    except Exception as e:
+        print(f"\n[P6 CONFIRMATION ERROR] Failed: {e}\n")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    if args.run_p6_pilot:
+    if args.run_p6_confirmation:
+        code = run_run_p6_confirmation(args)
+    elif args.run_p6_pilot:
         code = run_run_p6_pilot(args)
     elif args.materialize_gate1:
         code = run_materialize_gate1(args)
