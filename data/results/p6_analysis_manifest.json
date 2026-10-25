@@ -1,0 +1,88 @@
+{
+  "analysis_label": "p6_confirmatory_validity_analysis",
+  "equal_service_accounting": {
+    "eligible_pairs": 1070,
+    "rejected_pairs": 10,
+    "rejection_reasons": {
+      "NONE": 1070,
+      "policy_a uncompleted service (291/303); unequal completed service (291 vs 303)": 2,
+      "policy_b uncompleted service (291/303); unequal completed service (303 vs 291)": 8
+    },
+    "total_pairwise_rows": 1080
+  },
+  "equal_service_predicate": "demanded_processing_slots == completed_processing_slots for both policies AND completed_a == completed_b",
+  "estimability_status": {
+    "F1": "ESTIMABLE",
+    "F2_allocation_distance": "NOT_ESTIMABLE_MISSING_ALLOCATION_VECTORS",
+    "F3_forecast_regret": "NOT_ESTIMABLE_NO_CONTROLLED_FORECAST_INTERVENTION",
+    "F4": "ESTIMABLE",
+    "H1": "ESTIMABLE",
+    "H2": "ESTIMABLE",
+    "H3": "ESTIMABLE",
+    "H4": "NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION",
+    "H5": "ESTIMABLE"
+  },
+  "frozen_hypothesis_definitions": {
+    "H1": "Under power-capped model, static scheduler has lower tested feasible workload in heatwaves than matched controls.",
+    "H2": "Capacity-aware scheduling recovers part of that tested feasibility loss during heatwaves.",
+    "H3": "Complete-event evaluation produces materially different feasibility or ranking conclusions from event-blind equal-duration windows.",
+    "H4": "Controlled causal forecast source intervention isolates forecast mechanism attribution.",
+    "H5": "Calibrated upper PUE-residual margin HeatGuard reduces facility violations relative to fixed margin."
+  },
+  "hypothesis_classifications": {
+    "H1": "SUPPORTED",
+    "H2": "NOT_SUPPORTED",
+    "H3": "SUPPORTED",
+    "H4": "NOT_ESTIMABLE",
+    "H5": "NOT_SUPPORTED"
+  },
+  "input_artifacts": {
+    "p6_validity_checkpoint_parquet": {
+      "expected_sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f",
+      "path": "data/results/p6_validity_checkpoint.parquet",
+      "sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f"
+    },
+    "p6_validity_execution_jsonl": {
+      "expected_sha256": "de430ceea4559de2f4e67f5b122223b3496dfe854e1f5efa874909363bff0e80",
+      "path": "data/results/p6_validity_execution.jsonl",
+      "sha256": "de430ceea4559de2f4e67f5b122223b3496dfe854e1f5efa874909363bff0e80"
+    },
+    "p6_validity_manifest_json": {
+      "expected_sha256": "d0dd9f870ec2a431cc16177c5f1b7a5e6b47a7dc888b0acb491a819656006082",
+      "path": "data/results/p6_validity_manifest.json",
+      "sha256": "d0dd9f870ec2a431cc16177c5f1b7a5e6b47a7dc888b0acb491a819656006082"
+    },
+    "p6_validity_runs_parquet": {
+      "expected_sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f",
+      "path": "data/results/p6_validity_runs.parquet",
+      "sha256": "c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f"
+    }
+  },
+  "output_artifacts": {
+    "event_level_metrics_csv_sha256": "071ded8d50a9d833ddabbc961a425a70288b52f40f60dac02c16940d184ac7bb",
+    "f1_png_sha256": "e9db0fa6ded8f6b4f51a613dc556b42b18a65814adeb70e64c4eec3628ddf72a",
+    "f2_status_md_sha256": "36ddfd6e57247cb7610d406af05dcd98f21d3802a3c2f7176b66382ce79ac202",
+    "f3_status_md_sha256": "c1d199ec6c6159580942b6b2073de2bc257b748ab53059ddd56aee3abc39934b",
+    "f4_png_sha256": "892d51835118c1985d8f88987bc3c3e8d9178eff75639d953bb39468c6844f90",
+    "h1_h5_assessment_csv_sha256": "a5e2e535b0f9dd6956a8e3b7afc90a380ea4c4df3548059012808149d014e91f",
+    "policy_pairwise_metrics_csv_sha256": "23de5663764799627cf612be29e63967f4139a76caf361f7f68deaca737e4fe1",
+    "t1_cohort_provenance_csv_sha256": "f850f0813b7b8f7e526b83c3dcec420e7bbf41f4d19fb46d0f73f1eff3739bcb",
+    "t2_event_feasibility_csv_sha256": "71676caceb2d23aa35b278e0ef0ac92671784180efab29e52848f7acaef0ba1b",
+    "t3_equal_service_gaps_csv_sha256": "e1b8f010506873f62f54f2a7310c0ced97cd1defb1626f7c6362a2d71d344ece",
+    "t4_forecast_evidence_csv_sha256": "1ca79b6b57f02c33dda32c487a0be4a8b420873ec96842064fedd3c11234491c"
+  },
+  "phase": "P9",
+  "row_counts": {
+    "h1_h5_assessment_csv": 5,
+    "p6_event_level_metrics_csv": 378,
+    "p6_policy_pairwise_metrics_csv": 1080,
+    "p6_validity_runs_parquet": 756,
+    "t1_cohort_provenance_csv": 5,
+    "t2_event_feasibility_csv": 72,
+    "t3_equal_service_gaps_csv": 33,
+    "t4_forecast_evidence_csv": 17
+  },
+  "run_id_digest": "1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1",
+  "schema_version": "1.0",
+  "seed_aggregation_rule": "arithmetic_mean_of_seed_specific_boundaries_prior_to_pair_contrast"
+}
