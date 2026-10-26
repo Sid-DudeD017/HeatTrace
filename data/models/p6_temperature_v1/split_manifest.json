@@ -1,0 +1,39 @@
+{
+  "training": {
+    "start_utc": "2022-01-01T00:00:00+00:00",
+    "end_utc": "2022-04-30T23:00:00+00:00",
+    "valid_windows": 2688
+  },
+  "validation": {
+    "start_utc": "2022-05-01T00:00:00+00:00",
+    "end_utc": "2022-05-31T23:00:00+00:00",
+    "valid_windows": 648
+  },
+  "calibration_reservation": {
+    "start_utc": "2022-06-01T00:00:00+00:00",
+    "end_utc": "2022-06-15T23:00:00+00:00",
+    "valid_windows": 264
+  },
+  "embargo": {
+    "start_utc": "2022-06-15T23:00:00+00:00",
+    "end_utc": "2022-06-19T07:00:00+00:00",
+    "valid_windows": 0
+  },
+  "development_triplets": [
+    "TRIPLET_DEV_ae821c"
+  ],
+  "confirmatory_triplets": [
+    "TRIPLET_CONF_1_f5c700",
+    "TRIPLET_CONF_2_2a6e22",
+    "TRIPLET_CONF_3_628624"
+  ],
+  "feature_schema": [
+    "standardized_temperature",
+    "sin_hour_of_day",
+    "cos_hour_of_day",
+    "sin_day_of_year",
+    "cos_day_of_year"
+  ],
+  "lookback_hours": 72,
+  "horizon_hours": 24
+}

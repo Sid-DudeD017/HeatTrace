@@ -1,0 +1,17 @@
+model,split,triplet_id,context,mae,rmse,mae_h1,rmse_h1,mae_h6,rmse_h6,mae_h12,rmse_h12,mae_h24,rmse_h24,extreme_underprediction_mae
+last_observation,validation,none,none,3.3165,4.2793,0.7343,1.1016,3.4357,4.2319,4.9151,5.6728,1.6345,2.344,5.5734
+same_hour_previous_day,validation,none,none,1.6227,2.3297,1.6306,2.3346,1.6225,2.3281,1.6179,2.3252,1.6345,2.344,3.2155
+ewma_0.20,validation,none,none,2.9762,3.7184,2.1311,2.559,3.7594,4.3818,3.8008,4.5316,2.3375,2.9726,5.0486
+TinyTemperatureLSTM,validation,none,none,1.3842,2.0739,0.7274,1.0721,1.309,1.9684,1.5146,2.2195,1.495,2.2313,3.4291
+last_observation,development,TRIPLET_DEV_ae821c,heatwave,5.3258,6.6826,1.1124,1.5653,5.5289,6.5011,7.8113,8.9157,2.7675,3.6927,6.7114
+same_hour_previous_day,development,TRIPLET_DEV_ae821c,heatwave,2.7961,3.6948,2.8052,3.693,2.8485,3.7221,2.7387,3.6582,2.7675,3.6927,3.9336
+ewma_0.20,development,TRIPLET_DEV_ae821c,heatwave,4.769,5.8654,3.4031,3.9231,6.0152,6.8465,6.0593,7.1659,4.001,4.7878,5.7357
+TinyTemperatureLSTM,development,TRIPLET_DEV_ae821c,heatwave,4.7772,5.8075,2.067,2.776,4.1429,5.4295,5.5115,6.4309,4.8219,5.6329,6.8661
+last_observation,development,TRIPLET_DEV_ae821c,control,3.3499,4.2936,0.767,1.0654,3.4735,4.2612,4.973,5.701,1.9119,2.6027,5.5383
+same_hour_previous_day,development,TRIPLET_DEV_ae821c,control,1.8708,2.5746,1.9182,2.5886,1.8356,2.5515,1.8442,2.5584,1.9119,2.6027,2.5104
+ewma_0.20,development,TRIPLET_DEV_ae821c,control,3.0281,3.7193,2.2943,2.6224,3.8665,4.4067,3.8004,4.5245,2.3499,2.876,5.0245
+TinyTemperatureLSTM,development,TRIPLET_DEV_ae821c,control,1.3502,1.8744,0.7562,1.0812,1.3943,2.0821,1.5358,2.0887,1.3343,1.7172,3.2949
+last_observation,development,TRIPLET_DEV_ae821c,blind,2.784,3.7675,0.5979,0.951,2.6622,3.4233,3.7459,4.3066,1.8393,3.2535,5.8885
+same_hour_previous_day,development,TRIPLET_DEV_ae821c,blind,1.1851,1.8762,1.045,1.3118,1.0027,1.2352,0.9844,1.2011,1.8393,3.2535,3.1555
+ewma_0.20,development,TRIPLET_DEV_ae821c,blind,2.4945,3.1847,1.7249,2.0495,2.9857,3.351,2.921,3.3404,2.4265,3.4224,5.333
+TinyTemperatureLSTM,development,TRIPLET_DEV_ae821c,blind,2.1447,3.0177,0.7817,1.0129,2.0713,2.5175,2.5191,3.1797,2.3983,3.6849,5.738

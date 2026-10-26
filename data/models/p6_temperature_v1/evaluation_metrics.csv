@@ -1,0 +1,9 @@
+model,mae,rmse,mae_h1,rmse_h1,mae_h6,rmse_h6,mae_h12,rmse_h12,mae_h24,rmse_h24,extreme_underprediction_mae,split
+last_observation,3.3148,4.2784,0.7346,1.1023,3.4333,4.2306,4.9116,5.6701,1.631,2.3408,5.5812,validation
+same_hour_previous_day,1.623,2.33,1.6318,2.3362,1.625,2.3299,1.6187,2.3266,1.631,2.3408,3.2132,validation
+ewma_0.20,2.9739,3.7165,2.1338,2.5609,3.7576,4.3809,3.7958,4.5265,2.3349,2.9707,5.0492,validation
+TinyTemperatureLSTM,1.3589,2.0407,0.7517,1.1198,1.3287,1.982,1.4772,2.1762,1.4929,2.2403,3.3487,validation
+last_observation,3.9496,5.2834,0.8433,1.2543,3.6573,4.8426,5.5949,6.6785,2.736,3.9723,6.5624,development_diagnostic
+same_hour_previous_day,1.7976,2.5677,1.2767,1.7473,1.4049,1.9005,1.5531,2.0009,2.736,3.9723,3.4516,development_diagnostic
+ewma_0.20,3.5534,4.5073,2.4828,2.9768,4.2224,4.9918,4.2424,5.1312,3.4205,4.2814,5.3266,development_diagnostic
+TinyTemperatureLSTM,2.4703,3.6904,1.3713,1.9202,2.3996,3.4603,2.6145,3.8405,2.981,4.3196,6.0226,development_diagnostic

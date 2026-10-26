@@ -1,0 +1,10 @@
+{
+  "repair_timestamp_utc": "2026-10-25T10:25:00Z",
+  "archive_log_path": "data/results/archive/p8_execution_log_with_postfinal_validation_entries.jsonl",
+  "archive_log_sha256": "6edbcb83ad5e9bddd7be0a36f9c1e741ce330aaca6fc74f74eb9b3f5b42af9ba",
+  "original_795_line_hash": "6edbcb83ad5e9bddd7be0a36f9c1e741ce330aaca6fc74f74eb9b3f5b42af9ba",
+  "restored_canonical_793_line_hash": "de430ceea4559de2f4e67f5b122223b3496dfe854e1f5efa874909363bff0e80",
+  "reason_for_restoration": "Restored canonical execution log to provably sealed 793-line form matching manifest. Removed lines 794-795 which were post-final validation attempts, not scientific executions.",
+  "confirmation_post_final_entries_only": true,
+  "confirmation_no_result_row_changed_or_reexecuted": true
+}

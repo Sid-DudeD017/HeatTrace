@@ -1,0 +1,111 @@
+{
+  "artifact_name": "p6_temperature_v1",
+  "model_architecture": {
+    "class": "TinyTemperatureLSTM",
+    "input_size": 5,
+    "hidden_size": 32,
+    "num_layers": 1,
+    "horizon": 24,
+    "dropout": 0.1
+  },
+  "feature_order": [
+    "standardized_temperature",
+    "sin_hour_of_day",
+    "cos_hour_of_day",
+    "sin_day_of_year",
+    "cos_day_of_year"
+  ],
+  "lookback": 72,
+  "horizon": 24,
+  "optimizer": "AdamW",
+  "loss_fn": "SmoothL1Loss",
+  "learning_rate": 0.001,
+  "batch_size": 64,
+  "max_epochs": 50,
+  "patience": 5,
+  "seed": 20261016,
+  "best_epoch": 49,
+  "best_val_loss": 0.1483,
+  "training_wall_time_seconds": 21.41,
+  "device": "cpu",
+  "split_boundaries": {
+    "training": {
+      "start_utc": "2022-01-01T00:00:00+00:00",
+      "end_utc": "2022-04-30T23:00:00+00:00",
+      "valid_windows": 2688
+    },
+    "validation": {
+      "start_utc": "2022-05-01T00:00:00+00:00",
+      "end_utc": "2022-05-31T23:00:00+00:00",
+      "valid_windows": 648
+    },
+    "calibration_reservation": {
+      "start_utc": "2022-06-01T00:00:00+00:00",
+      "end_utc": "2022-06-15T23:00:00+00:00",
+      "valid_windows": 264
+    },
+    "embargo": {
+      "start_utc": "2022-06-15T23:00:00+00:00",
+      "end_utc": "2022-06-19T07:00:00+00:00",
+      "valid_windows": 0
+    },
+    "development_triplets": [
+      "TRIPLET_DEV_ae821c"
+    ],
+    "confirmatory_triplets": [
+      "TRIPLET_CONF_1_f5c700",
+      "TRIPLET_CONF_2_2a6e22",
+      "TRIPLET_CONF_3_628624"
+    ],
+    "feature_schema": [
+      "standardized_temperature",
+      "sin_hour_of_day",
+      "cos_hour_of_day",
+      "sin_day_of_year",
+      "cos_day_of_year"
+    ],
+    "lookback_hours": 72,
+    "horizon_hours": 24
+  },
+  "split_hash": "23b75a120d9bd7f8f850153ad6573387557ab6ec3e5433cff39f2827219d0e23",
+  "extreme_temperature_p95_threshold_c": 18.3,
+  "forecast_gate": {
+    "decision": "GO",
+    "reason": "GO criteria met (cond1=True, cond2=False).",
+    "best_baseline": "same_hour_previous_day",
+    "selected_provider": "TinyTemperatureLSTM",
+    "details": {
+      "best_baseline": "same_hour_previous_day",
+      "best_baseline_rmse": 2.33,
+      "best_baseline_extreme_mae": 3.2132,
+      "lstm_rmse": 2.0407,
+      "lstm_extreme_mae": 3.3487,
+      "rmse_improvement_pct": 12.42,
+      "extreme_improvement_pct": -4.22,
+      "cond1_rmse_ge_2pct": true,
+      "cond2_extreme_ge_5pct_and_rmse_ge_minus_2pct": false
+    }
+  },
+  "environment": {
+    "python_version": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+    "pandas_version": "3.0.3",
+    "torch_version": "2.13.0",
+    "platform": "macOS-15.6.1-arm64-arm-64bit-Mach-O"
+  },
+  "git_commit": "563f6ac0b0de33b379d628ef9717214f18665416",
+  "source_noaa_files": {
+    "GHCNh_USW00023234_2022.psv": "7b2c0793e99761763ffc3930114a64837b4680301e2a415f2a7940ac0d0a066e",
+    "GHCNh_USW00023234_2023.psv": "0da86c7a7b03424af1542da0eee3fb54d5a9ba4675e8e6dd95df19c9d23c7880",
+    "GHCNh_USW00023234_2024.psv": "5f4b0c8513e5793698886836795aa8b8a7dac5793ef4e4cb6a9368e7c4e7c1f3",
+    "GHCNh_USW00023234_2025.psv": "ea78ad944f2409713f51482c900aad8fdbcb1082777f79d1e8566517f6ddcf65"
+  },
+  "file_hashes": {
+    "tiny_lstm_checkpoint.pt": "456104c4ff9e9cceca9e742490c10e46eb362689c9d15726e0d1e7502b6761a6",
+    "scaler.json": "334a9400f01adeb9a2130aed25b78d4713ad110d2e2d1e16559043b6ba6f8fe5",
+    "split_manifest.json": "82d2b3d2927c07daa37666037dab497b6350b7f7f77437b99c16932f3a3854f9",
+    "training_history.json": "53e8825a63c830cb7184b538cf09703681a52473f6a658305770cff18b2f5a82",
+    "evaluation_metrics.csv": "ccd6d815992e160f0779483cb1f1d118127d0362fbfcbf64f3455b0efba626d1"
+  },
+  "created_at_utc": "2026-10-24T17:01:52.762729+00:00",
+  "provenance_statement": "This is a newly trained direct multi-horizon HeatTrace model, not a Ruparel checkpoint or reproduction."
+}
