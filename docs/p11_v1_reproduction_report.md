@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-25
 **Study Phase:** Phase 11 (Days 13–14: Reproduce and Archive v1)
-**Status:** PASS
+**Status:** COMPLETE WITH LIMITATIONS
 **Overall Decision:** LIMITED RESULT
 
 ---
@@ -46,7 +46,7 @@
 
 ## 3. Reproduction Execution Metrics & Recomputed Hashes
 
-The clean execution was performed via `execute_frozen_confirmation` with zero checkpoint resumption:
+The Phase 11 reproduction execution was performed via `execute_frozen_confirmation` rerun from zero checkpoint state in a fresh session:
 - **Total Executed Cells:** 756
 - **Unique Run IDs:** 756
 - **Run-ID Digest:** `1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1` (Exact match)
@@ -69,23 +69,56 @@ The clean execution was performed via `execute_frozen_confirmation` with zero ch
 
 ## 4. Scientific vs Operational Differences
 
-- **Scientific Fields:** Evaluated across all 756 cells and all metric dimensions:
-  - `completed_processing_slots`: Exact match (0 diff)
-  - `unfinished_processing_slots`: Exact match (0 diff)
-  - `unmet_deadlines_count`: Exact match (0 diff)
-  - `facility_power_violation_hours`: Exact match (0 diff)
-  - `total_facility_power_excess_kwh`: Exact match (0 diff)
-  - `cooling_adjusted_cost_usd`: Exact match (0 diff)
-  - `cooling_adjusted_carbon_kg`: Exact match (0 diff)
-  - `mean_pue`: Exact match (0 diff)
-  - `max_pue`: Exact match (0 diff)
-  - `peak_facility_power_kw`: Exact match (0 diff)
-  - Feasibility flags (`scheduler_feasible`, `thermally_feasible`): Exact match (0 diff)
-  - **Scientific Result:** 100% IDENTICAL (zero scientific discrepancies).
+After run-ID alignment across all 756 rows, exact parquet column comparisons show:
+- **Real Non-Operational Columns (44 columns):** All 44 actual non-operational columns matched exactly (zero scientific discrepancies):
+  1. `run_id` (exact match)
+  2. `triplet_id` (exact match)
+  3. `context` (exact match)
+  4. `window_id` (exact match)
+  5. `cohort` (exact match)
+  6. `facility_model` (exact match)
+  7. `thermal_curve` (exact match)
+  8. `workload_multiplier` (exact match)
+  9. `seed` (exact match)
+  10. `workload_trace_id` (exact match)
+  11. `objective` (exact match)
+  12. `policy_id` (exact match)
+  13. `policy_version` (exact match)
+  14. `deployable` (exact match)
+  15. `margin_mode` (exact match)
+  16. `applied_margin` (exact match)
+  17. `status` (exact match)
+  18. `error_class` (exact match)
+  19. `error_message` (exact match)
+  20. `demanded_processing_slots` (exact match)
+  21. `demanded_energy_kwh` (exact match)
+  22. `completed_processing_slots` (exact match)
+  23. `completed_energy_kwh` (exact match)
+  24. `unfinished_processing_slots` (exact match)
+  25. `unmet_deadlines_count` (exact match)
+  26. `allocation_count` (exact match)
+  27. `facility_power_violation_hours` (exact match)
+  28. `total_facility_power_excess_kwh` (exact match)
+  29. `maximum_facility_power_excess_kw` (exact match)
+  30. `realized_facility_energy_kwh` (exact match)
+  31. `cooling_adjusted_cost_usd` (exact match)
+  32. `cooling_adjusted_carbon_kg` (exact match)
+  33. `scheduler_feasible` (exact match)
+  34. `thermally_feasible` (exact match)
+  35. `p6_config_sha256` (exact match)
+  36. `p6_thermal_config_sha256` (exact match)
+  37. `p6_protocol_sha256` (exact match)
+  38. `benchmark_parquet_sha256` (exact match)
+  39. `benchmark_index_sha256` (exact match)
+  40. `phase_overlay_sha256` (exact match)
+  41. `p4_manifest_sha256` (exact match)
+  42. `p4_checkpoint_sha256` (exact match)
+  43. `calibration_manifest_sha256` (exact match)
+  44. `workload_sha256` (exact match)
 - **Operational-Only Differences:**
-  - `execution_commit`: Canonical P8 recorded commit vs Stage 1 commit `d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d`.
-  - `timestamp_utc`: Execution session timestamps.
-  - `runtime_seconds`: Minor clock jitter ($\le 0.20\text{ s}$).
+  - `execution_commit`: Canonical P8 recorded commit vs Stage 1 commit `d5b3c86ac9076b118644e32dd2c8b6ab6f7cab2d` (differed in 756 rows).
+  - `runtime_seconds`: Execution clock variations, $\le 0.20\text{ s}$ difference (differed in 751 rows; 5 rows had identical rounded execution times).
+  - No scientific outcome difference was found.
 
 ---
 
@@ -100,6 +133,8 @@ Phase 9 analysis rerun on reproduction outputs from committed analysis source (`
 | **H3** | Frozen Secondary | PARTIALLY_SUPPORTED | CONF_1: 24/36, CONF_2: 23/36, CONF_3: 0/36; 0 reversals | EXACT MATCH |
 | **H4** | Exploratory (Post-Day 8) | NOT_ESTIMABLE | Missing controlled forecast intervention traces | EXACT MATCH |
 | **H5** | Frozen Secondary | NOT_SUPPORTED | Dynamic margin does not beat fixed 0.10 margin | EXACT MATCH |
+
+P11 strengthened research reproducibility and artifact quality, but did not generate new scientific evidence. No HeatGuard advantage was established, forecast-caused regret was not identified, the third event remained null, and zero strict ranking reversals were observed.
 
 ### Table and Figure Cryptographic Hashes
 All reproduced tables and deterministic figures match canonical outputs byte-for-byte:
@@ -148,16 +183,30 @@ Direct adversarial probes executed against the verification pipeline:
   - Temperature model v2: artifact_manifest.json, tiny_lstm_checkpoint.pt, scaler.json, split_manifest.json, training_history.json, evaluation_metrics.csv.
   - External raw NOAA sources explicitly categorized under `external_source_inputs`.
 - **Archive Manifest:** `data/archive/heattrace_v1_d5b3c86/archive_manifest.json`
+- **Archive Manifest SHA-256:** `2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4`
 - **Self-Verification Command:** `python3 data/archive/heattrace_v1_d5b3c86/verify_archive.py` (Result: PASS, 54/54 verified).
 
 ---
 
-## 9. Phase 11 Guardrail Verifications
+## 9. Explicit Reproduction Limitations
+
+The Phase 11 reproduction establishes same-environment experimental equivalence, but operates under material limitations:
+1. **Same-Environment Rerun:** The rerun occurred on the same host machine and repository lineage as prior development.
+2. **Missing Shell Command Transcript:** The exact Python/shell invocation command launching the simulation was not retained in an external transcript.
+3. **No Raw Test/Execution Logs:** No raw pytest/JUnit XML logs or external scheduler logs were archived.
+4. **No Dependency Lock:** No `uv.lock`, `poetry.lock`, or pinned requirements snapshot was archived; third-party package environments are not frozen.
+5. **No Raw Dataset Reconstruction:** NOAA, CAISO, and EIA raw datasets were not rebuilt from original primary web APIs.
+6. **No Clean-Checkout Simulation:** While `git archive` portability establishes that the archive verifies independently in a clean extraction, full simulation rerun was not performed from a clean checkout.
+7. **Same-Environment vs Independent:** This is a same-environment experimental reproduction, not a third-party independent reproduction.
+
+---
+
+## 10. Phase 11 Guardrail Verifications
 
 - Canonical P8/P9/P10 artifact bytes remained completely unchanged: **CONFIRMED**.
 - Zero v2 or Phase 12 work performed: **CONFIRMED**.
 - Limited Result verdict preserved without upgrade: **CONFIRMED**.
 - Equal-service and independence rules strictly preserved: **CONFIRMED**.
-- 756 cells were not rerun: **CONFIRMED**.
+- All 756 cells were rerun from zero checkpoint state in a fresh session during Phase 11: **CONFIRMED**.
 
-**Phase 11 Verdict:** **PASS**
+**Phase 11 Verdict:** **COMPLETE WITH LIMITATIONS**
