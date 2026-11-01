@@ -1,0 +1,157 @@
+{
+  "schema_version": "2.0",
+  "analysis_phase": "p12_b2_phase6",
+  "analysis_type": "retrospective_operational_analysis",
+  "provenance_and_confirmatory_status": {
+    "status": "RETROSPECTIVE_OPERATIONAL_ANALYSIS",
+    "confirmatory_status": "EXPLORATORY_RETROSPECTIVE",
+    "methodological_boundary": "High-level G1–G5 hypotheses and general criteria were frozen in Phase 1 (configs/p12_b2_protocol.yaml, docs/p12_b2_frozen_protocol_draft.md). However, exact operational estimands, common-support equal-service trio criteria, and implementation code were finalized after Phase 5 execution outcomes were inspected. Therefore, exact Phase 6 calculations are retrospective/exploratory and cannot be designated as preregistered confirmatory analyses. This limitation cannot be repaired retroactively using the same data; confirmatory validation requires untouched future events or a separately frozen replication."
+  },
+  "created_utc": "2026-10-31T18:00:00Z",
+  "corrected_utc": "2026-11-01T00:15:00Z",
+  "git_provenance": {
+    "commit_hash": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "branch": "main",
+    "dirty": true
+  },
+  "authoritative_inputs": {
+    "data/v2/results/p12_b2_runs.parquet": "761a18b895b743dea303e5169b387f107aba97e0ccfb48458d0be01f6b758dba",
+    "data/v2/results/p12_b2_execution.jsonl": "d746f4a0d1f76e7b3813d0161ac78b33163175aa2ae63203d59be854e7695747",
+    "data/v2/manifests/p12_b2_execution_manifest.json": "36f1f88633142800a91ae3f0301777bb6a8f8db61c833a9fbeb8bec463e0fd79",
+    "data/v2/benchmarks/p12_b2_matrix_cells.csv": "d687b2b5eb791ecf0ec21b13c891da993d1cab86c1cbdbd23b7aca91d6c31487",
+    "data/v2/benchmarks/p12_b2_controls.csv": "d9859542adbdfd480e1b798a5e1d4db0a169e728c1f20f3f91c4cdeb06629682",
+    "data/v2/benchmarks/p12_b2_ordinary_windows.csv": "fa4c9af50b1b47ee6aa26f6a17e91d3ee3dc744d35b1e779235a28a368329102",
+    "data/v2/benchmarks/p12_b2_window_overlap_graph.csv": "eef3488d3bdfc50a44ebdf9878d252eb366d8a71738d2f60c3530719c97cf890",
+    "data/v2/events/p12_b2_station_events.csv": "3a44a4b13d28b9f160133ecebf822d7798579c6c3983471ab243dea2e909f215",
+    "data/v2/events/p12_b2_regional_episodes.csv": "af9a44e3d13036732d5daa6ef37f2d0037c35694611bbcb50b3c7660c55b680d",
+    "configs/p12_b2_protocol.yaml": "38dfdb6eb48a8ce17a8762a3b9ab946d02fd30e25538d926efa3962f77c0579c",
+    "docs/p12_b2_frozen_protocol_draft.md": "6be4119072e5756eade2acc6d4055e629bc8bb3c8eacc41b8303dde99c3c2954",
+    "src/heattrace/evaluation/p6_validity.py": "0ac48866fd889b19074d2f47863635e2e456c2981fcc04876e5d9946daa8877c"
+  },
+  "analysis_keys": {
+    "independent_unit": "regional_episode_id",
+    "hierarchical_nesting": "station_event -> regional_episode_id -> source_year",
+    "experimental_repeats_not_independent": [
+      "station_events_within_same_episode",
+      "workload_seeds",
+      "workload_multipliers",
+      "policies",
+      "matrix_cells",
+      "overlapping_ordinary_windows"
+    ]
+  },
+  "missing_data_rules": {
+    "policy": "fail_closed",
+    "failed_execution_status": "FAILED",
+    "failure_is_not_scheduler_infeasibility": true,
+    "failure_is_not_thermal_infeasibility": true,
+    "convert_nulls_to_zero_prohibited": true,
+    "exclude_failures_from_effect_calculations": true,
+    "preserve_failures_in_denominators_and_audits": true,
+    "unpaired_comparison_labeling_required": true
+  },
+  "equal_service_contract": {
+    "cost_and_carbon_rule": "Cost and carbon comparisons are valid only when compared rows have equal completed service.",
+    "g3_core_deployable_trio_rule": "Core deployable trio (static_unaware, capacity_aware, full_thermal_aware) must have exact equality of demanded and completed processing slots at the individual condition level before computing policy separation.",
+    "required_exact_matches": [
+      "event_id_or_window_id",
+      "workload_hash",
+      "workload_seed",
+      "workload_multiplier",
+      "duration_hours",
+      "completed_processing_slots",
+      "demanded_processing_slots",
+      "facility_model",
+      "thermal_curve",
+      "objective"
+    ],
+    "violation_action": "Exclude unequal-service trios prior to computing policy separation. Mark contrasts UNEQUAL_SERVICE_EXCLUDED."
+  },
+  "deployability_rules": {
+    "deployable_policies": [
+      "static_unaware",
+      "capacity_aware",
+      "full_thermal_aware",
+      "heatguard_fixed",
+      "heatguard_calibrated"
+    ],
+    "core_deployable_policies": [
+      "static_unaware",
+      "capacity_aware",
+      "full_thermal_aware"
+    ],
+    "non_deployable_reference_policies": [
+      "oracle_full_thermal_aware"
+    ],
+    "oracle_deployable_ranking_prohibited": true
+  },
+  "estimands_and_metrics": {
+    "primary_facility_model": "power_capped",
+    "primary_thermal_curve": "medium",
+    "metrics": [
+      "scheduler_feasible",
+      "thermally_feasible",
+      "power_cap_violation_hours",
+      "maximum_power_cap_exceedance_kw",
+      "unfinished_processing_slots",
+      "max_tested_feasible_multiplier",
+      "cooling_adjusted_cost_usd",
+      "cooling_adjusted_carbon_kg"
+    ],
+    "g1_tested_feasibility_boundary_algorithm": "For static_unaware under power_capped/medium, a row is strictly feasible only if scheduler_feasible=True, thermally_feasible=True, unfinished_slots=0, jobs_missed=0, violation_hours=0, and max_exceedance_kw=0. Max tested multiplier across {1.0, 2.0, 3.0} is the seed boundary (0.0x if none feasible; NON_ESTIMABLE if cells missing/failed). Seed boundaries averaged per window; delta_boundary = hw_boundary - ctrl_boundary; aggregated to regional episodes.",
+    "g3_common_support_algorithm": "Heatwave common-support set = valid equal-service (seed, multiplier) conditions in heatwave. Ordinary windows must possess valid equal-service trios for every heatwave condition (otherwise excluded). Separation calculated using identical conditions and weights across heatwave and ordinary windows. K = count of common-support-complete ordinary windows (K >= 10 gate). Strict inequality: heatwave separation > ordinary P95.",
+    "ordinary_window_percentile_rule": "empirical_p95_linear_interpolation",
+    "g3_discriminability_strict_inequality": "heatwave_separation > ordinary_window_empirical_p95",
+    "g3_minimum_valid_sample_k": 10
+  },
+  "uncertainty_and_inference": {
+    "bootstrap_method": "regional_episode_cluster_bootstrap",
+    "bootstrap_iterations": 2000,
+    "fixed_bootstrap_seed": 20261031,
+    "resample_cells_or_seeds_prohibited": true,
+    "small_sample_threshold_r": 10,
+    "small_sample_inference_label": "DESCRIPTIVE_ONLY_FINITE_SAMPLE"
+  },
+  "decision_rules": {
+    "G1_temporal_replication": {
+      "frozen_claim": "Feasibility boundaries and policy-performance separations recur across multiple independent warm-season years.",
+      "narrow_claim": "Static-policy power-cap vulnerability replicated across the available warm-season years.",
+      "classification_rule": "Full G1 claim requires replication of feasibility boundaries and equal-service policy gaps across >= 2 years. Feasibility boundaries show null shifts across 5/6 episodes and -0.5x in 1 episode (mean delta = -0.08x). Equal-service policy gaps are heavily constrained by high-load throttling. Full G1 is therefore classified LIMITED; narrow static vulnerability claim is classified SUPPORTED.",
+      "possible_outcomes": ["SUPPORTED", "LIMITED", "MIXED_NOT_REPLICATED", "NEGATIVE", "NON_ESTIMABLE", "INVALID"]
+    },
+    "G2_geographic_heterogeneity": {
+      "claim": "Thermal feasibility and policy separation magnitudes systematically vary across California climate regions.",
+      "confirmatory_criteria": ">= 2 independent regional episodes per compared class AND cluster-bootstrap uncertainty interval excluding zero.",
+      "shared_carbon_proxy_rule": "EIA CISO carbon proxy is shared across California; geographic carbon heterogeneity is unidentifiable.",
+      "possible_outcomes": ["CONFIRMATORY_HETEROGENEITY", "DESCRIPTIVE_ONLY", "NO_HETEROGENEITY", "NON_ESTIMABLE", "INVALID"]
+    },
+    "G3_benchmark_discriminability": {
+      "claim": "Complete heatwave windows are more discriminating among policies than ordinary warm-season windows.",
+      "procedure": "Common workload support equal-service comparison against frozen ordinary P95 (K >= 10).",
+      "possible_outcomes": ["HEATWAVE_EXCEEDS_P95", "WITHIN_ORDINARY_DISTRIBUTION", "LIMITED_WITHIN_ORDINARY_DISTRIBUTION", "NON_ESTIMABLE"]
+    },
+    "G4_full_event_continuity_gate": {
+      "claim": "Multi-day full-event evaluation captures compounding thermal and backlog dynamics missed by isolated peak-day windows.",
+      "gate_requirement": "Strict proof that full-event vs 120-hour peak ablation preserves equivalent causal histories, workload arrivals, deadlines, completed service, and cross-boundary allocation states.",
+      "failure_action": "Mark NON_ESTIMABLE without new scheduler execution."
+    },
+    "G5_bounded_robustness": {
+      "claim": "Primary findings are stable across variations in event definition threshold, duration, thermal parameters, capacity limits, and episode grouping.",
+      "predeclared_variants": [
+        "low_thermal_curve",
+        "P85_threshold",
+        "P95_threshold",
+        "four_day_minimum_duration",
+        "high_thermal_curve",
+        "lower_capacity_cap",
+        "higher_capacity_cap",
+        "0h_buffer_grouping",
+        "48h_buffer_grouping",
+        "alternative_ordinary_window_seeds"
+      ],
+      "comparator_inventory": "energy_only_facility is a baseline comparator, not a G5 sensitivity variant.",
+      "robustness_criteria": "Finding is robust only if sign and substantive interpretation persist across all valid variants. Unexecuted variants are NON_ESTIMABLE and do not support robustness.",
+      "possible_outcomes": ["ROBUST", "PARTIALLY_ROBUST — LOW THERMAL CURVE ONLY", "LIMITED", "NOT_ROBUST", "NON_ESTIMABLE"]
+    }
+  }
+}

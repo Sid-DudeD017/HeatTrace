@@ -1,0 +1,302 @@
+# Track B2 Frozen Protocol Configuration
+# Protocol Version: 1.0-draft
+# State: DRAFT (Pending Human Authorization)
+# Namespace: p12_b2 / data/v2/
+
+schema_version: "2.0"
+protocol_version: "1.0-draft"
+protocol_label: "p12_b2_frozen_protocol"
+historical_boundary:
+  v1_immutable: true
+  v1_archive_id: "heattrace_v1_d5b3c86"
+  v1_archive_manifest_sha256: "2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4"
+  v1_reproduction_comparison_sha256: "cf14e1bfc3f8031612229f989d6dcb784771f1f7112bda809871ac782bc9f49e"
+  b2_run_id_prefix: "p12_b2"
+  b2_output_root: "data/v2/"
+  pooling_with_v1_prohibited: true
+  citation_of_v1_allowed: true
+
+evaluation_period:
+  years:
+    - 2022
+    - 2023
+    - 2024
+    - 2025
+    - 2026
+  provisional_years:
+    - 2026
+  primary_season:
+    start_month: 6
+    start_day: 1
+    end_month: 9
+    end_day: 30
+    description: "Local June 1 00:00 through September 30 23:59:59"
+  excluded_periods:
+    - name: "March 2026"
+      reason: "Excluded from primary warm-season evaluation; requires separately frozen amendment"
+  local_timezone: "America/Los_Angeles"
+  stored_timestamp_format: "timezone-aware UTC interval start"
+
+candidate_stations:
+  - station_id: "SFO"
+    station_name: "San Francisco International Airport"
+    noaa_ghcnh_id: "USW00023234"
+    climate_class: "northern coastal"
+    caiso_hub: "TH_NP15_GEN-APND"
+    status: "candidate_pending_phase_2_coverage"
+    is_facility_tariff: false
+    predeclared_fallback: null
+
+  - station_id: "SAC"
+    station_name: "Sacramento Executive / Airport"
+    noaa_ghcnh_id: "USW00023232"
+    climate_class: "northern inland"
+    caiso_hub: "TH_NP15_GEN-APND"
+    status: "candidate_pending_phase_2_coverage"
+    is_facility_tariff: false
+    predeclared_fallback:
+      station_name: "Sacramento Metropolitan Airport"
+      noaa_ghcnh_id: "USW00093225"
+      trigger: "USW00023232 fails Phase 2 coverage or metadata gates before Day 2 freeze"
+
+  - station_id: "FAT"
+    station_name: "Fresno Yosemite International Airport"
+    noaa_ghcnh_id: "USW00093193"
+    climate_class: "central inland"
+    caiso_hub: "TH_ZP26_GEN-APND"
+    status: "candidate_pending_phase_2_coverage"
+    is_facility_tariff: false
+    predeclared_fallback: null
+
+  - station_id: "RDD"
+    station_name: "Redding Airport"
+    noaa_ghcnh_id: "USW00024257"
+    climate_class: "far-northern inland"
+    caiso_hub: "TH_NP15_GEN-APND"
+    status: "candidate_pending_phase_2_coverage"
+    is_facility_tariff: false
+    predeclared_fallback: null
+
+  - station_id: "LAX"
+    station_name: "Los Angeles International Airport"
+    noaa_ghcnh_id: "USW00023174"
+    climate_class: "southern coastal"
+    caiso_hub: "TH_SP15_GEN-APND"
+    status: "candidate_pending_phase_2_coverage"
+    is_facility_tariff: false
+    predeclared_fallback: null
+
+market_and_carbon_signals:
+  regional_price_proxies:
+    caiso_hubs:
+      - "TH_NP15_GEN-APND"
+      - "TH_ZP26_GEN-APND"
+      - "TH_SP15_GEN-APND"
+    caveat: "Regional day-ahead market settlement hubs, not facility retail tariffs"
+  grid_carbon_proxy:
+    source: "EIA-930 CISO balancing authority production-based carbon intensity"
+    geographic_granularity: "Single balancing-authority-wide signal shared across all stations"
+    caveat: "Production-average proxy, not avoided or marginal emissions; station-level carbon heterogeneity is unidentifiable"
+
+heatwave_definition:
+  input_source: "weather_only"
+  daily_metric: "daily_maximum_temperature"
+  daily_metric_computation: "local_calendar_day_in_america_los_angeles"
+  threshold_baseline_years: [2022, 2023, 2024, 2025]
+  threshold_baseline_season: "June 1 through September 30"
+  threshold_type: "station_specific_empirical_p90"
+  percentile_interpolation: "linear"
+  qualifying_day_condition: "Tmax > station_P90"
+  min_consecutive_qualifying_days: 3
+  missing_day_handling: "missing days break a run; imputation into events is prohibited"
+  event_continuity: "adjacent qualifying days form single event; manual split or merge is strictly prohibited"
+  full_event_preservation: true
+  primary_scheduler_window:
+    include_onset: true
+    onset_duration: "1 local calendar day preceding qualifying run"
+    include_complete_heatwave: true
+    include_recovery: true
+    recovery_duration: "1 local calendar day following qualifying run"
+  secondary_analysis_window:
+    enabled: true
+    label: "fixed_duration_120h_peak_centered_ablation"
+    duration_hours: 120
+    is_primary: false
+  sensitivities:
+    threshold_percentiles: [85, 95]
+    minimum_durations_days: [4]
+
+regional_episodes:
+  station_event_retention: "retain all eligible station-level events"
+  temporal_expansion_hours: 24
+  expansion_rule: "expand each station event interval by 24 hours on both sides (UTC)"
+  connection_rule: "connect station events whose expanded intervals overlap in UTC"
+  graph_component_definition: "each connected component is one regional episode (regional_episode_id)"
+  statistical_unit_role: "primary independent unit for uncertainty, hypothesis testing, and sign counts"
+  hierarchical_nesting: "station events nested within regional episodes and years"
+  pseudo_replication_warning: "stations, seeds, policies, windows, and simulation cells are not independent events"
+  sensitivity_groupings:
+    - name: "strict_unbuffered_overlap"
+      buffer_hours: 0
+    - name: "buffered_48h_overlap"
+      buffer_hours: 48
+
+controls_and_ordinary_windows:
+  matched_control_per_event:
+    count: 1
+    station_constraint: "same station"
+    year_constraint: "same year where possible; nearest year fallback triggers LIMITED status"
+    duration_constraint: "equal UTC duration to complete event window"
+    overlap_exclusion: "no overlap with heatwave, onset, or recovery window of any station event"
+    embedded_exceedance_exclusion: "no embedded three-consecutive-day qualifying P90 run"
+    selection_basis: "weather, season, calendar structure, day-of-week composition, and coverage only"
+    outcome_blind: "no selection or filtering on price, carbon, or scheduler outcomes"
+  representative_ordinary_windows:
+    target_count_K: 20
+    minimum_count_K: 10
+    extension_count_K: 30
+    selection_basis: "deterministic stratified sampling across eligible warm season, outcome-blind"
+    overlap_policy: "record overlap graph among ordinary windows; do not treat overlapping windows as independent"
+
+workloads:
+  job_semantics: "preserve P11 job schema and distribution parameters"
+  seeds:
+    - 20261016
+    - 20261017
+  multipliers:
+    - 1.0
+    - 2.0
+    - 3.0
+  generation_rule: "duration-specific deterministic workload traces"
+  arrival_intensity: "constant expected arrival intensity per hour across duration"
+  hash_reuse_policy: "identical workload hash reused across heatwave, matched control, and equal-duration ordinary windows"
+  service_contract: "strictly enforce equal demanded and completed service before cost/carbon comparisons"
+
+forecast_rule:
+  cross_station_transfer_prohibition: "do not silently apply SFO scaler, checkpoint, or HeatGuard calibration to other stations"
+  preferred_rule:
+    architecture: "TinyLSTM (identical architecture and hyperparameters to v1)"
+    artifacts: "station-specific scalers, checkpoints, and HeatGuard calibrations"
+    training_data_boundary: "strictly pre-evaluation weather data (pre-2022 and pre-first-event calibration)"
+    storage_path: "data/v2/models/"
+  fallback_rule:
+    name: "causal_same_hour_previous_day_forecast"
+    trigger: "leakage-safe station-specific TinyLSTM/HeatGuard artifacts cannot be produced"
+    status_change: "previous-day becomes B2 primary forecast; TinyLSTM and HeatGuard become secondary"
+  architectural_constraint: "no new neural-network architectures in Track B2"
+  causality_claim_constraint: "no forecast-causality claim without controlled forecast substitution experiment"
+
+policies:
+  deployable:
+    - id: "static_unaware"
+      deployable: true
+    - id: "capacity_aware"
+      deployable: true
+    - id: "full_thermal_aware"
+      deployable: true
+  comparators:
+    - id: "heatguard_fixed"
+      deployable: true
+    - id: "heatguard_calibrated"
+      deployable: true
+  reference:
+    - id: "oracle_full_thermal_aware"
+      deployable: false
+      role: "hindsight non-deployable reference"
+
+experimental_conditions:
+  primary_condition:
+    facility_model: "power_capped"
+    thermal_curve: "medium"
+    objective: "carbon_first"
+    cost_reporting: "co_reported"
+    core_policies: ["static_unaware", "capacity_aware", "full_thermal_aware"]
+    workload_multipliers: [1.0, 2.0, 3.0]
+    seeds: [20261016, 20261017]
+    cells_per_primary_window: 18
+  cell_count_formula:
+    formula: "base cells per eligible station event = 18K + 180"
+    breakdown:
+      primary_window_cells: "18 * (K + 2) [heatwave + matched control + K ordinary windows under primary condition]"
+      comparator_and_sensitivity_cells_on_event_control_pair: 144
+      comparator_breakdown:
+        v1_core_grid_extension: 108
+        heatguard_variants: 24
+        oracle_reference: 12
+    evaluation_at_targets:
+      K_10_minimum: 360
+      K_20_primary: 540
+      K_30_extended: 720
+    overall_total_policy: "overall total cells is parametric on E eligible events; inventing total prior to catalogue freeze is prohibited"
+
+hypotheses:
+  G1:
+    label: "Temporal replication"
+    type: "primary"
+    claim: "Feasibility boundaries and policy performance separations recur across multiple independent warm-season years."
+    measurable_criteria: "Station-event heatwave-minus-control effects aggregated by regional episode and year; preregistered direction confirmed in at least two independent years and positive episode-level median."
+  G2:
+    label: "Geographic heterogeneity"
+    type: "secondary_descriptive"
+    claim: "Thermal feasibility and policy separation magnitudes systematically vary across California climate regions."
+    measurable_criteria: "Station observations nested within regional episodes; confirmatory status requires >= 2 independent regional episodes per compared class and uncertainty interval excluding zero; otherwise descriptive only."
+  G3:
+    label: "Benchmark discriminability"
+    type: "primary"
+    claim: "Complete historical heatwave windows are substantially more discriminating among scheduling policies than representative ordinary warm-season windows."
+    measurable_criteria: "Complete-event policy separation count or magnitude exceeds the 95th percentile of the frozen ordinary-window distribution (K >= 10) under equal completed service; summarized at regional episode level."
+  G4:
+    label: "Full-event continuity"
+    type: "conditional_ablation"
+    claim: "Multi-day full-event evaluation captures compounding thermal and backlog dynamics missed by isolated peak-day windows."
+    measurable_criteria: "Normalized outcome differences between full-event window and 120h peak-centered ablation; non-estimable if equal histories, arrivals, deadlines, service, and cross-boundary states cannot be strictly preserved."
+  G5:
+    label: "Robustness"
+    type: "bounded_sensitivity"
+    claim: "Primary findings are stable across variations in event definition threshold, duration, thermal parameters, capacity limits, and episode grouping."
+    measurable_criteria: "Sign and substantive interpretation remain unchanged under P85/P95 thresholds, 4-day minimum duration, low/high thermal curves, alternative capacity caps, and 0h/48h buffer episode grouping."
+
+decision_gates:
+  GO:
+    requirements:
+      min_eligible_stations: 3
+      climate_classes_represented: ["coastal", "inland"]
+      min_caiso_hubs: 2
+      multi_episode_coverage: true
+      multi_year_coverage: true
+      primary_analysis_complete: ["G1", "G3"]
+      zero_difference_reproduction: true
+  LIMITED:
+    conditions:
+      - "Valid execution but fewer than 3 eligible stations or restricted episode coverage"
+      - "Nearest-year fallback required for matched controls"
+      - "G2 descriptive only due to insufficient episodes per class"
+      - "G4 non-estimable due to continuity/service boundary constraints"
+  NEGATIVE:
+    conditions:
+      - "Adequate multi-station, multi-year coverage and valid methodology"
+      - "Predeclared G1 temporal replication fails or G3 discriminability shows no heatwave advantage"
+      - "Note: valid null results must be classified NEGATIVE, never INVALID"
+  INVALID:
+    conditions:
+      - "Data leakage (train/test overlap, outcome-dependent event/control selection)"
+      - "Pseudo-replication (treating stations, seeds, or cells as independent heatwaves)"
+      - "Mapping errors (misidentifying hubs or stations)"
+      - "Unequal service comparisons (differing demanded or completed workloads)"
+      - "Reproduction failure (scientific-field differences between fresh execution and archive)"
+
+fail_closed_namespace_protection:
+  allowed_output_roots:
+    - "configs/p12_b2_*"
+    - "docs/p12_b2_*"
+    - "data/v2/"
+    - "source/test files containing 'p12_b2'"
+  prohibited_write_targets:
+    - "data/results/p11_*"
+    - "data/results/p8_*"
+    - "data/archive/heattrace_v1_d5b3c86/"
+    - "configs/p6_*"
+    - "configs/p7_*"
+    - "docs/p6_*"
+    - "docs/p11_*"
+  enforcement_rule: "Any attempt to write B2 outputs into protected v1/P11 paths fails closed"

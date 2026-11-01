@@ -1,0 +1,50 @@
+{
+  "manifest_version": "2.0",
+  "phase": "B2_Phase_5_Execution",
+  "generated_at_utc": "2026-10-31T15:57:56.232048+00:00",
+  "total_cells": 6480,
+  "unique_run_ids": 6480,
+  "deployable_cells": 6336,
+  "oracle_reference_cells": 144,
+  "success_count": 5400,
+  "failed_count": 1080,
+  "failure_reasons_breakdown": {
+    "NONE": 5400,
+    "WEATHER_DATA_INCOMPLETE": 936,
+    "FORECAST_MISSING": 144
+  },
+  "feasibility_breakdown": {
+    "scheduler_feasible": 305,
+    "scheduler_infeasible": 6175,
+    "thermally_feasible": 218,
+    "thermally_infeasible": 6262
+  },
+  "artifacts": {
+    "runs_parquet": {
+      "path": "data/v2/results/p12_b2_runs.parquet",
+      "rows": 6480,
+      "bytes": 341377,
+      "sha256": "36efdb20f3fc31aea64d637e693597e0b5ac24fd57909e69b036d7932dd81bfc"
+    },
+    "execution_jsonl": {
+      "path": "data/v2/results/p12_b2_execution.jsonl",
+      "rows": 6480,
+      "bytes": 10494812,
+      "sha256": "87bb72b2c33b81ce072407e7be7eae6884e19bbc1231c0962d4b782925dfa0a9"
+    }
+  },
+  "protected_baselines_verification": {
+    "archive_manifest": "2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4",
+    "reproduction_comparison": "cf14e1bfc3f8031612229f989d6dcb784771f1f7112bda809871ac782bc9f49e",
+    "p6_validity_yaml": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+    "p6_frozen_protocol": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+    "phase3_event_freeze": "972675ef164cd29628eebdc4e509dce352b62a70a2e7214c9e9083f8d33d91c5",
+    "phase4_control_candidates": "4c3c3acce3c0f4cc0d827e8782840c0e9834a733a4d8bc1febe204c0c2230fae",
+    "phase4_controls": "d9859542adbdfd480e1b798a5e1d4db0a169e728c1f20f3f91c4cdeb06629682",
+    "phase4_matrix_cells": "d687b2b5eb791ecf0ec21b13c891da993d1cab86c1cbdbd23b7aca91d6c31487",
+    "phase4_matrix_dry_run_manifest": "8ecdc46c39d17480c6c646c4290a04ce3bf639aa998d46dd8a080f9385bdb5fe",
+    "phase4_ordinary_candidates": "b923660a3805567708256699c5acef1a259e267355c8b76603aa658ca5b4967c",
+    "phase4_ordinary_windows": "fa4c9af50b1b47ee6aa26f6a17e91d3ee3dc744d35b1e779235a28a368329102",
+    "phase4_window_overlap_graph": "eef3488d3bdfc50a44ebdf9878d252eb366d8a71738d2f60c3530719c97cf890"
+  }
+}

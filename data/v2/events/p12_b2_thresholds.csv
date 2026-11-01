@@ -1,0 +1,6 @@
+station_code,noaa_ghcnh_id,official_station_name,climate_class,caiso_proxy_hub,local_timezone,percentile,percentile_method,baseline_years,expected_baseline_days,valid_baseline_days,missing_baseline_days,missing_dates,sample_size,threshold_p90_c,min_daily_max_c,max_daily_max_c
+SFO,USW00023234,SAN FRANCISCO INTL AP,northern coastal,TH_NP15_GEN-APND,America/Los_Angeles,90.0,linear_interpolation,2022-2025,488,485,3,2025-08-30;2025-08-31;2025-09-01,485,25.6,15.0,36.7
+SAC,USW00023232,SACRAMENTO AP ASOS,northern inland,TH_NP15_GEN-APND,America/Los_Angeles,90.0,linear_interpolation,2022-2025,488,488,0,NONE,488,38.3,20.0,45.6
+FAT,USW00093193,FRESNO YOSEMITE INTL,central inland,TH_ZP26_GEN-APND,America/Los_Angeles,90.0,linear_interpolation,2022-2025,488,488,0,NONE,488,40.6,22.8,45.6
+RDD,USW00024257,REDDING AP,far-northern inland,TH_NP15_GEN-APND,America/Los_Angeles,90.0,linear_interpolation,2022-2025,488,488,0,NONE,488,41.7,20.0,48.3
+LAX,USW00023174,LOS ANGELES INTL AP,southern coastal,TH_SP15_GEN-APND,America/Los_Angeles,90.0,linear_interpolation,2022-2025,488,488,0,NONE,488,26.7,17.8,38.3

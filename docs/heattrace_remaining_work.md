@@ -25,6 +25,29 @@ These are catalogued at `docs/p6_validity_report.md:294-311`.
 
 ## C. Planned Days 15–21 extension (not executed)
 
+### Track B2 decision update — 2026-10-31
+
+Professor feedback expanded the next study into **Track B2: multi-station, multi-year California heatwave evaluation (2022-2026)**. The authoritative plan and progress are documented in:
+
+- `docs/p12_b2_multiyear_multistation_plan.md`
+- `docs/p12_b2_frozen_protocol_draft.md`
+- `docs/p12_b2_data_source_matrix.md`
+- `docs/p12_b2_experiment_matrix.md`
+- `docs/p12_b2_risks_and_fallbacks.md`
+- `docs/p12_b2_workshop_submission_roadmap.md`
+- `docs/p12_b2_phase2_completion.md`
+
+**Current Track B2 Status**:
+- Phase 1 (Protocol Freeze): Approved and complete (`data/v2/manifests/p12_b2_protocol_freeze.json`).
+- Phase 2 (Multi-Station Historical Input Acquisition & Validation): Complete with declared eligibility exclusions.
+  - CAISO Option B manual recovery is complete: all 15 hub-years across NP15, ZP26, and SP15 have 2,928/2,928 valid intervals with zero missing intervals and zero conflicts. 2022–2025 CAISO is PASS; 2026 is PROVISIONAL.
+  - EIA 930 CISO balancing authority data: 2023–2025 PASS, 2026 PROVISIONAL; 2022 is EXCLUDED (2,927/2,928) due to one authoritative federal source gap at 2022-06-13 17:00 UTC confirmed by EIA API v2.
+  - NOAA Weather: 23 station-years PASS, 6 station-years in 2026 PROVISIONAL; SFO 2025 is EXCLUDED (daily-max coverage 119/122 = 97.54% < 98.0% threshold).
+- Phase 3 (Heatwave Detection & Episode Catalogue) and all subsequent experiment phases: **NOT STARTED**.
+- The reproduced 756-cell P11 study remains immutable.
+
+The legacy Days 15-21 table below is retained as historical context. Its ordinary-window, forecast-arm, phase and reproduction ideas may be reused only where the B2 protocol explicitly includes them. No B2 scheduler experiment has been executed, and P11 remains immutable.
+
 Git history ends at P11 and contains no P12–P18 implementation. The dashboard labels the following as separately versioned exploratory work (`docs/heattrace-14-day-review.html:88,137-143,395`):
 
 | Day | Planned work | Required boundary |

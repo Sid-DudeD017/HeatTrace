@@ -1,0 +1,191 @@
+{
+  "schema_version": "2.0",
+  "track": "Track B2",
+  "phase": "Phase 1: Freeze Track B2 scope and protect P11",
+  "protocol_version": "1.0-draft",
+  "created_at_utc": "2026-10-30T08:10:00Z",
+  "git_environment": {
+    "branch": "main",
+    "head_commit": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "origin_main_commit": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "dirty_tree_summary": {
+      "is_dirty": true,
+      "untracked_paths_count": 8,
+      "modified_tracked_paths": [
+        "docs/heattrace-14-day-review.html",
+        "docs/heattrace_remaining_work.md"
+      ],
+      "untracked_paths": [
+        ".site-publish/",
+        "configs/p12_b2_protocol.yaml",
+        "docs/p12_b2_data_source_matrix.md",
+        "docs/p12_b2_experiment_matrix.md",
+        "docs/p12_b2_frozen_protocol_draft.md",
+        "docs/p12_b2_multiyear_multistation_plan.md",
+        "docs/p12_b2_risks_and_fallbacks.md",
+        "docs/p12_b2_workshop_submission_roadmap.md"
+      ],
+      "secrets_exposed": false
+    }
+  },
+  "p11_protected_baseline": {
+    "archive_id": "heattrace_v1_d5b3c86",
+    "archive_manifest_path": "data/archive/heattrace_v1_d5b3c86/archive_manifest.json",
+    "archive_manifest_sha256": "2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4",
+    "reproduction_comparison_path": "data/results/p11_reproduction_comparison.json",
+    "reproduction_comparison_sha256": "cf14e1bfc3f8031612229f989d6dcb784771f1f7112bda809871ac782bc9f49e",
+    "total_cells": 756,
+    "unique_run_ids": 756,
+    "scientific_differences_count": 0,
+    "cohort_counts": {
+      "core_benchmark": 432,
+      "event_blind_benchmark": 216,
+      "algorithm_comparators": 72,
+      "oracle_reference": 36
+    },
+    "verified_inventory_files_count": 54,
+    "status": "frozen_immutable"
+  },
+  "protected_v1_p11_paths": [
+    "data/results/p11_reproduction_comparison.json",
+    "data/archive/heattrace_v1_d5b3c86/",
+    "configs/p6_validity.yaml",
+    "configs/p6_thermal.yaml",
+    "configs/p7_heatguard.yaml",
+    "docs/p6_frozen_protocol.md",
+    "docs/p6_validity_report.md",
+    "docs/p11_v1_reproduction_report.md",
+    "data/results/p8_runs.parquet",
+    "data/results/p8_execution.jsonl",
+    "data/results/p8_matrix_manifest.json"
+  ],
+  "reserved_b2_output_paths": [
+    "configs/p12_b2_protocol.yaml",
+    "docs/p12_b2_*",
+    "data/v2/manifests/",
+    "data/v2/events/",
+    "data/v2/benchmarks/",
+    "data/v2/results/",
+    "data/v2/models/",
+    "data/v2/archive/",
+    "data/v2/reproductions/"
+  ],
+  "frozen_document_hashes": {
+    "configs/p12_b2_protocol.yaml": "38dfdb6eb48a8ce17a8762a3b9ab946d02fd30e25538d926efa3962f77c0579c",
+    "docs/p12_b2_multiyear_multistation_plan.md": "5260704afd3ffbe03aa4c918cd4190ead74c2f2736a2d0af12c5e75fba44c7db",
+    "docs/p12_b2_frozen_protocol_draft.md": "6be4119072e5756eade2acc6d4055e629bc8bb3c8eacc41b8303dde99c3c2954",
+    "docs/p12_b2_data_source_matrix.md": "ab385df71dd183c3832a3c08f9d503b2594c9c3d80fd1d4d4ae589ff3ec185fe",
+    "docs/p12_b2_experiment_matrix.md": "8b46bc346e572b9d7bd7d744f4a390283572212ca0848768c06aea7495174198",
+    "docs/p12_b2_risks_and_fallbacks.md": "c31ebccaef32459c18a1281b84356f1b506a166a0b4f72323a109aca3b3daaf7",
+    "docs/p12_b2_workshop_submission_roadmap.md": "5f99a2cb7c3e4acfdb574382a0c5878aebc2d594117d7c511898b2b250cb1c2c"
+  },
+  "frozen_candidate_stations": [
+    {
+      "station_id": "SFO",
+      "station_name": "San Francisco International Airport",
+      "noaa_ghcnh_id": "USW00023234",
+      "climate_class": "northern coastal",
+      "caiso_hub": "TH_NP15_GEN-APND",
+      "status": "candidate_pending_phase_2_coverage",
+      "is_facility_tariff": false
+    },
+    {
+      "station_id": "SAC",
+      "station_name": "Sacramento Executive / Airport",
+      "noaa_ghcnh_id": "USW00023232",
+      "climate_class": "northern inland",
+      "caiso_hub": "TH_NP15_GEN-APND",
+      "status": "candidate_pending_phase_2_coverage",
+      "predeclared_fallback": "USW00093225",
+      "is_facility_tariff": false
+    },
+    {
+      "station_id": "FAT",
+      "station_name": "Fresno Yosemite International Airport",
+      "noaa_ghcnh_id": "USW00093193",
+      "climate_class": "central inland",
+      "caiso_hub": "TH_ZP26_GEN-APND",
+      "status": "candidate_pending_phase_2_coverage",
+      "is_facility_tariff": false
+    },
+    {
+      "station_id": "RDD",
+      "station_name": "Redding Airport",
+      "noaa_ghcnh_id": "USW00024257",
+      "climate_class": "far-northern inland",
+      "caiso_hub": "TH_NP15_GEN-APND",
+      "status": "candidate_pending_phase_2_coverage",
+      "is_facility_tariff": false
+    },
+    {
+      "station_id": "LAX",
+      "station_name": "Los Angeles International Airport",
+      "noaa_ghcnh_id": "USW00023174",
+      "climate_class": "southern coastal",
+      "caiso_hub": "TH_SP15_GEN-APND",
+      "status": "candidate_pending_phase_2_coverage",
+      "is_facility_tariff": false
+    }
+  ],
+  "frozen_evaluation_period": {
+    "years": [2022, 2023, 2024, 2025, 2026],
+    "provisional_years": [2026],
+    "season": "Local June 1 through September 30",
+    "timezone": "America/Los_Angeles",
+    "stored_timestamps": "timezone-aware UTC interval start",
+    "excluded_periods": ["March 2026"]
+  },
+  "frozen_heatwave_and_episode_rules": {
+    "input_source": "weather_only",
+    "metric": "Daily maximum temperature (local time)",
+    "threshold": "Station-specific empirical P90 (fixed baseline June-September 2022-2025, linear interpolation)",
+    "qualifying_day": "Tmax > station_P90 (strict inequality)",
+    "min_duration": "3 consecutive qualifying days",
+    "missing_day_rule": "Missing days break an event; no imputation into events",
+    "event_merging_splitting": "No manual splitting or merging; adjacent qualifying days form single event",
+    "scheduler_window": "1 onset day + complete heatwave + 1 recovery day",
+    "secondary_window": "120-hour peak-centered ablation (non-primary)",
+    "independence_unit": "Regional episode (expanded station events by 24h on both sides in UTC, connected components)",
+    "pseudo_replication_rule": "Stations, seeds, policies, windows, and simulation cells are not independent heatwaves",
+    "sensitivity_groupings": ["strict unbuffered overlap", "48-hour buffer"]
+  },
+  "frozen_controls_and_workloads": {
+    "matched_control": "1 per station event; same station, same year where possible, equal UTC duration, no heatwave/buffer overlap, no embedded 3-day P90 run, outcome-blind",
+    "ordinary_windows": "Target K=20 (minimum K=10, optional extension K=30); deterministic stratified warm season sample; overlap graph recorded",
+    "seeds": [20261016, 20261017],
+    "workload_multipliers": [1.0, 2.0, 3.0],
+    "workload_rule": "Duration-specific deterministic traces with constant arrival intensity; identical hash reused across event, control, and equal-duration ordinary windows",
+    "service_contract": "Enforce equal demanded and completed service before comparisons"
+  },
+  "frozen_forecast_rule": {
+    "cross_station_transfer": "Prohibited (do not apply SFO scaler/checkpoint/calibration to other stations)",
+    "preferred_rule": "Identical TinyLSTM architecture and hyperparameters; station-specific scalers/checkpoints/calibrations trained strictly on pre-evaluation data",
+    "fallback_rule": "Causal same-hour-previous-day forecast becomes B2 primary; TinyLSTM and HeatGuard become secondary",
+    "neural_net_limit": "No new neural-network architectures",
+    "causality_claim_rule": "No forecast-causality claim without controlled forecast substitution experiment"
+  },
+  "frozen_hypothesis_identifiers": ["G1", "G2", "G3", "G4", "G5"],
+  "experimental_count_formula": {
+    "formula": "base cells per eligible station event = 18K + 180",
+    "k_10_minimum_cells": 360,
+    "k_20_primary_cells": 540,
+    "k_30_extended_cells": 720,
+    "policy_on_overall_total": "Parametric on E eligible events; overall total cannot be invented prior to catalogue freeze"
+  },
+  "security_statement": {
+    "env_file_excluded": true,
+    "credentials_exposed": false,
+    "prior_leaked_credentials_shielded": true,
+    "git_history_unmodified": true,
+    "no_push_or_publish": true,
+    "site_publish_directory_preserved": true
+  },
+  "approval_block": {
+    "status": "approved",
+    "prepared_at_utc": "2026-10-30T08:10:00Z",
+    "prepared_from_commit": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "approved_by": "Siddharth Bhakta",
+    "approved_at_utc": "2026-10-30T08:32:30Z",
+    "notes": "Protocol approved by researcher. Phase 1 freeze complete. Experiments not started."
+  }
+}

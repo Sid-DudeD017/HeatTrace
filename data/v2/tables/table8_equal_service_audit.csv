@@ -1,0 +1,10 @@
+comparison_type,policy,total_pairs,equal_service_pairs,unequal_service_excluded,equal_service_pct
+heatwave_vs_matched_control,capacity_aware,192,176,16,91.67
+heatwave_vs_matched_control,full_thermal_aware,192,35,157,18.23
+heatwave_vs_matched_control,heatguard_calibrated,48,9,39,18.75
+heatwave_vs_matched_control,heatguard_fixed,48,8,40,16.67
+heatwave_vs_matched_control,oracle_full_thermal_aware,48,5,43,10.42
+heatwave_vs_matched_control,static_unaware,192,192,0,100.0
+within_window_core_trio_heatwave,core_deployable_trio,66,7,59,10.61
+within_window_core_trio_matched_control,core_deployable_trio,48,19,29,39.58
+within_window_core_trio_ordinary_window,core_deployable_trio,1230,430,800,34.96

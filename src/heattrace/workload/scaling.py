@@ -18,6 +18,7 @@ def scale_workload(
     multiplier: float,
     *,
     seed: int,
+    expected_window_hours: int | None = None,
 ) -> pd.DataFrame:
     """Scale a canonical workload deterministically by 1.0, 2.0, or 3.0.
 
@@ -108,13 +109,19 @@ def scale_workload(
             f"workload_df unique seed ({df_seed}) does not match function seed argument ({seed_int})"
         )
 
+    # Determine expected window hours (default to 120 or inferred/passed)
+    if expected_window_hours is None:
+        # Check max deadline_offset_hours in input
+        max_deadline = int(workload_df["deadline_offset_hours"].max()) if not workload_df.empty else 120
+        expected_window_hours = max(120, max_deadline)
+
     # Validate against existing canonical workload validator
-    validate_workload_dataframe(workload_df, expected_seed=seed_int)
+    validate_workload_dataframe(workload_df, expected_window_hours=expected_window_hours, expected_seed=seed_int)
 
     # 3. 1x multiplier: frame-equivalent copy, non-mutating
     if matched_multiplier == 1.0:
         res = workload_df.copy(deep=True)
-        validate_workload_dataframe(res, expected_seed=seed_int)
+        validate_workload_dataframe(res, expected_window_hours=expected_window_hours, expected_seed=seed_int)
         return res
 
     # 4. Multipliers 2.0 and 3.0: replicate demand deterministically
@@ -167,6 +174,6 @@ def scale_workload(
         )
 
     # Validate output schema, uniqueness of job_ids, bounds
-    validate_workload_dataframe(scaled_df, expected_seed=seed_int)
+    validate_workload_dataframe(scaled_df, expected_window_hours=expected_window_hours, expected_seed=seed_int)
 
     return scaled_df

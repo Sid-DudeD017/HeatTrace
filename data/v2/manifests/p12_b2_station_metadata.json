@@ -1,0 +1,90 @@
+{
+  "schema_version": "2.0",
+  "generated_at_utc": "2026-10-30T20:54:39.341749+00:00",
+  "stations": [
+    {
+      "station_code": "SFO",
+      "official_station_name": "SAN FRANCISCO INTL AP",
+      "noaa_ghcnh_id": "USW00023234",
+      "latitude": 37.6197,
+      "longitude": -122.3656,
+      "elevation_m": 3.0,
+      "caiso_proxy_hub": "TH_NP15_GEN-APND",
+      "climate_class": "northern coastal",
+      "predeclared_fallback": null,
+      "representativeness_limitation": "Marine-influenced coastal airport; does not reflect inland extreme heat of San Francisco Bay Area interior valleys.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    },
+    {
+      "station_code": "SAC",
+      "official_station_name": "SACRAMENTO AP ASOS",
+      "noaa_ghcnh_id": "USW00023232",
+      "latitude": 38.5067,
+      "longitude": -121.4961,
+      "elevation_m": 5.8,
+      "caiso_proxy_hub": "TH_NP15_GEN-APND",
+      "climate_class": "northern inland",
+      "predeclared_fallback": "USW00093225",
+      "representativeness_limitation": "Urban-adjacent valley airport with localized urban heat island effects; evaluated as primary northern inland station.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    },
+    {
+      "station_code": "SAC_FALLBACK",
+      "official_station_name": "SACRAMENTO METRO AP",
+      "noaa_ghcnh_id": "USW00093225",
+      "latitude": 38.7006,
+      "longitude": -121.5947,
+      "elevation_m": 7.3,
+      "caiso_proxy_hub": "TH_NP15_GEN-APND",
+      "climate_class": "northern inland",
+      "predeclared_fallback": null,
+      "representativeness_limitation": "Predeclared fallback northern inland station located in open agricultural basin north of Sacramento.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    },
+    {
+      "station_code": "FAT",
+      "official_station_name": "FRESNO YOSEMITE INTL",
+      "noaa_ghcnh_id": "USW00093193",
+      "latitude": 36.78,
+      "longitude": -119.7203,
+      "elevation_m": 101.8,
+      "caiso_proxy_hub": "TH_ZP26_GEN-APND",
+      "climate_class": "central valley inland",
+      "predeclared_fallback": null,
+      "representativeness_limitation": "Deep Central Valley continental regime with sustained nighttime heat traps and agricultural inversion layers.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    },
+    {
+      "station_code": "RDD",
+      "official_station_name": "REDDING AP",
+      "noaa_ghcnh_id": "USW00024257",
+      "latitude": 40.5147,
+      "longitude": -122.2978,
+      "elevation_m": 152.7,
+      "caiso_proxy_hub": "TH_NP15_GEN-APND",
+      "climate_class": "far northern inland",
+      "predeclared_fallback": null,
+      "representativeness_limitation": "Topographically confined northern basin subject to extreme diurnal swings, dry f\u00f6hn winds, and severe summer maximums.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    },
+    {
+      "station_code": "LAX",
+      "official_station_name": "LOS ANGELES INTL AP",
+      "noaa_ghcnh_id": "USW00023174",
+      "latitude": 33.9381,
+      "longitude": -118.3867,
+      "elevation_m": 29.6,
+      "caiso_proxy_hub": "TH_SP15_GEN-APND",
+      "climate_class": "southern coastal",
+      "predeclared_fallback": null,
+      "representativeness_limitation": "Pacific shoreline marine layer creates significant microclimate damping relative to the greater Los Angeles Basin.",
+      "market_proxy_limitation": "Regional wholesale trading hub (NP15/ZP26/SP15) represents wholesale energy clearing; does not constitute a retail facility tariff or distribution delivery rate.",
+      "carbon_proxy_limitation": "Shared CISO balancing authority production average; does not represent marginal emissions, avoided emissions, or station-local grid carbon intensity."
+    }
+  ]
+}

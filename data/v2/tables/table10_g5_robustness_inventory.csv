@@ -1,0 +1,11 @@
+variant_id,type,status_in_phase5,classification,substantive_match,notes
+low_thermal_curve,thermal_parameter,EXECUTED,ROBUST_CONFIRMED,True,Executed: all 6 paired episodes show positive violation increase; median=+4.12h vs medium curve +8.08h.
+P85_threshold,event_definition,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+P95_threshold,event_definition,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+four_day_minimum_duration,event_definition,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+high_thermal_curve,thermal_parameter,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+lower_capacity_cap,facility_parameter,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+higher_capacity_cap,facility_parameter,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+0h_buffer_grouping,episode_grouping,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+48h_buffer_grouping,episode_grouping,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.
+alternative_ordinary_window_seeds,sampling_sensitivity,NOT_EXECUTED,NON_ESTIMABLE,False,Not executed in frozen Phase 5 primary results matrix. Requires separate sensitivity execution.

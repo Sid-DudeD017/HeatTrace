@@ -1,0 +1,847 @@
+{
+  "catalogue_summary": {
+    "event_counts_by_station": {
+      "FAT": {
+        "by_year": {
+          "2022": 2,
+          "2023": 0,
+          "2024": 2,
+          "2025": 0,
+          "2026": 1
+        },
+        "eligible_for_joint_eval": 2,
+        "excluded_from_joint_eval": 2,
+        "provisional": 1,
+        "total_events": 5
+      },
+      "LAX": {
+        "by_year": {
+          "2022": 2,
+          "2023": 1,
+          "2024": 1,
+          "2025": 2,
+          "2026": 2
+        },
+        "eligible_for_joint_eval": 4,
+        "excluded_from_joint_eval": 2,
+        "provisional": 2,
+        "total_events": 8
+      },
+      "RDD": {
+        "by_year": {
+          "2022": 1,
+          "2023": 1,
+          "2024": 2,
+          "2025": 0,
+          "2026": 0
+        },
+        "eligible_for_joint_eval": 3,
+        "excluded_from_joint_eval": 1,
+        "provisional": 0,
+        "total_events": 4
+      },
+      "SAC": {
+        "by_year": {
+          "2022": 1,
+          "2023": 0,
+          "2024": 2,
+          "2025": 0,
+          "2026": 0
+        },
+        "eligible_for_joint_eval": 2,
+        "excluded_from_joint_eval": 1,
+        "provisional": 0,
+        "total_events": 3
+      },
+      "SFO": {
+        "by_year": {
+          "2022": 3,
+          "2023": 0,
+          "2024": 1,
+          "2025": 0,
+          "2026": 1
+        },
+        "eligible_for_joint_eval": 1,
+        "excluded_from_joint_eval": 3,
+        "provisional": 1,
+        "total_events": 5
+      }
+    },
+    "exclusions": {
+      "sac_fallback": "Not screened; contingency fallback not activated",
+      "sfo_2025": "Not screened; coverage 97.54% (119/122) < 98% threshold",
+      "year_2022": "Catalogue-visible; excluded from joint grid evaluation due to EIA 2022 missing interval",
+      "year_2026": "Provisional status pending full calendar certification"
+    },
+    "joint_evaluation_eligibility_breakdown": {
+      "eligible": 12,
+      "excluded": 9,
+      "provisional": 4
+    },
+    "sensitivity_episodes_0h_unbuffered": 15,
+    "sensitivity_episodes_48h_buffered": 14,
+    "total_regional_episodes_24h_primary": 15,
+    "total_station_events": 25
+  },
+  "generated_at_utc": "2026-10-31T09:03:28.644146+00:00",
+  "git_dirty": true,
+  "git_head": "ef506a5f2b27d510c68e742381894caa3a988fea",
+  "governing_protocol_config": "configs/p12_b2_protocol.yaml",
+  "governing_protocol_freeze_manifest": "data/v2/manifests/p12_b2_protocol_freeze.json",
+  "governing_protocol_sha256": "38dfdb6eb48a8ce17a8762a3b9ab946d02fd30e25538d926efa3962f77c0579c",
+  "input_guarantees": {
+    "carbon_data_read": false,
+    "policy_outcomes_read": false,
+    "price_data_read": false,
+    "scheduler_data_read": false,
+    "statement": "Event selection and regional episode grouping derived strictly from NOAA weather inputs alone without inspecting price, carbon, scheduler results, or policy outcomes.",
+    "weather_only": true,
+    "zero_imputation": true
+  },
+  "noaa_source_files": {
+    "GHCNh_USW00023174_2022.psv": {
+      "bytes": 10918511,
+      "sha256": "6ce5771cd3ef9e4f11772d9ecbd9d368a8feb64a248695a219f8c15df07a30c1",
+      "station_code": "LAX",
+      "year": 2022
+    },
+    "GHCNh_USW00023174_2023.psv": {
+      "bytes": 11924097,
+      "sha256": "bf86b0c6ce7fd2129bdcd59bdc4d88d3c90ab5aecc8a9a3d1a993fc550161b4b",
+      "station_code": "LAX",
+      "year": 2023
+    },
+    "GHCNh_USW00023174_2024.psv": {
+      "bytes": 12911787,
+      "sha256": "ac055e6893c606dc68c69b3b77d0f676660e485bd70d8b6c8370dc1471fbc190",
+      "station_code": "LAX",
+      "year": 2024
+    },
+    "GHCNh_USW00023174_2025.psv": {
+      "bytes": 12180120,
+      "sha256": "d3a8095133bf5420c71a5737a1358ca3f295191194b4b376fa173fded2838b9d",
+      "station_code": "LAX",
+      "year": 2025
+    },
+    "GHCNh_USW00023174_2026.psv": {
+      "bytes": 29003690,
+      "sha256": "bdace57ef2c9cff74403a12e0b944f345e5bae104097288b99d91ac3c8dc8c31",
+      "station_code": "LAX",
+      "year": 2026
+    },
+    "GHCNh_USW00023232_2022.psv": {
+      "bytes": 9084678,
+      "sha256": "39213e5b3c7b7e44e9de6352aa7360917e837c8f8be478695c1ffcc55a96b01a",
+      "station_code": "SAC",
+      "year": 2022
+    },
+    "GHCNh_USW00023232_2023.psv": {
+      "bytes": 9120798,
+      "sha256": "b183c0e77cccb1e68c32956700dc555e15c5f7219d22c4c1e189afa50dc74e1b",
+      "station_code": "SAC",
+      "year": 2023
+    },
+    "GHCNh_USW00023232_2024.psv": {
+      "bytes": 9451607,
+      "sha256": "7e865fa60030b67fed7903eab298c9a44c04aa7ca335f49ff46eb2440633f36c",
+      "station_code": "SAC",
+      "year": 2024
+    },
+    "GHCNh_USW00023232_2025.psv": {
+      "bytes": 8789620,
+      "sha256": "91304a836d5301af1d6c183093eff16a449a5e6885bcf382a02562744da4cbff",
+      "station_code": "SAC",
+      "year": 2025
+    },
+    "GHCNh_USW00023232_2026.psv": {
+      "bytes": 36402488,
+      "sha256": "749ed48f01a61184811548885672f791303da63011842636ad10127b66b52cc1",
+      "station_code": "SAC",
+      "year": 2026
+    },
+    "GHCNh_USW00023234_2022.psv": {
+      "bytes": 10672117,
+      "sha256": "7b2c0793e99761763ffc3930114a64837b4680301e2a415f2a7940ac0d0a066e",
+      "station_code": "SFO",
+      "year": 2022
+    },
+    "GHCNh_USW00023234_2023.psv": {
+      "bytes": 11186249,
+      "sha256": "0da86c7a7b03424af1542da0eee3fb54d5a9ba4675e8e6dd95df19c9d23c7880",
+      "station_code": "SFO",
+      "year": 2023
+    },
+    "GHCNh_USW00023234_2024.psv": {
+      "bytes": 11970018,
+      "sha256": "5f4b0c8513e5793698886836795aa8b8a7dac5793ef4e4cb6a9368e7c4e7c1f3",
+      "station_code": "SFO",
+      "year": 2024
+    },
+    "GHCNh_USW00023234_2025.psv": {
+      "bytes": 11571236,
+      "sha256": "ea78ad944f2409713f51482c900aad8fdbcb1082777f79d1e8566517f6ddcf65",
+      "station_code": "SFO",
+      "year": 2025
+    },
+    "GHCNh_USW00023234_2026.psv": {
+      "bytes": 35733839,
+      "sha256": "0927e1479bb49007e6d29554638db853e7d18bf3445869e06d58221e3aab339c",
+      "station_code": "SFO",
+      "year": 2026
+    },
+    "GHCNh_USW00024257_2022.psv": {
+      "bytes": 9878978,
+      "sha256": "a20a0a051fdee90059395a962dc8cb95c5c6da003b9e8e3ca378c5e387765a0b",
+      "station_code": "RDD",
+      "year": 2022
+    },
+    "GHCNh_USW00024257_2023.psv": {
+      "bytes": 10895253,
+      "sha256": "5e3ce4ad21a0d5ca132121d6e876104b51e5a04e6f2217cafbd1e5d844a2424f",
+      "station_code": "RDD",
+      "year": 2023
+    },
+    "GHCNh_USW00024257_2024.psv": {
+      "bytes": 11793626,
+      "sha256": "e1696dfd3304c0b1bd62aed6cfb1fdf89ea18bb4516ba44f7152560b39d1835c",
+      "station_code": "RDD",
+      "year": 2024
+    },
+    "GHCNh_USW00024257_2025.psv": {
+      "bytes": 11029111,
+      "sha256": "b29baf4d1e829bec809b621e0b924523d8cf1870d03af19d07c15f3cfcb82fdd",
+      "station_code": "RDD",
+      "year": 2025
+    },
+    "GHCNh_USW00024257_2026.psv": {
+      "bytes": 34089593,
+      "sha256": "271eb7f612b3085695ae6d644b01c498c5e5af56b3c9d5f20ac62cbf1622f9b8",
+      "station_code": "RDD",
+      "year": 2026
+    },
+    "GHCNh_USW00093193_2022.psv": {
+      "bytes": 10151212,
+      "sha256": "6182c245c7ce2d2d0881620ef5bd723cd617dcf86313f06017574da6cbba0b0f",
+      "station_code": "FAT",
+      "year": 2022
+    },
+    "GHCNh_USW00093193_2023.psv": {
+      "bytes": 10224275,
+      "sha256": "afdbf1d597f7e2cfd607cef176f7c9a2ae85578c5662a5d1912d51b837f14632",
+      "station_code": "FAT",
+      "year": 2023
+    },
+    "GHCNh_USW00093193_2024.psv": {
+      "bytes": 11614085,
+      "sha256": "7f5de30aada1f677c33383aa8728821442f726d35fbb2f55c2fd84316d665bbd",
+      "station_code": "FAT",
+      "year": 2024
+    },
+    "GHCNh_USW00093193_2025.psv": {
+      "bytes": 10798301,
+      "sha256": "8daa6b2aeab8fe1fffae8cea2696dfe79d146ec8bc275fe3bbd19fd813a0de85",
+      "station_code": "FAT",
+      "year": 2025
+    },
+    "GHCNh_USW00093193_2026.psv": {
+      "bytes": 35729632,
+      "sha256": "b8402da96b1c0ec1a4e14ca0dd9f7a293f41f13c090325bd6a091871586b3d75",
+      "station_code": "FAT",
+      "year": 2026
+    }
+  },
+  "outputs": {
+    "p12_b2_hourly_phase_labels.parquet": {
+      "bytes": 54468,
+      "path": "data/v2/events/p12_b2_hourly_phase_labels.parquet",
+      "row_count": 4320,
+      "sha256": "6b2c92a7d20ed8a9c553ac128e10e84e5d5393a7e01f4c78d019ba9378480275"
+    },
+    "p12_b2_hourly_phase_labels_preview.csv": {
+      "bytes": 17112,
+      "path": "data/v2/events/p12_b2_hourly_phase_labels_preview.csv",
+      "row_count": 100,
+      "sha256": "ae1242510faced474365079f7698fddf6c001bed4dc559208185d78f9dc9bf62"
+    },
+    "p12_b2_regional_episodes.csv": {
+      "bytes": 3165,
+      "path": "data/v2/events/p12_b2_regional_episodes.csv",
+      "row_count": 15,
+      "sha256": "af9a44e3d13036732d5daa6ef37f2d0037c35694611bbcb50b3c7660c55b680d"
+    },
+    "p12_b2_station_events.csv": {
+      "bytes": 12497,
+      "path": "data/v2/events/p12_b2_station_events.csv",
+      "row_count": 25,
+      "sha256": "3a44a4b13d28b9f160133ecebf822d7798579c6c3983471ab243dea2e909f215"
+    },
+    "p12_b2_station_year_screening.csv": {
+      "bytes": 3549,
+      "path": "data/v2/events/p12_b2_station_year_screening.csv",
+      "row_count": 30,
+      "sha256": "6e5da5567bf48806e4c609f302d4162042f20217d10deebd80644e61e564ed96"
+    },
+    "p12_b2_thresholds.csv": {
+      "bytes": 1098,
+      "path": "data/v2/events/p12_b2_thresholds.csv",
+      "row_count": 5,
+      "sha256": "14647f06ec16b45f9daa729cea22a66e12ebcc89c20e30985353d992e7392b9f"
+    }
+  },
+  "p11_baseline_hashes": {
+    "configs/p6_validity.yaml": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+    "data/archive/heattrace_v1_d5b3c86/archive_manifest.json": "2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4",
+    "data/results/p11_reproduction_comparison.json": "cf14e1bfc3f8031612229f989d6dcb784771f1f7112bda809871ac782bc9f49e",
+    "docs/p6_frozen_protocol.md": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede"
+  },
+  "phase": "Track B2 Phase 3",
+  "phase2_source_coverage_sha256": "1dd4b29e636776fde79ee3801d59fa11837f28da94611134f7969c69498b8873",
+  "phase_description": "Weather-only station event and regional-episode catalogue",
+  "regional_episodes_inventory": [
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "EXCLUDED_FROM_JOINT_EVALUATION",
+      "event_ids": "B2_HW_SFO_20220620",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20220620_01",
+      "represented_years": "2022",
+      "station_codes": "SFO"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "EXCLUDED_FROM_JOINT_EVALUATION",
+      "event_ids": "B2_HW_FAT_20220625",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20220625_02",
+      "represented_years": "2022",
+      "station_codes": "FAT"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "EXCLUDED_FROM_JOINT_EVALUATION",
+      "event_ids": "B2_HW_LAX_20220808",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20220808_03",
+      "represented_years": "2022",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 5,
+      "eligibility_summary": "EXCLUDED_FROM_JOINT_EVALUATION",
+      "event_ids": "B2_HW_LAX_20220831;B2_HW_FAT_20220904;B2_HW_RDD_20220904;B2_HW_SAC_20220904;B2_HW_SFO_20220904",
+      "member_event_count": 5,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "represented_years": "2022",
+      "station_codes": "FAT;LAX;RDD;SAC;SFO"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "EXCLUDED_FROM_JOINT_EVALUATION",
+      "event_ids": "B2_HW_SFO_20220922",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20220922_05",
+      "represented_years": "2022",
+      "station_codes": "SFO"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_RDD_20230714",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20230714_06",
+      "represented_years": "2023",
+      "station_codes": "RDD"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_LAX_20230908",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20230908_07",
+      "represented_years": "2023",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 4,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_SAC_20240701;B2_HW_RDD_20240702;B2_HW_SFO_20240702;B2_HW_FAT_20240703;B2_HW_SAC_20240710",
+      "member_event_count": 5,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "represented_years": "2024",
+      "station_codes": "FAT;RDD;SAC;SFO"
+    },
+    {
+      "distinct_station_count": 2,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_RDD_20240719;B2_HW_FAT_20240722",
+      "member_event_count": 2,
+      "regional_episode_id": "B2_EP_20240719_09",
+      "represented_years": "2024",
+      "station_codes": "FAT;RDD"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_LAX_20240905",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20240905_10",
+      "represented_years": "2024",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_LAX_20250821",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20250821_11",
+      "represented_years": "2025",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "ELIGIBLE",
+      "event_ids": "B2_HW_LAX_20250828",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20250828_12",
+      "represented_years": "2025",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "PROVISIONAL",
+      "event_ids": "B2_HW_FAT_20260802",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20260802_13",
+      "represented_years": "2026",
+      "station_codes": "FAT"
+    },
+    {
+      "distinct_station_count": 1,
+      "eligibility_summary": "PROVISIONAL",
+      "event_ids": "B2_HW_LAX_20260821",
+      "member_event_count": 1,
+      "regional_episode_id": "B2_EP_20260821_14",
+      "represented_years": "2026",
+      "station_codes": "LAX"
+    },
+    {
+      "distinct_station_count": 2,
+      "eligibility_summary": "PROVISIONAL",
+      "event_ids": "B2_HW_LAX_20260907;B2_HW_SFO_20260907",
+      "member_event_count": 2,
+      "regional_episode_id": "B2_EP_20260907_15",
+      "represented_years": "2026",
+      "station_codes": "LAX;SFO"
+    }
+  ],
+  "schema_version": "2.0",
+  "station_events_inventory": [
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_SFO_20220620",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-06-22",
+      "local_start_date": "2022-06-20",
+      "peak_temperature_c": 36.7,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20220620_01",
+      "station_code": "SFO",
+      "year": 2022
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_FAT_20220625",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-06-27",
+      "local_start_date": "2022-06-25",
+      "peak_temperature_c": 41.7,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20220625_02",
+      "station_code": "FAT",
+      "year": 2022
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_LAX_20220808",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-08-10",
+      "local_start_date": "2022-08-08",
+      "peak_temperature_c": 28.9,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20220808_03",
+      "station_code": "LAX",
+      "year": 2022
+    },
+    {
+      "duration_hours": 312,
+      "event_id": "B2_HW_LAX_20220831",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-12",
+      "local_start_date": "2022-08-31",
+      "peak_temperature_c": 38.3,
+      "qualifying_days": 13,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "station_code": "LAX",
+      "year": 2022
+    },
+    {
+      "duration_hours": 96,
+      "event_id": "B2_HW_FAT_20220904",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-07",
+      "local_start_date": "2022-09-04",
+      "peak_temperature_c": 45.6,
+      "qualifying_days": 4,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "station_code": "FAT",
+      "year": 2022
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_RDD_20220904",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-06",
+      "local_start_date": "2022-09-04",
+      "peak_temperature_c": 46.1,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "station_code": "RDD",
+      "year": 2022
+    },
+    {
+      "duration_hours": 144,
+      "event_id": "B2_HW_SAC_20220904",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-09",
+      "local_start_date": "2022-09-04",
+      "peak_temperature_c": 45.6,
+      "qualifying_days": 6,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "station_code": "SAC",
+      "year": 2022
+    },
+    {
+      "duration_hours": 120,
+      "event_id": "B2_HW_SFO_20220904",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-08",
+      "local_start_date": "2022-09-04",
+      "peak_temperature_c": 35.6,
+      "qualifying_days": 5,
+      "regional_episode_id": "B2_EP_20220831_04",
+      "station_code": "SFO",
+      "year": 2022
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_SFO_20220922",
+      "joint_evaluation_eligibility": "EXCLUDED",
+      "local_end_date": "2022-09-24",
+      "local_start_date": "2022-09-22",
+      "peak_temperature_c": 28.3,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20220922_05",
+      "station_code": "SFO",
+      "year": 2022
+    },
+    {
+      "duration_hours": 96,
+      "event_id": "B2_HW_RDD_20230714",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2023-07-17",
+      "local_start_date": "2023-07-14",
+      "peak_temperature_c": 43.9,
+      "qualifying_days": 4,
+      "regional_episode_id": "B2_EP_20230714_06",
+      "station_code": "RDD",
+      "year": 2023
+    },
+    {
+      "duration_hours": 96,
+      "event_id": "B2_HW_LAX_20230908",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2023-09-11",
+      "local_start_date": "2023-09-08",
+      "peak_temperature_c": 30.0,
+      "qualifying_days": 4,
+      "regional_episode_id": "B2_EP_20230908_07",
+      "station_code": "LAX",
+      "year": 2023
+    },
+    {
+      "duration_hours": 144,
+      "event_id": "B2_HW_SAC_20240701",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-06",
+      "local_start_date": "2024-07-01",
+      "peak_temperature_c": 42.8,
+      "qualifying_days": 6,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "station_code": "SAC",
+      "year": 2024
+    },
+    {
+      "duration_hours": 264,
+      "event_id": "B2_HW_RDD_20240702",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-12",
+      "local_start_date": "2024-07-02",
+      "peak_temperature_c": 48.3,
+      "qualifying_days": 11,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "station_code": "RDD",
+      "year": 2024
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_SFO_20240702",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-04",
+      "local_start_date": "2024-07-02",
+      "peak_temperature_c": 31.1,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "station_code": "SFO",
+      "year": 2024
+    },
+    {
+      "duration_hours": 264,
+      "event_id": "B2_HW_FAT_20240703",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-13",
+      "local_start_date": "2024-07-03",
+      "peak_temperature_c": 45.0,
+      "qualifying_days": 11,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "station_code": "FAT",
+      "year": 2024
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_SAC_20240710",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-12",
+      "local_start_date": "2024-07-10",
+      "peak_temperature_c": 43.3,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20240701_08",
+      "station_code": "SAC",
+      "year": 2024
+    },
+    {
+      "duration_hours": 144,
+      "event_id": "B2_HW_RDD_20240719",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-24",
+      "local_start_date": "2024-07-19",
+      "peak_temperature_c": 43.3,
+      "qualifying_days": 6,
+      "regional_episode_id": "B2_EP_20240719_09",
+      "station_code": "RDD",
+      "year": 2024
+    },
+    {
+      "duration_hours": 120,
+      "event_id": "B2_HW_FAT_20240722",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-07-26",
+      "local_start_date": "2024-07-22",
+      "peak_temperature_c": 43.3,
+      "qualifying_days": 5,
+      "regional_episode_id": "B2_EP_20240719_09",
+      "station_code": "FAT",
+      "year": 2024
+    },
+    {
+      "duration_hours": 120,
+      "event_id": "B2_HW_LAX_20240905",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2024-09-09",
+      "local_start_date": "2024-09-05",
+      "peak_temperature_c": 38.3,
+      "qualifying_days": 5,
+      "regional_episode_id": "B2_EP_20240905_10",
+      "station_code": "LAX",
+      "year": 2024
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_LAX_20250821",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2025-08-23",
+      "local_start_date": "2025-08-21",
+      "peak_temperature_c": 30.0,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20250821_11",
+      "station_code": "LAX",
+      "year": 2025
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_LAX_20250828",
+      "joint_evaluation_eligibility": "ELIGIBLE",
+      "local_end_date": "2025-08-30",
+      "local_start_date": "2025-08-28",
+      "peak_temperature_c": 28.3,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20250828_12",
+      "station_code": "LAX",
+      "year": 2025
+    },
+    {
+      "duration_hours": 72,
+      "event_id": "B2_HW_FAT_20260802",
+      "joint_evaluation_eligibility": "PROVISIONAL",
+      "local_end_date": "2026-08-04",
+      "local_start_date": "2026-08-02",
+      "peak_temperature_c": 41.7,
+      "qualifying_days": 3,
+      "regional_episode_id": "B2_EP_20260802_13",
+      "station_code": "FAT",
+      "year": 2026
+    },
+    {
+      "duration_hours": 240,
+      "event_id": "B2_HW_LAX_20260821",
+      "joint_evaluation_eligibility": "PROVISIONAL",
+      "local_end_date": "2026-08-30",
+      "local_start_date": "2026-08-21",
+      "peak_temperature_c": 31.1,
+      "qualifying_days": 10,
+      "regional_episode_id": "B2_EP_20260821_14",
+      "station_code": "LAX",
+      "year": 2026
+    },
+    {
+      "duration_hours": 144,
+      "event_id": "B2_HW_LAX_20260907",
+      "joint_evaluation_eligibility": "PROVISIONAL",
+      "local_end_date": "2026-09-12",
+      "local_start_date": "2026-09-07",
+      "peak_temperature_c": 36.1,
+      "qualifying_days": 6,
+      "regional_episode_id": "B2_EP_20260907_15",
+      "station_code": "LAX",
+      "year": 2026
+    },
+    {
+      "duration_hours": 96,
+      "event_id": "B2_HW_SFO_20260907",
+      "joint_evaluation_eligibility": "PROVISIONAL",
+      "local_end_date": "2026-09-10",
+      "local_start_date": "2026-09-07",
+      "peak_temperature_c": 33.9,
+      "qualifying_days": 4,
+      "regional_episode_id": "B2_EP_20260907_15",
+      "station_code": "SFO",
+      "year": 2026
+    }
+  ],
+  "station_scope": {
+    "fallback_activation_status": "INACTIVE_AUDIT_ONLY",
+    "inactive_fallback": {
+      "caiso_proxy_hub": "TH_NP15_GEN-APND",
+      "climate_class": "northern inland fallback",
+      "noaa_ghcnh_id": "USW00093225",
+      "official_station_name": "SACRAMENTO METRO AP",
+      "reason": "Primary SAC passed Phase 2 gate; fallback activation trigger not met",
+      "station_code": "SAC_FALLBACK",
+      "status": "inactive_audit_only"
+    },
+    "primary_stations": [
+      {
+        "caiso_proxy_hub": "TH_NP15_GEN-APND",
+        "climate_class": "northern coastal",
+        "noaa_ghcnh_id": "USW00023234",
+        "official_station_name": "SAN FRANCISCO INTL AP",
+        "station_code": "SFO"
+      },
+      {
+        "caiso_proxy_hub": "TH_NP15_GEN-APND",
+        "climate_class": "northern inland",
+        "noaa_ghcnh_id": "USW00023232",
+        "official_station_name": "SACRAMENTO AP ASOS",
+        "station_code": "SAC"
+      },
+      {
+        "caiso_proxy_hub": "TH_ZP26_GEN-APND",
+        "climate_class": "central inland",
+        "noaa_ghcnh_id": "USW00093193",
+        "official_station_name": "FRESNO YOSEMITE INTL",
+        "station_code": "FAT"
+      },
+      {
+        "caiso_proxy_hub": "TH_NP15_GEN-APND",
+        "climate_class": "far-northern inland",
+        "noaa_ghcnh_id": "USW00024257",
+        "official_station_name": "REDDING AP",
+        "station_code": "RDD"
+      },
+      {
+        "caiso_proxy_hub": "TH_SP15_GEN-APND",
+        "climate_class": "southern coastal",
+        "noaa_ghcnh_id": "USW00023174",
+        "official_station_name": "LOS ANGELES INTL AP",
+        "station_code": "LAX"
+      }
+    ],
+    "primary_stations_count": 5
+  },
+  "threshold_baseline": {
+    "baseline_months": [
+      6,
+      7,
+      8,
+      9
+    ],
+    "baseline_years": [
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "percentile": 90.0,
+    "percentile_interpolation": "linear",
+    "station_thresholds": {
+      "FAT": {
+        "expected_baseline_days": 488,
+        "missing_baseline_days": 0,
+        "missing_dates": [],
+        "p90_c": 40.6,
+        "valid_baseline_days": 488
+      },
+      "LAX": {
+        "expected_baseline_days": 488,
+        "missing_baseline_days": 0,
+        "missing_dates": [],
+        "p90_c": 26.7,
+        "valid_baseline_days": 488
+      },
+      "RDD": {
+        "expected_baseline_days": 488,
+        "missing_baseline_days": 0,
+        "missing_dates": [],
+        "p90_c": 41.7,
+        "valid_baseline_days": 488
+      },
+      "SAC": {
+        "expected_baseline_days": 488,
+        "missing_baseline_days": 0,
+        "missing_dates": [],
+        "p90_c": 38.3,
+        "valid_baseline_days": 488
+      },
+      "SFO": {
+        "expected_baseline_days": 488,
+        "missing_baseline_days": 3,
+        "missing_dates": [
+          "2025-08-30",
+          "2025-08-31",
+          "2025-09-01"
+        ],
+        "p90_c": 25.6,
+        "valid_baseline_days": 485
+      }
+    }
+  }
+}

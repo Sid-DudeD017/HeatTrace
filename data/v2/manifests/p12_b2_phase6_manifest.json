@@ -1,0 +1,104 @@
+{
+  "schema_version": "2.0",
+  "phase": "p12_b2_phase6",
+  "phase_title": "Track B2 Phase 6 — G1–G5 Retrospective Operational Analysis",
+  "analysis_status": {
+    "status": "RETROSPECTIVE_OPERATIONAL_ANALYSIS",
+    "confirmatory_status": "EXPLORATORY_RETROSPECTIVE",
+    "methodological_boundary": "High-level G1–G5 hypotheses and general criteria were frozen in Phase 1 (configs/p12_b2_protocol.yaml, docs/p12_b2_frozen_protocol_draft.md). However, exact operational estimands, deterministic tested feasibility boundaries, common-support equal-service trio criteria, and implementation code were finalized after Phase 5 execution outcomes were inspected. Therefore, exact Phase 6 calculations are retrospective/exploratory and cannot be designated as preregistered confirmatory analyses. This limitation cannot be repaired retroactively using the same data; confirmatory validation requires untouched future events, a held-out dataset, or a separately frozen replication."
+  },
+  "timestamp_utc": "2026-11-01T00:15:00Z",
+  "git_provenance": {
+    "commit_hash": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "branch": "main",
+    "dirty": true
+  },
+  "analysis_spec": {
+    "path": "data/v2/manifests/p12_b2_phase6_analysis_spec.json",
+    "sha256": "bb7f52edb13ea9852ac55cbac42c523154486752d079ef042897e64a8c1ff85b"
+  },
+  "verified_canonical_inputs": {
+    "data/v2/results/p12_b2_runs.parquet": "761a18b895b743dea303e5169b387f107aba97e0ccfb48458d0be01f6b758dba",
+    "data/v2/results/p12_b2_execution.jsonl": "d746f4a0d1f76e7b3813d0161ac78b33163175aa2ae63203d59be854e7695747",
+    "data/v2/manifests/p12_b2_execution_manifest.json": "36f1f88633142800a91ae3f0301777bb6a8f8db61c833a9fbeb8bec463e0fd79",
+    "data/v2/benchmarks/p12_b2_matrix_cells.csv": "d687b2b5eb791ecf0ec21b13c891da993d1cab86c1cbdbd23b7aca91d6c31487",
+    "data/v2/benchmarks/p12_b2_controls.csv": "d9859542adbdfd480e1b798a5e1d4db0a169e728c1f20f3f91c4cdeb06629682",
+    "data/v2/benchmarks/p12_b2_ordinary_windows.csv": "fa4c9af50b1b47ee6aa26f6a17e91d3ee3dc744d35b1e779235a28a368329102",
+    "data/v2/benchmarks/p12_b2_window_overlap_graph.csv": "eef3488d3bdfc50a44ebdf9878d252eb366d8a71738d2f60c3530719c97cf890",
+    "data/v2/events/p12_b2_station_events.csv": "3a44a4b13d28b9f160133ecebf822d7798579c6c3983471ab243dea2e909f215",
+    "data/v2/events/p12_b2_regional_episodes.csv": "af9a44e3d13036732d5daa6ef37f2d0037c35694611bbcb50b3c7660c55b680d",
+    "configs/p12_b2_protocol.yaml": "38dfdb6eb48a8ce17a8762a3b9ab946d02fd30e25538d926efa3962f77c0579c",
+    "docs/p12_b2_frozen_protocol_draft.md": "6be4119072e5756eade2acc6d4055e629bc8bb3c8eacc41b8303dde99c3c2954",
+    "src/heattrace/evaluation/p6_validity.py": "0ac48866fd889b19074d2f47863635e2e456c2981fcc04876e5d9946daa8877c"
+  },
+  "analysis_software": {
+    "src/heattrace/evaluation/p12_b2_validity.py": "fa0dd6c9100e31c3e83a26958038b86b45ff49d61c4b87b91ef95028fbea2020",
+    "src/heattrace/evaluation/p12_b2_reporting.py": "b7f419dc8222d96b955a5f8c088a301911c310b9b10c18173c5c04a725f19717",
+    "tests/test_p12_b2_phase6_analysis.py": "c9d123daa836a5f29b33cbf0ef2133bcce64b5d09f7395ad2af22ea7a47951b5"
+  },
+  "results_artifacts": {
+    "data/v2/results/p12_b2_event_metrics.csv": {
+      "rows": 48,
+      "size_bytes": 10870,
+      "sha256": "a91300d679a79168e318badbe136592f04c104ae2591ad2e1ddfd5a1bcfd875f"
+    },
+    "data/v2/results/p12_b2_episode_metrics.csv": {
+      "rows": 36,
+      "size_bytes": 6733,
+      "sha256": "7af6e5c74a9ca42032ff1f73da09b1d9e1747e9705e71b83acd5273c528711c1"
+    },
+    "data/v2/results/p12_b2_ordinary_distributions.csv": {
+      "rows": 25,
+      "size_bytes": 4663,
+      "sha256": "8499c3fea60db754f2f5c29dedfc5e63df39303ecb19e1224cfd7cd4ed60cec9"
+    },
+    "data/v2/results/p12_b2_g1_g5_assessment.csv": {
+      "rows": 5,
+      "size_bytes": 2949,
+      "sha256": "a10edd864a4157331cc9a83364292215711c6dcda7c129e1fc5d319ddcaac96b"
+    },
+    "data/v2/results/p12_b2_missingness_audit.csv": {
+      "rows": 29,
+      "size_bytes": 1776,
+      "sha256": "09d33f857624e8c7b376354a52daed4ece7b414e7261cade4928a2b6163b142e"
+    },
+    "data/v2/results/p12_b2_equal_service_audit.csv": {
+      "rows": 9,
+      "size_bytes": 694,
+      "sha256": "1e848f4b6818f26afce5b7e07ee5f405f8b72669b9d246128593d952b45341e5"
+    }
+  },
+  "tables": {
+    "data/v2/tables/table1_missingness_flow.csv": "09d33f857624e8c7b376354a52daed4ece7b414e7261cade4928a2b6163b142e",
+    "data/v2/tables/table2_nested_events_episodes.csv": "a91300d679a79168e318badbe136592f04c104ae2591ad2e1ddfd5a1bcfd875f",
+    "data/v2/tables/table3_episode_level_effects.csv": "7af6e5c74a9ca42032ff1f73da09b1d9e1747e9705e71b83acd5273c528711c1",
+    "data/v2/tables/table8_equal_service_audit.csv": "1e848f4b6818f26afce5b7e07ee5f405f8b72669b9d246128593d952b45341e5",
+    "data/v2/tables/table9_g4_continuity_gate.csv": "086e21a8c4ae867d41952e84152c69aee905bab448cbb40d3fb80dff3014b394",
+    "data/v2/tables/table10_g5_robustness_inventory.csv": "c90f0d0cce812aa83efdd6bd2089fab96bd18511a6b3b97aea8b686ee48ceda5",
+    "data/v2/tables/table11_final_g1_g5_decision.csv": "a10edd864a4157331cc9a83364292215711c6dcda7c129e1fc5d319ddcaac96b"
+  },
+  "figures": {
+    "data/v2/figures/fig4_g1_temporal_replication.png": "8be438ad98841595d23180713ae5b13631ff4f2154320a60eeda688c7511bf36",
+    "data/v2/figures/fig5_g2_geographic_heterogeneity.png": "8bf1e43b4fa1a111ec1d1b6fe2356866e8e22cffe9fcff9ea22f0456b88ffca9",
+    "data/v2/figures/fig6_g3_heatwave_vs_ordinary_p95.png": "902e8da563e7efdb3cbd7b48b9d5654aac513d0d49c7519209b612b08ed6d128",
+    "data/v2/figures/fig7_g3_ordinary_k_and_overlap.png": "8303cb730d6a4711cf2546eaaef0ec3cd41c3a7e0d12dbe92140de177707ae6b"
+  },
+  "documentation_artifacts": {
+    "docs/p12_b2_phase6_completion.md": {
+      "size_bytes": 10142,
+      "sha256": "a0b4b82e6d89c5a2766ef55be9b75144e6019be2369efb771806318f1f2a1c90"
+    }
+  },
+  "summary_decisions": {
+    "G1": {
+      "full_claim_classification": "LIMITED",
+      "narrow_claim_classification": "SUPPORTED",
+      "narrow_claim": "Static-policy power-cap vulnerability replicated across the available warm-season years."
+    },
+    "G2": "DESCRIPTIVE_ONLY",
+    "G3": "WITHIN_ORDINARY_DISTRIBUTION",
+    "G4": "NON_ESTIMABLE",
+    "G5": "PARTIALLY_ROBUST — LOW THERMAL CURVE ONLY"
+  },
+  "verdict": "PHASE 6 PROVENANCE FINALIZED — READY FOR PHASE 7"
+}

@@ -9,6 +9,8 @@ __pycache__/
 data/raw/
 data/interim/
 data/processed/
+data/v2/raw/
+data/v2/processed/
 data/events/*
 !data/events/heatwave_events_v0.parquet
 !data/events/control_catalogue_v0.parquet

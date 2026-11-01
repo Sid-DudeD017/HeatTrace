@@ -1,0 +1,26 @@
+event_id,regional_episode_id,source_year,heatwave_common_support_count,heatwave_conditions,total_frozen_ordinary_windows,excluded_ordinary_windows,valid_ordinary_k,effective_overlap_components,heatwave_separation,ordinary_p95,exceeds_p95,classification,denominator_category,notes
+B2_HW_FAT_20220625,B2_EP_20220625_02,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_FAT_20220904,B2_EP_20220831_04,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_FAT_20240703,B2_EP_20240701_08,2024,0,[],20,20,0,3,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_FAT_20240722,B2_EP_20240719_09,2024,0,[],20,20,0,4,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_FAT_20260802,B2_EP_20260802_13,2026,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_LAX_20220808,B2_EP_20220808_03,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_LAX_20220831,B2_EP_20220831_04,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_LAX_20230908,B2_EP_20230908_07,2023,2,"[(20261017, 1.0), (20261017, 2.0)]",20,5,15,16,0.0,0.45,False,WITHIN_ORDINARY_DISTRIBUTION,estimable,"Common support K=15, HW=0.00, OW_P95=0.45"
+B2_HW_LAX_20240905,B2_EP_20240905_10,2024,1,"[(20261017, 1.0)]",20,0,20,4,2.0,0.0,True,HEATWAVE_EXCEEDS_P95,estimable,"Common support K=20, HW=2.00, OW_P95=0.00"
+B2_HW_LAX_20250821,B2_EP_20250821_11,2025,2,"[(20261016, 1.0), (20261017, 1.0)]",20,4,16,20,0.0,0.0,False,WITHIN_ORDINARY_DISTRIBUTION,estimable,"Common support K=16, HW=0.00, OW_P95=0.00"
+B2_HW_LAX_20250828,B2_EP_20250828_12,2025,0,[],20,20,0,20,,,False,NON_ESTIMABLE,present_execution_failed,Heatwave execution failed in Phase 5 matrix (weather incomplete)
+B2_HW_LAX_20260821,B2_EP_20260821_14,2026,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_LAX_20260907,B2_EP_20260907_15,2026,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_RDD_20220904,B2_EP_20220831_04,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_RDD_20230714,B2_EP_20230714_06,2023,0,[],20,20,0,16,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_RDD_20240702,B2_EP_20240701_08,2024,0,[],20,20,0,3,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_RDD_20240719,B2_EP_20240719_09,2024,0,[],20,20,0,3,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_SAC_20220904,B2_EP_20220831_04,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_SAC_20240701,B2_EP_20240701_08,2024,0,[],20,20,0,3,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_SAC_20240710,B2_EP_20240701_08,2024,0,[],20,20,0,14,,,False,NON_ESTIMABLE,present_no_equal_service_support,No valid equal-service heatwave trios (thermal throttling prevented equal completion)
+B2_HW_SFO_20220620,B2_EP_20220620_01,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_SFO_20220904,B2_EP_20220831_04,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_SFO_20220922,B2_EP_20220922_05,2022,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix
+B2_HW_SFO_20240702,B2_EP_20240701_08,2024,2,"[(20261016, 1.0), (20261017, 1.0)]",20,2,18,14,0.0,0.075,False,WITHIN_ORDINARY_DISTRIBUTION,estimable,"Common support K=18, HW=0.00, OW_P95=0.07"
+B2_HW_SFO_20260907,B2_EP_20260907_15,2026,0,[],0,0,0,0,,,False,NON_ESTIMABLE,absent_from_execution_matrix,Station event was not part of Phase 5 execution matrix

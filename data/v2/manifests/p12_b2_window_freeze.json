@@ -1,0 +1,192 @@
+{
+  "artifacts": {
+    "control_candidates": {
+      "bytes": 290078,
+      "path": "data/v2/benchmarks/p12_b2_control_candidates.csv",
+      "row_count": 1388,
+      "sha256": "4c3c3acce3c0f4cc0d827e8782840c0e9834a733a4d8bc1febe204c0c2230fae"
+    },
+    "controls": {
+      "bytes": 4476,
+      "path": "data/v2/benchmarks/p12_b2_controls.csv",
+      "row_count": 12,
+      "sha256": "d9859542adbdfd480e1b798a5e1d4db0a169e728c1f20f3f91c4cdeb06629682"
+    },
+    "matrix_cells": {
+      "bytes": 2470674,
+      "path": "data/v2/benchmarks/p12_b2_matrix_cells.csv",
+      "row_count": 6480,
+      "sha256": "d687b2b5eb791ecf0ec21b13c891da993d1cab86c1cbdbd23b7aca91d6c31487"
+    },
+    "matrix_dry_run_manifest": {
+      "bytes": 24682,
+      "path": "data/v2/manifests/p12_b2_matrix_dry_run.json",
+      "sha256": "8ecdc46c39d17480c6c646c4290a04ce3bf639aa998d46dd8a080f9385bdb5fe"
+    },
+    "ordinary_candidates": {
+      "bytes": 295145,
+      "path": "data/v2/benchmarks/p12_b2_ordinary_window_candidates.csv",
+      "row_count": 1388,
+      "sha256": "b923660a3805567708256699c5acef1a259e267355c8b76603aa658ca5b4967c"
+    },
+    "ordinary_windows": {
+      "bytes": 67250,
+      "path": "data/v2/benchmarks/p12_b2_ordinary_windows.csv",
+      "row_count": 240,
+      "sha256": "fa4c9af50b1b47ee6aa26f6a17e91d3ee3dc744d35b1e779235a28a368329102"
+    },
+    "window_overlap_graph": {
+      "bytes": 20745,
+      "path": "data/v2/benchmarks/p12_b2_window_overlap_graph.csv",
+      "row_count": 196,
+      "sha256": "eef3488d3bdfc50a44ebdf9878d252eb366d8a71738d2f60c3530719c97cf890"
+    }
+  },
+  "authoritative_phase3_event_freeze_sha256": "972675ef164cd29628eebdc4e509dce352b62a70a2e7214c9e9083f8d33d91c5",
+  "candidate_pool_summary": {
+    "eligible_control_candidates": 916,
+    "eligible_ordinary_candidates": 916,
+    "rejections_by_reason": {
+      "embedded_three_day_p90_run": 162,
+      "protected_heatwave_overlap": 472,
+      "protected_regional_episode_overlap": 472
+    },
+    "selected_controls_count": 12,
+    "selected_ordinary_windows_count": 240,
+    "total_control_candidates": 1388,
+    "total_ordinary_candidates": 1388
+  },
+  "generated_at_utc": "2026-10-31T13:55:29.489748+00:00",
+  "git_provenance": {
+    "head_commit": "ef506a5f2b27d510c68e742381894caa3a988fea",
+    "is_dirty": true,
+    "lookup_status": "SUCCESS"
+  },
+  "manifest_version": "2.0",
+  "matrix_dry_run_summary": {
+    "deployable_cells": 6336,
+    "non_deployable_cells": 144,
+    "total_cells": 6480,
+    "unique_run_ids": 6480
+  },
+  "ordinary_window_overlap_graph_summary": {
+    "B2_HW_FAT_20240703": {
+      "effective_distinct_components": 3,
+      "overlapping_edges_count": 51,
+      "selected_count_K": 20,
+      "station_code": "FAT"
+    },
+    "B2_HW_FAT_20240722": {
+      "effective_distinct_components": 4,
+      "overlapping_edges_count": 16,
+      "selected_count_K": 20,
+      "station_code": "FAT"
+    },
+    "B2_HW_LAX_20230908": {
+      "effective_distinct_components": 16,
+      "overlapping_edges_count": 4,
+      "selected_count_K": 20,
+      "station_code": "LAX"
+    },
+    "B2_HW_LAX_20240905": {
+      "effective_distinct_components": 4,
+      "overlapping_edges_count": 16,
+      "selected_count_K": 20,
+      "station_code": "LAX"
+    },
+    "B2_HW_LAX_20250821": {
+      "effective_distinct_components": 20,
+      "overlapping_edges_count": 0,
+      "selected_count_K": 20,
+      "station_code": "LAX"
+    },
+    "B2_HW_LAX_20250828": {
+      "effective_distinct_components": 20,
+      "overlapping_edges_count": 0,
+      "selected_count_K": 20,
+      "station_code": "LAX"
+    },
+    "B2_HW_RDD_20230714": {
+      "effective_distinct_components": 16,
+      "overlapping_edges_count": 4,
+      "selected_count_K": 20,
+      "station_code": "RDD"
+    },
+    "B2_HW_RDD_20240702": {
+      "effective_distinct_components": 3,
+      "overlapping_edges_count": 51,
+      "selected_count_K": 20,
+      "station_code": "RDD"
+    },
+    "B2_HW_RDD_20240719": {
+      "effective_distinct_components": 3,
+      "overlapping_edges_count": 21,
+      "selected_count_K": 20,
+      "station_code": "RDD"
+    },
+    "B2_HW_SAC_20240701": {
+      "effective_distinct_components": 3,
+      "overlapping_edges_count": 21,
+      "selected_count_K": 20,
+      "station_code": "SAC"
+    },
+    "B2_HW_SAC_20240710": {
+      "effective_distinct_components": 14,
+      "overlapping_edges_count": 6,
+      "selected_count_K": 20,
+      "station_code": "SAC"
+    },
+    "B2_HW_SFO_20240702": {
+      "effective_distinct_components": 14,
+      "overlapping_edges_count": 6,
+      "selected_count_K": 20,
+      "station_code": "SFO"
+    }
+  },
+  "outcome_blind_declaration": {
+    "statement": "Controls and ordinary windows were selected strictly outcome-blind without inspecting scheduler outputs, policy rankings, LMP prices, EIA carbon intensities, or facility feasibility outcomes.",
+    "verified": true
+  },
+  "phase": "B2_Phase_4_Freeze",
+  "protected_p11_verification": {
+    "archive_manifest": {
+      "path": "data/archive/heattrace_v1_d5b3c86/archive_manifest.json",
+      "sha256": "2038706b9a0b24b1f874c58eb9b788635de61c8796e0200969229a99463927a4",
+      "status": "VERIFIED_MATCH"
+    },
+    "p6_frozen_protocol": {
+      "path": "docs/p6_frozen_protocol.md",
+      "sha256": "78cf42a1d0c6849628280b43db7b60dfa6bc3b227565bd84d0215e9e7cb25ede",
+      "status": "VERIFIED_MATCH"
+    },
+    "p6_validity_yaml": {
+      "path": "configs/p6_validity.yaml",
+      "sha256": "46f132487b66c35e31f91ffa4f0e30db4825b0641ed10253283038e4be62e2f1",
+      "status": "VERIFIED_MATCH"
+    },
+    "reproduction_comparison": {
+      "path": "data/results/p11_reproduction_comparison.json",
+      "sha256": "cf14e1bfc3f8031612229f989d6dcb784771f1f7112bda809871ac782bc9f49e",
+      "status": "VERIFIED_MATCH"
+    }
+  },
+  "protocol_config_sha256": "38dfdb6eb48a8ce17a8762a3b9ab946d02fd30e25538d926efa3962f77c0579c",
+  "selected_k_per_event": {
+    "B2_HW_FAT_20240703": 20,
+    "B2_HW_FAT_20240722": 20,
+    "B2_HW_LAX_20230908": 20,
+    "B2_HW_LAX_20240905": 20,
+    "B2_HW_LAX_20250821": 20,
+    "B2_HW_LAX_20250828": 20,
+    "B2_HW_RDD_20230714": 20,
+    "B2_HW_RDD_20240702": 20,
+    "B2_HW_RDD_20240719": 20,
+    "B2_HW_SAC_20240701": 20,
+    "B2_HW_SAC_20240710": 20,
+    "B2_HW_SFO_20240702": 20
+  },
+  "selection_rules": {
+    "matched_control": "same station, same year, equal UTC duration, inside warm season, complete weather, no 3-day P90 run, no protected event or regional episode overlap, deterministic lexicographic ranking",
+    "ordinary_windows": "same station, same year, equal UTC duration, outcome-blind candidate pool, K=20 target stratified across season, non-overlapping priority, overlap graph recorded"
+  }
+}
