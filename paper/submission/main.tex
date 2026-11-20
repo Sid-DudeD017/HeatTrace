@@ -11,9 +11,24 @@
 
 \title[HeatTrace Dataset and Benchmark]{HeatTrace: A Historical Heatwave Dataset and Evaluation Benchmark for Sustainable Cloud Scheduling}
 
-\author*[1]{\fnm{[AUTHOR NAME(S)} \sur{--- CONFIRM]}}\email{[CORRESPONDING AUTHOR EMAIL --- CONFIRM]}
-\affil*[1]{\orgdiv{[DEPARTMENT --- CONFIRM]}, \orgname{[INSTITUTION --- CONFIRM]}, \orgaddress{\city{[CITY --- CONFIRM]}, \state{[STATE --- CONFIRM]}, \country{[COUNTRY --- CONFIRM]}}}
+% Lead Author and Corresponding Author
+\author*[1]{\fnm{Siddharth} \sur{Bhakta}}
+\email{siddharth.bhakta.ug24@nsut.ac.in}
 
+% Co-Authors
+\author[1]{\fnm{Kartik} \sur{Grover}}
+\author[1]{\fnm{Vivek} \sur{Phogat}}
+
+% Affiliation
+\affil{
+    \orgdiv{Department of Information Technology},
+    \orgname{Netaji Subhas University of Technology},
+    \orgaddress{
+        \city{New Delhi},
+        \state{Delhi},
+        \country{India}
+    }
+}
 \abstract{Sustainable cloud schedulers are commonly evaluated on ordinary historical periods, although sustained heat can change modeled cooling overhead and usable IT capacity. HeatTrace is a historical heatwave dataset-construction pipeline and evaluation benchmark that aligns NOAA hourly weather observations, CAISO wholesale electricity prices, and EIA grid-system records; detects events from weather alone; and materializes complete-event, matched-control, and event-blind windows with machine-readable provenance. The original single-station California catalogue contains four SFO events over June--September 2022--2025, one development triplet and three confirmatory triplets, each represented by 120 hourly rows. A five-station extension covering 2022--2026 contains 25 station events grouped into 15 regional episodes: 12 events are eligible, nine 2022 events are excluded, and four 2026 events are provisional. Public measurements remain distinguishable from HeatTrace-derived labels and synthetic scheduling inputs. Benchmark utility is demonstrated with a frozen 756-cell scheduling evaluation. Two of three confirmatory events showed a 0.5$\times$ lower seed-averaged tested static boundary; two showed 24/36 nonzero equal-service policy separations where selected ordinary windows showed 0/36. The third event was null, one matched control also showed 24/36, and no strict ranking reversal occurred. A same-environment rerun reproduced all 756 cells and 44 audited scientific columns. The multi-station catalogue is useful dataset development, but forecast transfer, service attrition, and overlapping ordinary windows prevent validation of its forecast-aware scheduling conclusions.}
 
 \keywords{Historical heatwave dataset, sustainable cloud scheduling, evaluation benchmark, data provenance, power usage effectiveness, reproducibility}
@@ -93,7 +108,7 @@ The July 2024 event forms a development triplet and is excluded from confirmatio
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.88\textwidth]{fig1_signals_time_series.png}
+\includegraphics[width=0.88\textwidth]{figures/fig1_signals_time_series.png}
 \caption{Illustrative 120-hour development pair: the July 2024 SFO heatwave and its June 2024 matched control. The figure shows aligned temperature, wholesale price, and demand; it demonstrates dataset structure and is excluded from confirmatory inference.}
 \label{fig:signals}
 \end{figure*}
@@ -182,7 +197,7 @@ The low curve uses $s=0.010$ and $PUE_{\max}=1.45$; the primary medium curve use
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.77\textwidth]{diag2_thermal_model.png}
+\includegraphics[width=0.77\textwidth]{figures/diag2_thermal_model.png}
 \caption{Controlled temperature--PUE--capacity sensitivity. Above $22^{\circ}$C, modeled PUE rises and the 600~kW facility cap reduces usable IT power. These curves are synthetic sensitivities, not production-facility measurements.}
 \label{fig:thermal}
 \end{figure*}
@@ -240,7 +255,7 @@ H5 & Not supported & Calibrated HeatGuard beat both comparators in 0/3 events & 
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=0.76\textwidth]{fig2_h1_sensitivity.png}
+\includegraphics[width=0.76\textwidth]{figures/fig2_h1_sensitivity.png}
 \caption{Primary results for three independent confirmatory events ($N=3$). The left panel shows seed-averaged feasibility-boundary differences; the right counts nonzero equal-service policy gaps. Two events separate where their selected blind windows do not, the third is null, and no comparison shows a strict policy-ranking reversal.}
 \label{fig:results}
 \end{figure*}
@@ -277,7 +292,7 @@ Static & Six pairs; median +8.08 h & Retrospective result only \\
 
 \section{Future Scope: A Global Heatwave Benchmark (2022--2026)}\label{sec:future}
 
-After the end-semester examinations, a proposed 2022--2026 extension would select representative stations on multiple continents, document coverage and redistribution rights, apply region-specific weather-only thresholds and quality gates, and construct complete events, matched controls, and ordinary baselines before outcome inspection.
+Future work will extend, a proposed 2022--2026 extension would select representative stations on multiple continents, document coverage and redistribution rights, apply region-specific weather-only thresholds and quality gates, and construct complete events, matched controls, and ordinary baselines before outcome inspection.
 
 Harmonization would retain market structure, units, timestamps, price and carbon semantics, missingness, and flags. Episode and overlap graphs would support independent evaluation; forecasts would use station-appropriate training or preregistered fallbacks, with common workloads and equal service. Subject to source rights, the release would include manifests, licenses, immutable artifacts, schemas, dependency locks, clean-checkout instructions, and reproducibility records. No global dataset or experiment is claimed here.
 
@@ -290,7 +305,8 @@ HeatTrace turns external weather and grid measurements into traceable event cata
 Source code, frozen configurations, derived event and episode catalogues, scenario tables, manifests, workload traces, canonical result archives, and reproduction utilities are publicly available at \url{https://github.com/Sid-DudeD017/HeatTrace}; anonymous HTTP access was verified on 2026-11-20. The public tree includes the original hourly benchmark bundle and multi-station event, episode, scenario, matrix, result, and audit artifacts, but not the manuscript tree or the locally generated full multi-station hourly signal export. Raw and processed NOAA, CAISO, and EIA inputs are excluded by repository policy and must be obtained from the providers subject to their access and redistribution terms. The archive demonstrates same-environment result reproduction, not an independent clean-checkout source-to-result reconstruction.
 
 \section*{Declarations}
-\noindent\textbf{Funding}: [AUTHOR TO CONFIRM]. \textbf{Conflict of interest}: [AUTHOR TO CONFIRM].
+\textbf{Funding:} The authors received no external funding for this research.
+\textbf{Competing interests:} The authors declare no competing interests.
 
 \clearpage
 \bibliography{references}
