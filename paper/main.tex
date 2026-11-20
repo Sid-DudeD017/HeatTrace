@@ -11,9 +11,24 @@
 
 \title[HeatTrace Dataset and Benchmark]{HeatTrace: A Historical Heatwave Dataset and Evaluation Benchmark for Sustainable Cloud Scheduling}
 
-\author*[1]{\fnm{[AUTHOR NAME(S)} \sur{--- CONFIRM]}}\email{[CORRESPONDING AUTHOR EMAIL --- CONFIRM]}
-\affil*[1]{\orgdiv{[DEPARTMENT --- CONFIRM]}, \orgname{[INSTITUTION --- CONFIRM]}, \orgaddress{\city{[CITY --- CONFIRM]}, \state{[STATE --- CONFIRM]}, \country{[COUNTRY --- CONFIRM]}}}
+% Lead Author and Corresponding Author
+\author*[1]{\fnm{Siddharth} \sur{Bhakta}}
+\email{siddharth.bhakta.ug24@nsut.ac.in}
 
+% Co-Authors
+\author[1]{\fnm{Kartik} \sur{Grover}}
+\author[1]{\fnm{Vivek} \sur{Phogat}}
+
+% Affiliation
+\affil*[1]{
+    \orgdiv{Department of Information Technology},
+    \orgname{Netaji Subhas University of Technology},
+    \orgaddress{
+        \city{New Delhi},
+        \state{Delhi},
+        \country{India}
+    }
+}
 \abstract{Sustainable cloud schedulers are commonly evaluated on ordinary historical periods, although sustained heat can change modeled cooling overhead and usable IT capacity. HeatTrace is a historical heatwave dataset-construction pipeline and evaluation benchmark that aligns NOAA hourly weather observations, CAISO wholesale electricity prices, and EIA grid-system records; detects events from weather alone; and materializes complete-event, matched-control, and event-blind windows with machine-readable provenance. The original single-station California catalogue contains four SFO events over June--September 2022--2025, one development triplet and three confirmatory triplets, each represented by 120 hourly rows. A five-station extension covering 2022--2026 contains 25 station events grouped into 15 regional episodes: 12 events are eligible, nine 2022 events are excluded, and four 2026 events are provisional. Public measurements remain distinguishable from HeatTrace-derived labels and synthetic scheduling inputs. Benchmark utility is demonstrated with a frozen 756-cell scheduling evaluation. Two of three confirmatory events showed a 0.5$\times$ lower seed-averaged tested static boundary; two showed 24/36 nonzero equal-service policy separations where selected ordinary windows showed 0/36. The third event was null, one matched control also showed 24/36, and no strict ranking reversal occurred. A same-environment rerun reproduced all 756 cells and 44 audited scientific columns. The multi-station catalogue is useful dataset development, but forecast transfer, service attrition, and overlapping ordinary windows prevent validation of its forecast-aware scheduling conclusions.}
 
 \keywords{Historical heatwave dataset, sustainable cloud scheduling, evaluation benchmark, data provenance, power usage effectiveness, reproducibility}
@@ -290,7 +305,8 @@ HeatTrace turns external weather and grid measurements into traceable event cata
 Source code, frozen configurations, derived event and episode catalogues, scenario tables, manifests, workload traces, canonical result archives, and reproduction utilities are publicly available at \url{https://github.com/Sid-DudeD017/HeatTrace}; anonymous HTTP access was verified on 2026-11-20. The public tree includes the original hourly benchmark bundle and multi-station event, episode, scenario, matrix, result, and audit artifacts, but not the manuscript tree or the locally generated full multi-station hourly signal export. Raw and processed NOAA, CAISO, and EIA inputs are excluded by repository policy and must be obtained from the providers subject to their access and redistribution terms. The archive demonstrates same-environment result reproduction, not an independent clean-checkout source-to-result reconstruction.
 
 \section*{Declarations}
-\noindent\textbf{Funding}: [AUTHOR TO CONFIRM]. \textbf{Conflict of interest}: [AUTHOR TO CONFIRM].
+\textbf{Funding:} The authors received no external funding for this research.
+\textbf{Competing interests:} The authors declare no competing interests.
 
 \clearpage
 \bibliography{references}
