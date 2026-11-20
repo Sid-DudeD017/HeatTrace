@@ -28,11 +28,11 @@ All Phase 2 outputs and validation records are published in the `data/v2/manifes
 
 | Manifest File | Format | Description | Record Count |
 | :--- | :--- | :--- | :---: |
-| [`data/v2/manifests/p12_b2_source_coverage.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_source_coverage.csv) | CSV | NOAA weather station-year coverage, quality codes, and eligibility classifications | 30 |
-| [`data/v2/manifests/p12_b2_price_carbon_coverage.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_price_carbon_coverage.csv) | CSV | CAISO hub-year and EIA BA-year interval coverage, hash provenance, and eligibility | 20 |
-| [`data/v2/manifests/p12_b2_caiso_gap_inventory_after.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_caiso_gap_inventory_after.csv) | CSV | CAISO post-recovery gap inventory showing remaining missing intervals | 15 |
-| [`data/v2/manifests/p12_b2_caiso_acquisition_attempts.jsonl`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_caiso_acquisition_attempts.jsonl) | JSONL | CAISO bulk acquisition attempts, URL parameters, error codes, and disk paths | 4 |
-| [`data/v2/manifests/p12_b2_raw_sources.jsonl`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_raw_sources.jsonl) | JSONL | Comprehensive raw source catalog with relative paths, SHA-256 hashes, and bytes | 281 |
+| [`data/v2/manifests/p12_b2_source_coverage.csv`](../data/v2/manifests/p12_b2_source_coverage.csv) | CSV | NOAA weather station-year coverage, quality codes, and eligibility classifications | 30 |
+| [`data/v2/manifests/p12_b2_price_carbon_coverage.csv`](../data/v2/manifests/p12_b2_price_carbon_coverage.csv) | CSV | CAISO hub-year and EIA BA-year interval coverage, hash provenance, and eligibility | 20 |
+| [`data/v2/manifests/p12_b2_caiso_gap_inventory_after.csv`](../data/v2/manifests/p12_b2_caiso_gap_inventory_after.csv) | CSV | CAISO post-recovery gap inventory showing remaining missing intervals | 15 |
+| [`data/v2/manifests/p12_b2_caiso_acquisition_attempts.jsonl`](../data/v2/manifests/p12_b2_caiso_acquisition_attempts.jsonl) | JSONL | CAISO bulk acquisition attempts, URL parameters, error codes, and disk paths | 4 |
+| [`data/v2/manifests/p12_b2_raw_sources.jsonl`](../data/v2/manifests/p12_b2_raw_sources.jsonl) | JSONL | Comprehensive raw source catalog with relative paths, SHA-256 hashes, and bytes | 281 |
 
 ---
 

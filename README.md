@@ -1,198 +1,358 @@
 # HeatTrace
 
-Reproducible research prototype for evaluating workload scheduling under heatwave-related electricity price and carbon conditions.
+**A Historical Heatwave Dataset and Evaluation Benchmark for Sustainable Cloud Scheduling**
 
-## Quick start
+[![Archive Verification](https://img.shields.io/badge/Archive%20Integrity-54%2F54%20Verified-brightgreen)](data/archive/heattrace_v1_d5b3c86/verify_archive.py)
+[![Same-Environment Reproduction](https://img.shields.io/badge/Reproduction%20Audit-756%2F756%20Exact-blue)](docs/p11_final_results_audit.md)
+[![Public Dataset](https://img.shields.io/badge/Dataset%20Status-Publicly%20Tracked-success)](docs/dataset.md)
+[![License & Citation](https://img.shields.io/badge/License%20%26%20Citation-Author%20Pending-orange)](#citation-and-license-status)
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-pytest
-```
+---
 
-All primary timestamps use UTC and identify interval start. Raw downloads and secrets are intentionally excluded from Git.
+## Project Overview
 
-## Phase P1: Data-Acquisition Smoke Tests
+**HeatTrace** is an empirical evaluation framework and historical benchmark dataset designed to evaluate sustainable, carbon- and cost-aware cloud data-center schedulers under authentic extreme weather conditions.
 
-Phase P1 implements reproducible data-acquisition smoke tests for NOAA GHCNh, CAISO OASIS, and EIA-930 before historical bulk downloading.
+Modern sustainable schedulers dynamically defer, advance, or throttle batch computing workloads to align with fluctuating wholesale electricity prices and renewable grid emissions. However, existing evaluations routinely presume benign weather or static cooling overhead (Power Usage Effectiveness, PUE). In physical reality, extreme atmospheric heatwaves degrade cooling heat-rejection efficiency, driving PUE sharply upward. Under fixed electrical facility power caps (e.g., hard interconnection limits), escalating cooling power directly cannibalizes the power available to computing hardware, severely reducing effective IT throughput.
 
-### P1 Checklist & Implementation Status
+HeatTrace couples historical dry-bulb temperatures (NOAA GHCNh), wholesale day-ahead electricity prices (CAISO OASIS), and balancing-authority carbon-intensity proxies (EIA-930) with a piecewise thermal sensitivity model to evaluate scheduling behavior across complete extreme-event windows.
 
-> **Overall Phase P1 Status:**
-> - **P1 Implementation & Pipeline QC:** Complete. All ingestion pipelines, schema validators, coverage calculators, and deterministic QC gates are fully implemented, verified, and passing under authentic multi-source execution.
-> - **Methodology & QC Dates:** Percentile-defined extreme-heat day (`2024-07-02`, authentic max `31.1°C` vs 2024 June–September P98 threshold `30.0°C`) and ordinary summer day (`2024-06-07`, authentic max `21.7°C` vs 2024 summer median `20.6°C`, range `[20.0, 24.0]`).
-> - **Historical Superseded Candidates:** The original 2022 QC dates (`2022-09-05` Labor Day heatwave peak at `35.6°C`, 2022 P98 `34.19°C`; and `2022-06-01` ordinary day at `21.7°C`) were superseded because CAISO's free OASIS SingleZip API operates on a rolling 39-month window, placing 2022 dates beyond direct API access. The 2022 analysis remains valid and documented in project history.
-> - **EIA Data-Quality Policy:** EIA-930 flags `Data issue = 1` across modern balancing authority workbooks (covering 93% of all modern hours in `CISO.xlsx`). For P1 ingestion and pipeline QC, status `success_with_data_issues` is accepted under an explicitly documented configuration policy (`fail_on_eia_data_issues: false`). In coverage reporting, all 24/24 issue counts are truthfully recorded. Downstream research (P2/P5) retains these flags for sensitivity analysis and exclusion testing.
+> **Primary Contribution Notice**: The primary scientific contribution of HeatTrace is **dataset curation, benchmark construction, provenance locking, and validity auditing**—not a novel scheduling algorithm or mathematical optimizer.
 
-| Checklist Item | Requirement | Status | Details |
-|---|---|---|---|
-| **P1-01** | Download NOAA hourly temperature observations and extract daily maxima | **Complete (Verified)** | Hourly GHCNh acquisition verified from NOAA NODD S3 bucket (`noaa-ghcnh-pds`) for primary station `USW00023234` (SFO). `extract_daily_maxima` groups observations by local calendar day (`America/Los_Angeles`), converts local days to exact half-open UTC intervals, enforces official NOAA quality code policy, and applies deterministic duplicate-timestamp resolution (METAR FM15 > SPECI FM16 > SYNOP FM12, conservative max tie-break). Daily maxima verified: `31.1°C` on extreme-heat day `2024-07-02` (qualifying above 2024 summer P98 of `30.0°C`) and `21.7°C` on ordinary day `2024-06-07` (near 2024 summer median of `20.6°C`). |
-| **P1-02** | Retrieve EIA demand, generation, and hourly emissions/intensity records | **Complete (Verified)** | **Demand & Net Generation**: Retrieved and validated live via EIA API v2 `/electricity/rto/region-data` using repeated facets `facets[type][]=D` and `facets[type][]=NG`. Exactly 24/24 hourly bins covered for both series on both QC days.<br>**Native Emissions & Intensity**: Verified on authentic official EIA CISO workbook (`data/raw/eia/CISO.xlsx`, SHA-256: `b418ea77...`, 97.6 MB). Verified sheets: `Published Hourly Data`, `Notes`, `Known Data Issues`. Translates hour-ending UTC to interval-start UTC (`UTC time - 1 hour`), verifies non-negative emissions and intensities, validates formula reconciliation, and tracks Known Data Issues flags (all 24 hours on each QC day flagged with `Data issue = 1`, accepted for pipeline QC under explicit policy). |
-| **P1-03** | Retrieve CAISO day-ahead LMP data with retry, caching, throttling, and documented fallback | **Complete (Verified)** | SingleZip DAM hourly LMP acquisition verified live for node `TH_NP15_GEN-APND`. Exactly 24/24 hourly bins verified for both `2024-07-02` and `2024-06-07` with zero missing hours and zero duplicates. Implements retry allowlist, `Retry-After` header parsing, throttling (5.0s), ZIP integrity verification, and cache validation. |
-| **P1-04** | Record source URLs, parameters, retrieval dates, SHA-256 checksums, and coverage | **Complete (Verified)** | Provenance records appended to `data/manifests/raw_sources.jsonl` with SHA-256 digests, sanitized parameters, retrieval timestamps, and cache status. Secrets (`EIA_API_KEY`) are completely redacted. Hourly coverage metrics logged to `data/manifests/coverage.csv`. |
-| **P1-QC** | Test 1 heatwave day and 1 ordinary summer day before scaling downloads; create coverage.csv | **Complete (Verified Exit 0)** | Evaluates extreme-heat day (`2024-07-02`) and ordinary summer day (`2024-06-07`). Authentic non-dry-run QC execution verifies all 8 required hourly datasets across both days (16 rows total), confirming 24/24 covered bins, zero missing hours, zero duplicates, and verified QC day classifications, exiting 0 under the documented ingestion-QC policy. |
+### Research Status Overview
 
-
-### Running Smoke Tests & Quality Control
-
-#### 1. Dry Run (Sanitized request parameters, no network calls)
-```bash
-python -m heattrace.cli --dry-run
-# Or for a specific source:
-python -m heattrace.cli --source noaa --dry-run
-# Dry run for P1-QC 2-day evaluation:
-python -m heattrace.cli --dry-run --qc
-```
-
-#### 2. Live and Cached Smoke Tests
-To run authentic sample downloads:
-```bash
-# Test all sources
-python -m heattrace.cli
-
-# Test an individual source
-python -m heattrace.cli --source noaa
-python -m heattrace.cli --source caiso
-python -m heattrace.cli --source eia
-
-# Test EIA API live (when EIA_API_KEY is exported)
-python -m heattrace.cli --source eia --eia-api
-
-# Ingest authentic EIA CISO Excel workbook:
-python -m heattrace.cli --source eia --eia-emissions-workbook=data/raw/eia/CISO.xlsx
-
-# Test EIA emissions with a manually prepared staging CSV:
-python -m heattrace.cli --source eia --eia-emissions-file=data/raw/eia/ciso_emissions_staging.csv
-
-# Run P1-QC two-day validation across all sources:
-set -a; [ -f .env ] && source .env; set +a
-PYTHONPATH=src python -m heattrace.cli --qc --eia-api --eia-emissions-workbook=data/raw/eia/CISO.xlsx
-```
-
-#### 3. EIA CISO Workbook Details
-The authentic official EIA CISO workbook is located at:
-`data/raw/eia/CISO.xlsx`
-- File size: 97,607,203 bytes
-- SHA-256: `b418ea77f536048e11fe0c5786de7544dfa7c774a90083e7f2c0d9facc74ce50`
-- Sheets: `Published Hourly Data`, `Notes`, `Known Data Issues`
-- Time range: July 1, 2015 through October 18, 2026
-- Semantics: `UTC time` is hour-ending. Interval start is $\text{UTC time} - 1\text{ hour}$.
-- Units: Demand and generation in MWh; CO₂ emissions in metric tons; CO₂ intensity in lbs/kWh.
-- Conversions: 1 lb/kWh = 453.59237 g/kWh.
-
-**Cache and Provenance Semantics:**
-- When a file is first acquired, raw files are saved unchanged in `data/raw/<provider>/`, and a provenance record with `cache_hit: false` is written to `data/manifests/raw_sources.jsonl`.
-- Subsequent runs validate the cached file's integrity (checking headers, stations, years, or zip contents). If valid, a cache hit is recognized without recording false network retrievals or changing `retrieved_at`. If corrupt, the file is safely reacquired.
-- Coverage metrics are saved to `data/manifests/coverage.csv`.
-
-#### 4. Offline Unit Tests and Opt-In Live Tests
-Offline unit tests mock all external network calls and validate parsing, schema checks, interval boundaries, error paths, and secret redaction:
-```bash
-pytest
-```
-To run the opt-in live network tests:
-```bash
-HEATTRACE_LIVE_TESTS=1 pytest -k "test_live"
-```
-
-### Source Verification Status & Known Limitations
-
-| Provider | Dataset | Target / Node | Verification Status | Observed Result / Limitations |
+| Research Effort | Historical Scope | Evidence Classification | Current Status | Key Finding / Limitation |
 |---|---|---|---|---|
-| **NOAA** | GHCNh | Station `USW00023234` (SFO) | **Verified Live & Cached** | Verified live download from NOAA NODD AWS S3 open bucket (`noaa-ghcnh-pds`). In 2024, complete summer observations cover all 122 days. Extreme-heat day `2024-07-02` verified at `31.1°C` daily maximum (2024 summer P98: `30.0°C`). Ordinary day `2024-06-07` verified at `21.7°C` (2024 summer median: `20.6°C`). Full quality codes and Celsius temperatures preserved. Subsequent runs verify cache hits without re-downloading. |
-| **CAISO** | OASIS (`PRC_LMP`) | `TH_NP15_GEN-APND` | **Verified Live & Cached** | Verified live download and parsing of authentic DAM hourly LMP ZIP/CSV for `2024-07-02` and `2024-06-07`. Exactly 24 hourly total-LMP records verified per day (`covered_hourly_bins: 24/24`, `missing_hours: 0`, `duplicate_timestamps: 0`). Each record has 3600-second duration and interval-start UTC semantics. Throttling (5.0s) and retry logic active. *Known limitation:* Standard CAISO OASIS SingleZip API enforces a rolling historical window of 39 months; older dates return XML error code 1000 and report `blocked_pending_historical_oasis_download`. |
-| **EIA Demand & Net Gen** | EIA-930 | BA `CISO` | **Verified Live & Cached** | EIA API v2 route `/electricity/rto/region-data` with `facets[type][]=D` and `facets[type][]=NG` is verified against live API responses (24/24 covered hours for both Demand and Net Generation on both `2024-07-02` and `2024-06-07`). Without an environment key, it cleanly reports `blocked_pending_api_key`. |
-| **EIA Emissions & Intensity** | EIA-930 | BA `CISO` | **Verified Native Workbook (Ingestion-QC Policy)** | Native CISO workbook (`CISO.xlsx`) ingestion is fully implemented and verified without modifying the original 97.6 MB workbook. Verified sheets: `Published Hourly Data`, `Notes`, `Known Data Issues`. Hourly coverage is 24/24 for both QC days. Reconciles generated and consumed intensity formulas against reported values. Native emissions status is `success_with_data_issues`: all 24 hours on each QC day have `Data issue = 1`. Under the explicit ingestion-QC policy (`fail_on_eia_data_issues: false`), pipeline QC passes; downstream scientific analysis (P2/P5) must retain flags and perform exclusion/sensitivity analysis. |
+| **Original Single-Station Study (v1)** | SFO (2022–2025) | Frozen Confirmatory Case Series | **Complete / Limited Result** | 3 confirmatory events ($N=3$); H1 supported, H2/H3 partial, H4 unestimable, H5 unsupported. |
+| **Multi-Station California Extension (B2)** | 5 CA Stations (2022–2026) | Exploratory Dataset Development | **BLOCKED by Adversarial Audit** | Valid 25-event catalogue; forecast-aware scheduling compromised by cross-station forecast transfer. |
+| **Global Expansion** | Multi-Continent (2022–2026) | Methodological Proposal | **Planned Future Work** | Unexecuted proposal for post-examination research; no global experiments implemented. |
 
-### Tooling and Linting Note
-Syntax and compilation were verified using `python -m compileall src tests` and `git diff --check`.
+---
 
+## Research Motivation
 
-## Phase P2: Alignment, QC, Provenance, and Onboarding
+Sustainable computing benchmarks frequently evaluate algorithms over arbitrarily selected, benign time periods (e.g., mild spring or autumn weeks). Even when high temperatures are considered, prior evaluations commonly rely on synthetic single-day step-functions, unconstrained energy accounting, or isolated peak afternoon hours.
 
-Phase P2 builds and validates the first canonical aligned dataset (`data/processed/hourly_caiso_v0.parquet`) from the two authentic P1 QC windows (`2024-07-02` extreme heat and `2024-06-07` ordinary summer in `America/Los_Angeles`).
+HeatTrace investigates whether evaluating schedulers across **complete, multi-day heatwave trajectories** (spanning pre-event onset, sustained multi-day extreme heat, and post-event recovery) alters simulated feasibility boundaries and policy separations relative to matched seasonal controls and event-blind baseline windows.
 
-### P2 Checklist & Implementation Status
+*Boundary clarification*: HeatTrace evaluates algorithmic scheduling constraints under simulated power caps. It does not observe physical hardware failures or claim that atmospheric heatwaves generally cause commercial data-center outages.
 
-> **Overall Phase P2 Status:**
-> - **P2-01 (Alignment & Merge):** **Complete (Verified)**. Canonical 48-row UTC hourly index constructed with interval-start semantics, unique sorted timestamps, and exact 24 rows per local date. EIA API v2 periods correctly treated as hour-ending and mapped to interval start ($\text{period} - 1\text{h}$).
-> - **P2-02 (Canonical Carbon Signal):** **Complete (Verified)**. Canonical demand and net generation sourced from corrected EIA API v2; canonical carbon intensity uses official workbook `CO2 Emissions Intensity for Generated Electricity`, converted via $1\text{ lb/kWh} = 453.59237\text{ g/kWh}$. Retains reported and recalculated values; reconciliation diff passes tolerance ($6.58 \times 10^{-7} \le 10^{-4}\text{ lb/kWh}$).
-> - **P2-03 (QC & Validation):** **Complete (Verified)**. Deterministic schema, timestamp alignment, monotonic ordering, non-negativity, missingness, EIA issue flags, and source audit differences verified.
-> - **P2-04 (Onboarding & Documentation):** **Complete (Verified)**. Documentation in `docs/p2_alignment.md`, `docs/contracts.md`, and `docs/carbon_method.md`.
-> - **P2-TEST (Unit & Integration Tests):** **Complete (Verified)**. Comprehensive tests in `tests/test_p2_alignment.py` and `tests/test_p1_ingest.py` passing with zero test mutation of production data.
-> - **Gate G2-a:** **Complete — Person A clean-environment loader verification passed. The documented loader remains available for optional independent reproduction.**
+---
 
-### Running P2 Alignment and Verification
+## Key Contributions
 
-#### 1. Build Aligned Dataset (Offline, Cache-Only)
-```bash
-PYTHONPATH=src python -m heattrace.cli --build-aligned
+- **Synchronized Empirical Data Integration**: Timestamp alignment and quality control for hourly NOAA dry-bulb temperatures, CAISO wholesale LMPs, and EIA balancing-authority carbon proxies.
+- **Weather-Only Heatwave Detection**: Objective isolation of multi-day heatwaves based strictly on empirical temperature percentiles ($P_{90}$, $\ge 3$ consecutive days), fully independent of computational or market outcomes.
+- **Standardized Multi-Day Windows with Matched Controls**: Construction of standardized evaluation windows capturing onset, peak, and recovery phases, paired with outcome-blind matched seasonal controls ($T_{\max} \le 22.0^\circ\mathrm{C}$) and event-blind ordinary windows.
+- **Physical Thermal-Power Facility Coupling**: A piecewise PUE model coupling ambient temperature to facility power draw, enforcing hard electrical power caps that dynamically throttle effective IT compute capacity.
+- **Uncompromising Equal-Service Gate**: Rigorous rejection of policy comparisons where schedulers achieve apparent cost or carbon reductions simply by dropping, delaying, or evading demanded computational work.
+- **Transparent Reproduction & Adversarial Audit**: Complete same-environment reproduction verification across 756 simulation cells (Phase P11) and an independent adversarial scientific audit (Stage 2 B2 Audit) that transparently catalogs protocol defects and non-estimable claims.
+
+---
+
+## Quick Links
+
+- **Event Catalogues**:
+  - [Station Events Catalogue (25 events)](data/v2/events/p12_b2_station_events.csv)
+  - [Regional Episodes Catalogue (15 episodes)](data/v2/events/p12_b2_regional_episodes.csv)
+  - [Hourly Phase Labels Preview (100 rows)](data/v2/events/p12_b2_hourly_phase_labels_preview.csv)
+  - [Original Confirmatory Triplet Index](data/benchmarks/p6_event_control_index.csv)
+- **Documentation & Evidence**:
+  - [Documentation Hub](docs/README.md)
+  - [Dataset & Provenance Guide](docs/dataset.md)
+  - [Research Claims & Evidence Map](docs/heattrace_research_claims_and_evidence.md)
+  - [Stage 2 Adversarial Scientific Correctness Audit](reproduction_audits/stage2_b2/stage2_scientific_correctness_report.md)
+  - [Professor Presentation Brief](docs/heattrace_professor_presentation_brief.md)
+  - [Website & Presentation Source Package](docs/heattrace_website_presentation_source.md)
+- **Reproducibility & Verification**:
+  - [Immutable Archive Manifest](data/archive/heattrace_v1_d5b3c86/archive_manifest.json)
+  - [Archive Verification Script](data/archive/heattrace_v1_d5b3c86/verify_archive.py)
+  - [Primary Confirmatory Result Figure (H1 / H3)](data/figures/p6_f4_h1_sensitivity.png)
+
+---
+
+## Dataset Coverage and Availability
+
+HeatTrace datasets span two distinct releases: the original single-station confirmatory dataset (v1) and the multi-station California extension (Track B2).
+
+| Dataset Dimension | Original Single-Station Benchmark (v1) | Multi-Station California Extension (Track B2) |
+|---|---|---|
+| **Geographic Scope** | San Francisco International Airport (`SFO` / `USW00023234`) | 5 Stations: SFO, Sacramento (`SAC`), Fresno (`FAT`), Redding (`RDD`), Los Angeles (`LAX`) |
+| **Climatic Regimes** | Northern coastal marine airport | Coastal marine (SFO, LAX) and inland Central Valley (SAC, FAT, RDD) |
+| **Wholesale Pricing Hubs** | CAISO `TH_NP15_GEN-APND` | CAISO `TH_NP15_GEN-APND`, `TH_ZP26_GEN-APND`, `TH_SP15_GEN-APND` |
+| **Screening Period** | June 1 – September 30, 2022–2025 (485 days) | June 1 – September 30, 2022–2026 (2026 provisional) |
+| **Detected Event Catalogue** | 4 events (1 development + 3 confirmatory triplets) | 25 station events across 15 regional connected episodes |
+| **Joint Evaluation Status** | All 3 confirmatory triplets fully evaluated | 12 eligible (2023–2025), 9 excluded (2022), 4 provisional (2026) |
+| **Public Hourly Benchmark** | **1,440 rows** (`p6_benchmark_hourly.parquet`, tracked) | **100-row preview tracked**; full 4,320-row export is local-only |
+| **Composite Hourly Key** | `(triplet_id, window_type, timestamp_utc)` | `(event_id, timestamp_utc)` |
+| **Grid Demand Field** | `demand_mw` (balancing authority megawatts) | `demand_mwh` (hourly megawatt-hours) |
+
+### The 2022 Annual Joint-Source Gate Limitation
+
+All nine 2022 station events in Track B2 are **meteorologically authentic heatwaves** that fully satisfied weather screening. Their exclusion from the joint simulation matrix was caused by an automated, conservative annual coverage gate triggered by a single missing EIA carbon interval on **`2022-06-13 at 17:00 UTC`**—an interval occurring entirely outside every authentic heatwave window. They remain valid catalogue events, but were excluded from multi-source simulation.
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    subgraph External_Signals ["1. External Physical & Market Signals (Observed)"]
+        NOAA["NOAA GHCNh<br/>(Hourly Dry-Bulb Temp)"]
+        CAISO["CAISO OASIS<br/>(Day-Ahead Wholesale LMP)"]
+        EIA["EIA-930<br/>(Balancing Authority Carbon Proxy)"]
+    end
+
+    subgraph Data_Pipeline ["2. HeatTrace Data Pipeline (Derived)"]
+        Align["Time Alignment & QC<br/>(UTC Interval-Start Indexing)"]
+        Detect["Weather-Only Heatwave Detection<br/>(P90 Daily Max, N >= 3 Days)"]
+        Catalogue["Event Catalogue & Episodes<br/>(25 Events, 15 Episodes)"]
+        Windows["Evaluation Windows (120h+)<br/>(Onset + Event + Recovery)"]
+        Controls["Comparative Baselines<br/>(Matched Controls & Ordinary Windows)"]
+    end
+
+    subgraph Simulation_Evaluation ["3. Benchmark Evaluation & Auditing (Synthetic Models)"]
+        Workloads["Synthetic Workloads<br/>(Deterministic Deadlines: 1x, 2x, 3x)"]
+        Thermal["Thermal-Power Coupling<br/>(PUE(T) -> 600 kW Power Cap)"]
+        Schedulers["Policy Execution (6 Roles)<br/>(Static, Capacity, Full-Thermal, HeatGuard)"]
+        Gate["Equal-Service Audit Gate<br/>(Demanded == Completed Slots)"]
+        Audit["Adversarial Scientific Audit<br/>(Defect Diagnosis & Triage)"]
+    end
+
+    NOAA --> Align
+    CAISO --> Align
+    EIA --> Align
+
+    Align --> Detect
+    Detect --> Catalogue
+    Catalogue --> Windows
+    Windows --> Controls
+
+    Controls --> Schedulers
+    Workloads --> Schedulers
+    Thermal --> Schedulers
+
+    Schedulers --> Gate
+    Gate --> Audit
 ```
-This command loads authentic cached P1 files, normalizes units, validates the canonical contract, and produces:
-- `data/processed/hourly_caiso_v0.parquet`
-- `data/processed/hourly_caiso_v0_sample.csv`
-- `data/manifests/aligned_coverage.csv`
-- `data/manifests/aligned_dataset_manifest.json`
 
-#### 2. Run Aligned Dataset Loader
-To load, validate, and inspect the table:
+---
+
+## Experimental Evaluation & Confirmatory Findings (v1)
+
+The original HeatTrace study evaluated six scheduling policy roles across a frozen combinatorial matrix of **756 simulation cells** in Northern California:
+- **Core Deployable Cohort** (432 cells): `static_unaware`, `capacity_aware`, `full_thermal_aware` evaluated across heatwave and matched control contexts.
+- **Event-Blind Baseline Cohort** (216 cells): Same three deployable policies evaluated in event-blind ordinary windows.
+- **Heuristic Comparator Cohort** (72 cells): `heatguard_calibrated` and `heatguard_fixed` safety buffers.
+- **Hindsight Oracle Cohort** (36 cells): `oracle_full_thermal_aware` (non-deployable hindsight upper bound).
+
+> **Statistical Unit of Inference**: The 756 simulation cells represent deterministic permutations of workload seeds, multipliers, facility models, and thermal curves across **three independent historical events ($N=3$)**. The historical event is the independent unit of inference, not the individual cells.
+
+### Canonical H1–H5 Hypothesis Assessment
+
+| Hypothesis | Stated Scientific Claim | Event-Level Effects ($N=3$) | Canonical Classification | Key Methodological Boundary |
+|---|---|---|---|---|
+| **H1: Static Feasibility** | Power cap degrades static feasibility envelope during heatwaves | CONF1: $-0.5\times$, CONF2: $-0.5\times$, CONF3: $0.0\times$ | **SUPPORTED** | Coarse multiplier grid ($\{1\times, 2\times, 3\times\}$); weaker sensitivity on low thermal curve. |
+| **H2: Capacity Awareness** | Forecast awareness recovers feasibility loss or reduces violations | Boundary: $0.0\times$ across all; Violations: $-1.0\,\text{h}$, $-0.5\,\text{h}$, N/A | **PARTIALLY SUPPORTED** | Modest violation reduction; zero tested boundary recovery under heavy loads. |
+| **H3: Blind Understatement** | Event-blind windows obscure equal-service policy separations | Non-zero gaps: HW: 24/36, 24/36, 0/36; Blind: 0/36, 0/36, 0/36 | **PARTIALLY SUPPORTED** | 48 tie-to-nontie transitions; **zero strict ranking reversals**; control also separated in CONF1. |
+| **H4: Forecast Attribution** | Improved forecast accuracy causally drives superior scheduling | Not estimable from frozen confirmation matrix | **NOT ESTIMABLE** | Omission of controlled same-scheduler forecast-source intervention. |
+| **H5: HeatGuard Heuristic** | Calibrated margin outperforms fixed margin and baselines | Calibrated beat fixed comparator in 0/3 events | **NOT SUPPORTED** | Small calibrated margin ($\approx 0.016$) failed to buffer against large heatwave forecast errors. |
+
+---
+
+## Multi-Station California Extension (Track B2)
+
+Track B2 expanded HeatTrace across five California stations to explore geographic heterogeneity (G1–G5). An independent adversarial audit ([Stage 2 Audit Report](reproduction_audits/stage2_b2/stage2_scientific_correctness_report.md)) classified Track B2 as **BLOCKED**, uncovering critical methodological traps:
+
+1. **Unauthorized Neural Forecast Transfer**: The execution runner hardcoded the SFO-trained TinyLSTM neural network, feature scaler, and calibration parameters, applying them directly to non-SFO stations (SAC, FAT, RDD, LAX). This violated protocol and **invalidated 3,960 forecast-dependent cells (61.1% of the 6,480-cell matrix)**.
+2. **Severe Equal-Service Attrition**: In within-window policy comparisons, **only 7 of 66 heatwave trios passed equal service (10.61%)**. Under stressed $2\times$ and $3\times$ workloads, exactly **0 of 22 trios passed**. High-load cost and carbon claims are non-estimable.
+3. **Ordinary-Window Overlap**: Of 240 sampled ordinary windows, **146 overlap with another selected window**, sharing up to 72 hours of identical weather and market data.
+4. **Surviving Narrow Result**: Static temperature-unaware scheduling under a power cap showed positive heatwave-minus-control violation hours in **6 of 6 paired regional episodes** (median $+8.08$~hours). This narrow finding does not consume the invalid transferred forecast.
+
+---
+
+## Installation
+
+HeatTrace requires **Python 3.11+**.
+
 ```bash
-PYTHONPATH=src python -m heattrace.cli --load-aligned
+# Clone the repository
+git clone https://github.com/Sid-DudeD017/HeatTrace.git
+cd HeatTrace
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install editable package with core development dependencies
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
 ```
-Or use the loader module directly:
+
+*Dependency notes*:
+- Core package metadata declares `pandas`, `pyarrow`, and `pyyaml`.
+- The codebase also imports `numpy` directly (currently arriving transitively).
+- Scientific analysis and plotting modules require `scipy` and `matplotlib`.
+- Neural forecasting modules require PyTorch (`torch`, installable via the `.[ml]` extra).
+- A fully locked cross-platform lockfile is not currently supplied; installing `.[dev]` alone does not support every advanced training or plotting script.
+
+---
+
+## Quick Start (Read-Only Artifact Inspection)
+
+Inspect public repository artifacts directly without running expensive simulations:
+
+### 1. Inspect the Station Events Catalogue
 ```bash
-PYTHONPATH=src python -m heattrace.process.loader
+python - <<'PY'
+import pandas as pd
+events = pd.read_csv("data/v2/events/p12_b2_station_events.csv")
+print(events[[
+    "event_id", "station_code", "local_start_date", "local_end_date",
+    "regional_episode_id", "weather_eligibility_status", "joint_evaluation_eligibility"
+]].to_string(index=False))
+PY
 ```
 
-## Phase P3: Heatwaves, Workloads, Controls, and 2024 Benchmark
-
-Phase P3 defines deterministic multi-day heatwaves, establishes event phase labels, constructs synthetic workload traces, formalizes scheduling interfaces, matches non-heatwave controls, and validates the complete 2024 event/control benchmark.
-
-### P3 Checklist & Implementation Status
-
-> **Overall Phase P3 Status:**
-> - **P3-01 (Multi-Day Heatwave Detection & Phase Labeling):** **Complete (Verified)**. Deterministic detection identifies runs of $\ge 3$ consecutive qualifying days where daily max temperature strictly exceeds the empirical 90th percentile threshold ($25.60^\circ\text{C}$, pooled across June–September 2022–2025 at NOAA station `USW00023234`). Labels 4 distinct multi-day heatwaves (`HW_20220620`, `HW_20220904`, `HW_20220922`, `HW_20240702`) with chronological hourly phases: `onset` (24h pre-event day), `peak` (24h highest temperature day, earliest tie-break), `sustained` (all other event days), and `recovery` (24h post-event day). Total event hours: 336; total phase hours: 528.
-> - **P3-02 (Event, Coverage, & Phase Validation):** **Complete (Verified)**. Enforces strict UTC timezone-awareness, top-of-hour alignment, event ID formatting, monotonic ordering, non-overlap, duration constraints ($\ge 3$ days), peak selection tie-breaking, phase buffer non-collision (zero overlap across all 4 events), and year-by-year coverage reporting (honestly tracking the 3 missing dates in 2025).
-> - **P3-03 (Deterministic Workload Generator & Mock Jobs):** **Complete (Verified)**. Generates relative-offset synthetic workloads using frozen seed `20261016`. Each job specifies arrival offset, deadline offset, processing hours, energy kWh, maximum parallelism, priority, and preemption flags without leaking absolute timestamps, allowing identical trace reuse across event and control windows.
-> - **P3-04 (Policy & Forecasting Interfaces):** **Complete (Verified)**. Formalizes typed Python protocols (`ForecastProvider`, `SchedulingPolicy`) and data structures (`ForecastResult`, `ScheduleResult`, `SchedulingConstraints`) with labeled test stubs (`FixturePersistenceForecastProvider`, `FixtureEarliestDeadlineFirstPolicy`). Real optimization models remain deferred to P4.
-> - **P3-05 (Deterministic Non-Heatwave Control Matching):** **Complete (Verified)**. Implements sliding window matching over June–September 2024. Excludes heatwave/buffer overlaps, missing observations, and 3-day exceedance runs. Matches `HW_20240702` (120h) to `CTRL_20240605` (`2024-06-05` to `2024-06-09`, 120h) centered on verified ordinary summer anchor `2024-06-07` (mean daily max $21.84^\circ\text{C}$ vs anchor $21.70^\circ\text{C}$, temp distance $0.14^\circ\text{C}$).
-> - **P3-06 (Event/Control Coverage, Audit, & Chronological Splits):** **Complete (Verified)**. Audits all 4 events, 1 matched benchmark pair, and documents unmatched reasons for 2022 events (CAISO OASIS free API rolling 39-month historical limit) and 2025 (zero qualifying events). Confirms that while physical carbon intensity coverage is 100% (240/240 rows), all 240 rows retain EIA-930 Known Data Issue flags (`carbon_data_issue = True`), resulting in 0/240 primary-analysis-eligible hours without sensitivity controls.
-> - **Gate G3-a:** **Complete (Verified)**. Aligned 2024 event/control benchmark table (`data/benchmarks/benchmark_2024_event_control_v0.parquet`) constructed with exactly 240 rows (120 event + 120 control) with 100% complete coverage across weather, price, demand, net generation, and carbon intensity. Provenance and manifest recorded. Clean loader verified.
-
-### Running P3 Pipelines, Workloads, and Benchmark Inspection
-
-#### 1. Build Full P3 Suite (Events, Controls, Workloads, Benchmark)
+### 2. Inspect Regional Connected Episodes
 ```bash
-PYTHONPATH=src python -m heattrace.cli --build-p3
+python - <<'PY'
+import pandas as pd
+episodes = pd.read_csv("data/v2/events/p12_b2_regional_episodes.csv")
+print(episodes[[
+    "regional_episode_id", "member_event_count", "distinct_station_count",
+    "station_codes", "eligibility_summary"
+]].to_string(index=False))
+PY
 ```
-Produces:
-- `data/events/heatwave_events_v0.parquet`
-- `data/events/hourly_event_labels_v0.parquet`
-- `data/events/control_catalogue_v0.parquet`
-- `data/workloads/workload_trace_v0.parquet`
-- `data/benchmarks/benchmark_2024_event_control_v0.parquet`
-- `data/manifests/p3_comprehensive_audit.json`
 
-#### 2. Run Comprehensive Audit
+### 3. Verify the Immutable v1 Archive
 ```bash
-PYTHONPATH=src python -m heattrace.cli --audit-p3
+python data/archive/heattrace_v1_d5b3c86/verify_archive.py
 ```
+*Expected output*: `54 inventory files verified`, scientific decision: `LIMITED RESULT`.
 
-#### 3. Inspect Aligned Benchmark
+### 4. Run Lightweight Repository Smoke Tests
 ```bash
-PYTHONPATH=src python -m heattrace.cli --load-p3-benchmark
+python -m pytest -q -p no:cacheprovider tests/test_smoke.py
+```
+*Expected output*: `4 passed`.
+
+### 5. Inspect CLI Command Interfaces
+```bash
+python -m heattrace.cli --help
+python scripts/p12_b2_acquire_sources.py --help
+python scripts/p12_b2_detect_events.py --help
 ```
 
-## Repository layout
+### Advanced Workflows and Required Inputs
+Full provider data re-acquisition (`scripts/p12_b2_acquire_sources.py`) and full simulation runners require uncommitted provider caches, external network access, and extended compute time. The function `run_phase4_pipeline()` is an internal library routine, not a standalone CLI. Running the 756-cell or 6,480-cell simulation matrices is not recommended during ordinary repository review.
 
-- `src/heattrace/` — ingestion, processing, forecasting, scheduling, and evaluation code
-  - `src/heattrace/ingest/` — NOAA, CAISO, EIA ingestion, manifests, and coverage calculation
-  - `src/heattrace/process/` — canonical alignment, event detection, phase labeling, quality validation, and loader
-  - `src/heattrace/cli.py` — P1, P2, and P3 command-line interface
-- `configs/` — frozen source and study configuration
-- `data/` — local data only; raw, interim, processed, events, and manifests are git-ignored
-- `docs/` — contracts, source audit, carbon methodology, alignment, and heatwave event documentation
-- `tests/` — unit tests, mocked fixtures, and opt-in live tests
-- `reports/` — generated QC and audit reports
-- `runs/` — generated benchmark outputs
+---
+
+## Repository Structure
+
+```
+HeatTrace/
+├── src/heattrace/
+│   ├── ingest/          # NOAA, CAISO, and EIA ingestion and quality-control
+│   ├── process/         # Alignment, event detection, controls, and window extraction
+│   ├── workload/        # Deterministic deadline batch job generators
+│   ├── forecast/        # TinyLSTM architecture, dataset splits, and calibration
+│   ├── thermal/         # PUE formulas, power caps, effective capacity, and policies
+│   ├── policy/          # Shared greedy solvers and baseline scheduling logic
+│   ├── experiments/     # Confirmatory (v1) and extension (B2) execution runners
+│   └── evaluation/      # Equal-service auditing, H1–H5 and G1–G5 analysis
+├── configs/             # Frozen experimental protocols and model specifications
+├── scripts/             # Data acquisition and event detection entry points
+├── data/
+│   ├── archive/         # Immutable v1 canonical archive (54 verified payloads)
+│   ├── benchmarks/      # Tracked public benchmark hourly parquets and triplet indices
+│   ├── events/          # Original v1 heatwave and control catalogues
+│   ├── v2/              # Track B2 multi-station catalogues, tables, and parquets
+│   └── workloads/       # Tracked synthetic job arrival CSV vectors
+├── docs/                # Comprehensive research protocols, learning guides, and audits
+├── reproduction_audits/ # Independent adversarial scientific audit of Track B2
+├── tests/               # Unit, integration, smoke, and regression test suites
+├── paper/               # Complete Springer Nature LaTeX manuscript (local-only)
+└── .site-publish/       # Interactive React/Vite presentation project (local-only)
+```
+
+---
+
+## Research Paper Status
+
+A complete, 30-page Springer Nature journal-article LaTeX manuscript has been authored and compiled locally under [paper/](paper/main.pdf).
+- **Manuscript Scope**: 27 substantive body pages (before references), 8 figures, 6 tables, and 12 verified references.
+- **Repository Status**: `paper/` is maintained locally in the working workspace and is not currently tracked on the public GitHub tree.
+- **Author Review**: Tracking or publishing a curated manuscript release bundle is an explicit author-controlled decision.
+
+---
+
+## Research Presentation Status
+
+An interactive, browser-based React/Vite research presentation explorer exists locally under `.site-publish/heattrace-presentation/`.
+- **Local Verification**: Current local typecheck and 23 tests pass cleanly.
+- **Repository Status**: `.site-publish/heattrace-presentation/` is a separate, dirty local Git repository with no configured remote; it is not registered as a Git submodule and is not tracked on the public GitHub tree.
+- **Public Documentation**: Tracked presentation briefings are available in [docs/heattrace_professor_presentation_brief.md](docs/heattrace_professor_presentation_brief.md) and [docs/heattrace_website_presentation_source.md](docs/heattrace_website_presentation_source.md).
+
+---
+
+## Reproducibility Levels
+
+| Reproducibility Level | Verified Status | Description and Current Limitations |
+|---|---|---|
+| **Level 1: Public Artifact Inspection** | **Fully Verified** | All primary catalogues, controls, preview signals, and analysis tables are tracked and publicly cloneable. |
+| **Level 2: Archive Integrity** | **Fully Verified** | Automated verification script confirms bit-level integrity across 54 of 54 frozen payload files (`verify_archive.py`). |
+| **Level 3: Same-Environment Reproduction** | **Fully Verified** | Complete re-execution of all 756 confirmatory cells from scratch confirmed exact agreement across all 44 real scientific columns. |
+| **Level 4: Independent Clean Checkout** | **Incomplete / Limited** | Clean-checkout reconstruction from raw provider sources is not demonstrated due to ignored raw caches, unpinned dependencies, and missing workload parquets. |
+
+*Test Suite Note*: The repository contains 698 collected tests. Lightweight smoke tests pass (`4 passed`). During auditing, a full test run reached 206 passed and 2 skipped before manual termination after 4m35s; a complete clean-run pass of all 698 tests has not been established.
+
+---
+
+## Key Scientific Limitations
+
+1. **Small Independent Event Sample**: Confirmatory findings are based on exactly three authentic historical events ($N=3$) at a single coastal airport station (`SFO`).
+2. **Cross-Year Control Matching**: 2022 heatwaves were paired with June 2024 controls due to authentic data completeness constraints.
+3. **Synthetic Facilities and Workloads**: Cooling is governed by a piecewise mathematical formula; facility telemetry from physical production data centers was not utilized.
+4. **Proxy Market Signals**: CAISO wholesale trading-hub LMP is not a retail facility tariff, and EIA-930 production-average carbon is not marginal or avoided emissions.
+5. **No Causal Forecast Benefits**: The confirmatory matrix lacked controlled forecast-source interventions, preventing causal attribution of neural forecasting.
+6. **No Algorithmic Superiority**: The calibrated HeatGuard safety buffer failed to outperform a fixed engineering margin in any tested event.
+7. **Track B2 Protocol Violations**: Cross-station neural forecast transfer invalidated 61.1% of the extension matrix; high-load equal-service attrition was severe (0/22 passing).
+
+---
+
+## Planned Global 2022–2026 Expansion
+
+*Notice: This section outlines proposed future work planned for post-examination research. No global experiments have been executed or implemented.*
+
+- **Multi-Continent Climate Selection**: Target 15 major data-center operating regions across North America, Europe, Asia-Pacific, and Latin America.
+- **Localized Climatological Thresholds**: Per-station empirical $P_{90}$ and $P_{95}$ heatwave thresholds incorporating wet-bulb temperature ($T_{\mathrm{wb}}$) in humid regions.
+- **Harmonized Electricity Market Signals**: Ingest synchronized regional wholesale prices and local marginal emissions factors (e.g., PJM 5-minute marginal carbon, ENTSO-E).
+- **Mandatory Station-Specific Forecasting**: Strictly localized forecasting models to eliminate cross-station transfer defects, with counterfactual forecast-source interventions.
+- **Standardized Clean-Checkout Packages**: Containerized execution environments with full dependency lockfiles and public data archives.
+
+---
+
+## Data Sources and Attribution
+
+- **NOAA GHCNh**: National Oceanic and Atmospheric Administration Global Historical Climatology Network hourly product ([NOAA GHCNh Portal](https://www.ncei.noaa.gov/products/global-historical-climatology-network-hourly)).
+- **CAISO OASIS**: California Independent System Operator Open Access Same-Time Information System ([CAISO OASIS Portal](https://www.caiso.com/todays-outlook/prices)).
+- **EIA-930**: U.S. Energy Information Administration Hourly Electric Grid Monitor ([EIA-930 Portal](https://www.eia.gov/electricity/930-content/about.html)).
+
+---
+
+## Citation and License Status
+
+- **Software & Dataset Licensing**: Formal open-source software and data redistribution licenses have not yet been declared in the public tree.
+- **Citation Metadata**: Formal citation metadata (`CITATION.cff`) and author attribution are awaiting explicit human author confirmation.
+- **Recommended Citation Placeholder**:
+  ```bibtex
+  @misc{heattrace2026,
+    title  = {HeatTrace: A Historical Heatwave Dataset and Evaluation Benchmark for Sustainable Cloud Scheduling},
+    author = {[Authors Pending Confirmation]},
+    year   = {2026},
+    howpublished = {\url{https://github.com/Sid-DudeD017/HeatTrace}}
+  }
+  ```

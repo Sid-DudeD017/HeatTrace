@@ -5,9 +5,12 @@
 **Repository Base Commit:** `37bdffbf27666c40a24fb0591d2e2d7436508adf`  
 **Implementation Git Commit:** none; the current repair is uncommitted (`uncommitted_source_changes`)  
 **Authoritative Implementation Identity:** recorded analysis-source (`bea868ca4a76fa8a4a762e39591c6ad03a210f9c9f93edcffa94109bc19f4291`) and focused-test (`0ac246de29ac593f4ef0bc2f70706ca33b5041a5abdae39f76f69cc0cc0c8ed7`) SHA-256 hashes  
-**Protocol Reference:** [`docs/p6_frozen_protocol.md`](file:///Users/siddharthbhakta/HeatTrace/docs/p6_frozen_protocol.md)  
-**Configuration Reference:** [`configs/p6_validity.yaml`](file:///Users/siddharthbhakta/HeatTrace/configs/p6_validity.yaml)  
-**Analysis Manifest:** [`data/results/p6_analysis_manifest.json`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_analysis_manifest.json)  
+**Protocol Reference:** [`docs/p6_frozen_protocol.md`](../docs/p6_frozen_protocol.md)
+
+**Configuration Reference:** [`configs/p6_validity.yaml`](../configs/p6_validity.yaml)
+
+**Analysis Manifest:** [`data/results/p6_analysis_manifest.json`](../data/results/p6_analysis_manifest.json)
+
 
 ---
 
@@ -44,10 +47,10 @@ The v1 confirmation rests on immutable, byte-verified P8 artifacts generated dur
 
 | Canonical Artifact Path | Expected & Verified SHA-256 Digest | Status |
 | :--- | :--- | :---: |
-| [`data/results/p6_validity_runs.parquet`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_validity_runs.parquet) | `c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f` | **MATCH** |
-| [`data/results/p6_validity_checkpoint.parquet`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_validity_checkpoint.parquet) | `c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f` | **MATCH** |
-| [`data/results/p6_validity_manifest.json`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_validity_manifest.json) | `d0dd9f870ec2a431cc16177c5f1b7a5e6b47a7dc888b0acb491a819656006082` | **MATCH** |
-| [`data/results/p6_validity_execution.jsonl`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_validity_execution.jsonl) | `de430ceea4559de2f4e67f5b122223b3496dfe854e1f5efa874909363bff0e80` | **MATCH** |
+| [`data/results/p6_validity_runs.parquet`](../data/results/p6_validity_runs.parquet) | `c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f` | **MATCH** |
+| [`data/results/p6_validity_checkpoint.parquet`](../data/results/p6_validity_checkpoint.parquet) | `c45391e61a87c909fa143039464a8961d3c04c8d513669516a49d8f42fe8777f` | **MATCH** |
+| [`data/results/p6_validity_manifest.json`](../data/results/p6_validity_manifest.json) | `d0dd9f870ec2a431cc16177c5f1b7a5e6b47a7dc888b0acb491a819656006082` | **MATCH** |
+| [`data/results/p6_validity_execution.jsonl`](../data/results/p6_validity_execution.jsonl) | `de430ceea4559de2f4e67f5b122223b3496dfe854e1f5efa874909363bff0e80` | **MATCH** |
 
 - **Canonical Run-ID Digest:** `1a8cb83e3388fbfcc16efdd916f79d847377081f02f40608e5adc112bc2a6aa1`  
   *(Computed as SHA-256 of all 756 newline-separated sorted `run_id` strings).*
@@ -56,7 +59,7 @@ The v1 confirmation rests on immutable, byte-verified P8 artifacts generated dur
 
 ## 4. Confirmation Accounting
 
-Directly audited from [`data/results/p6_t1_cohort_provenance.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t1_cohort_provenance.csv) and [`data/results/p6_validity_manifest.json`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_validity_manifest.json):
+Directly audited from [`data/results/p6_t1_cohort_provenance.csv`](../data/results/p6_t1_cohort_provenance.csv) and [`data/results/p6_validity_manifest.json`](../data/results/p6_validity_manifest.json):
 
 - **Total Execution Rows:** $756$
 - **Unique Run IDs:** $756$
@@ -81,7 +84,7 @@ A strict epistemic boundary separates pre-confirmation exploratory development f
 
 1. **Confirmatory Scope (Locked at Day 9 / Phase 7):**
    - Hypotheses H1, H2, H3, and H5 were frozen prior to unsealing confirmatory triplets.
-   - Primary metric thresholds, evaluation windows ($120\text{h}$), facility power capping ($C_{\text{eff}}[t] = \min(500, 600 / \text{PUE}[t])$), and discrete workload levels ($\{1.0x, 2.0x, 3.0x\}$) were locked in [`configs/p6_validity.yaml`](file:///Users/siddharthbhakta/HeatTrace/configs/p6_validity.yaml).
+   - Primary metric thresholds, evaluation windows ($120\text{h}$), facility power capping ($C_{\text{eff}}[t] = \min(500, 600 / \text{PUE}[t])$), and discrete workload levels ($\{1.0x, 2.0x, 3.0x\}$) were locked in [`configs/p6_validity.yaml`](../configs/p6_validity.yaml).
    - Only outcomes from the 756 confirmatory cells across `CONF_1`, `CONF_2`, and `CONF_3` constitute confirmatory evidence.
 2. **Exploratory Scope (Day 8 Pilot & Post-Day-8 Diagnostic Questions):**
    - Question H4 regarding forecast-error causal attribution was formulated post-Day-8 after observing TinyLSTM underprediction on development data.
@@ -93,7 +96,7 @@ A strict epistemic boundary separates pre-confirmation exploratory development f
 
 ## 6. H1–H5 Assessment
 
-Audited directly from [`data/results/p6_h1_h5_assessment.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_h1_h5_assessment.csv):
+Audited directly from [`data/results/p6_h1_h5_assessment.csv`](../data/results/p6_h1_h5_assessment.csv):
 
 ### H1 — Static Feasibility Loss Under Extreme Heat
 - **Original Frozen Status:** Primary Confirmatory Hypothesis
@@ -169,7 +172,7 @@ Audited directly from [`data/results/p6_h1_h5_assessment.csv`](file:///Users/sid
 
 ## 7. Event-Level Effect-Size and Ranking Summary
 
-Detailed event-level metrics from [`data/results/p6_event_level_metrics.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_event_level_metrics.csv) and [`data/results/p6_t2_event_feasibility.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t2_event_feasibility.csv):
+Detailed event-level metrics from [`data/results/p6_event_level_metrics.csv`](../data/results/p6_event_level_metrics.csv) and [`data/results/p6_t2_event_feasibility.csv`](../data/results/p6_t2_event_feasibility.csv):
 
 | Triplet ID | CAISO Heatwave Event | Static Feasibility Loss (H1) | Capacity-Aware Recovery (H2) | HW vs Blind Discrim (H3) | Calibrated HeatGuard vs Fixed (H5) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
@@ -178,7 +181,7 @@ Detailed event-level metrics from [`data/results/p6_event_level_metrics.csv`](fi
 | `TRIPLET_CONF_3_628624` | Late Sept 2022 (`HW_20220922`) | **$0.0x$** ($3.0x$ vs $3.0x$) | **N/A** (No prerequisite loss) | **$0$** ($0$ HW vs $0$ Blind) | **$0.0\text{h}$ vs $0.0\text{h}$** (Tied) |
 
 ### Ranking Transition Structure
-Audited from [`data/results/p6_t3_equal_service_gaps.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t3_equal_service_gaps.csv):
+Audited from [`data/results/p6_t3_equal_service_gaps.csv`](../data/results/p6_t3_equal_service_gaps.csv):
 - In `CONF_1` and `CONF_2`, deployable policy contrasts between `capacity_aware` / `static_unaware` and `full_thermal_aware` transitioned from complete equality in event-blind windows ($0.0\text{ USD}$, $0.0\text{ kg CO}_2$) to non-zero separations during heatwaves (e.g., in `CONF_1` at $3.0x$: $-\$56.92$ cost gap, $-236.79\text{ kg CO}_2$ proxy gap preferring `capacity_aware` over `full_thermal_aware`).
 - Across the 36 heatwave-versus-blind core-policy transitions per event (108 transitions total across the 3 confirmatory events), **zero** pairs exhibited strict order inversion ($A \succ B$ in blind to $B \succ A$ in heatwave). All shifts were baseline ties resolving into non-tie differentials.
 
@@ -186,7 +189,7 @@ Audited from [`data/results/p6_t3_equal_service_gaps.csv`](file:///Users/siddhar
 
 ## 8. Equal-Service and Oracle Accounting
 
-Directly audited from [`data/results/p6_analysis_manifest.json`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_analysis_manifest.json):
+Directly audited from [`data/results/p6_analysis_manifest.json`](../data/results/p6_analysis_manifest.json):
 
 ```text
 Total Seed-Aggregated Policy Pairwise Contrasts: 540
@@ -227,13 +230,13 @@ The following map links every scientific claim permitted in v1 to its exact quan
 
 | # | Major Claim | Status | Evidence Class | Source Artifact & Derivation | Limitations | Permitted Wording | Prohibited Escalation |
 | :-: | :--- | :---: | :---: | :--- | :--- | :--- | :--- |
-| **C1** | Static scheduling feasibility envelope is reduced under heatwave conditions. | **Supported** | Confirmatory (Primary) | [`p6_t2_event_feasibility.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t2_event_feasibility.csv#L4-L25); rows for static_unaware in `CONF_1`, `CONF_2`, `CONF_3`. Tested boundary drops from $3.0x$ to $2.5x$ in $2/3$ events. | Coarse $\{1.0x, 2.0x, 3.0x\}$ grid; simulated facility; weak low-curve sensitivity ($1/3$). | "Static scheduling showed a 0.5x lower grid-bounded feasibility envelope in two events." | Do not claim continuous threshold, universal collapse, or strong sensitivity across thermal curves. |
-| **C2** | Capacity and thermal awareness show mixed violation reduction without boundary recovery. | **Partially Supported** | Confirmatory (Secondary) | [`p6_t2_event_feasibility.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t2_event_feasibility.csv#L2-L49); boundary recovery is $0.0x$ across both events; exact `capacity_aware` provides zero violation reduction; `full_thermal_aware` reduces violation hours by $1.0\text{h}$ and $0.5\text{h}$ in applicable events; `CONF_3` lacks prerequisite loss. | Evaluated at discrete workloads; power-capped simulated model; no boundary recovery; mixed policy outcomes. | "Under the frozen disjunction, capacity and thermal awareness partially supported H2 through 0.5–1.0h violation reductions under full thermal awareness, but achieved no tested boundary recovery and exact capacity awareness showed no improvement." | Do not claim capacity awareness restores tested feasibility, guarantees safety, or solves heatwave bottlenecks. |
-| **C3** | Full thermal awareness exhibits mixed violation reduction without boundary recovery. | **Secondary Mixed Observation** | Confirmatory (Secondary) | [`p6_t2_event_feasibility.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t2_event_feasibility.csv#L6-L45); violation hours at $3.0x$ drop by $1.0\text{h}$ (`CONF_1`) and $0.5\text{h}$ (`CONF_2`), but tested boundary is $-0.5x$ worse in `CONF_1`. | Does not alter discrete tested boundary; inconsistent direction across metrics. | "Full-thermal awareness reduced violation hours by 0.5–1.0h in two events but did not recover the tested boundary." | Do not claim full thermal awareness solves heatwave feasibility or restores SLA. |
-| **C4** | Event-blind windows obscure policy cost and carbon-proxy separations in two events. | **Partially Supported** | Confirmatory (Secondary) | [`p6_t3_equal_service_gaps.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t3_equal_service_gaps.csv#L2-L28); $24/36$ non-zero separations in `CONF_1` and `CONF_2` heatwaves vs $0/36$ in blind windows. | Third event is null ($0/36$); control also discriminates in `CONF_1`; zero strict ranking reversals. | "Complete heatwave windows exposed equal-service separations that frozen event-blind windows missed in two events, while the third event was null." | Do not claim event-blind benchmarking selects the wrong scheduler or that heatwaves consistently discriminate. |
-| **C5** | Forecast errors cannot be causally linked to scheduling performance differentials. | **Not Estimable** | Exploratory / Unestimable | [`p6_t4_forecast_evidence.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t4_forecast_evidence.csv#L18); confirmation matrix lacks same-scheduler forecast intervention; allocation vectors missing. | No counterfactual trace; associative development metrics only. | "The study cannot attribute observed differences to forecast-caused scheduling regret." | Do not claim forecast inaccuracies caused scheduler degradation or regret. |
-| **C6** | HeatGuard calibrated margin provides no operational advantage over simple baselines. | **Not Supported** | Confirmatory (Comparator) | [`p6_t2_event_feasibility.csv`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_t2_event_feasibility.csv#L7-L71); calibrated violations equal or exceed fixed margin across all 3 events ($0/3$ improvement). | Tested on power-capped model, medium curve, CAISO cases. | "HeatGuard showed no advantage over fixed-margin or deterministic comparators." | Do not claim algorithmic novelty, safety guarantees, or risk mitigation for HeatGuard. |
-| **C7** | Deployable policies deliver perfect equal service across all tested workloads. | **Supported** | Confirmatory (Quality) | [`p6_analysis_manifest.json`](file:///Users/siddharthbhakta/HeatTrace/data/results/p6_analysis_manifest.json#L3-L12); $530/540$ pairs equal-service eligible; all $10$ rejections restricted to hindsight oracle. | Rejections limited to non-deployable oracle under seed 20261016. | "All deployable-versus-deployable comparisons completed equal work." | Do not use rejected oracle pairs for cost or carbon claims. |
+| **C1** | Static scheduling feasibility envelope is reduced under heatwave conditions. | **Supported** | Confirmatory (Primary) | [`p6_t2_event_feasibility.csv`](../data/results/p6_t2_event_feasibility.csv#L4-L25); rows for static_unaware in `CONF_1`, `CONF_2`, `CONF_3`. Tested boundary drops from $3.0x$ to $2.5x$ in $2/3$ events. | Coarse $\{1.0x, 2.0x, 3.0x\}$ grid; simulated facility; weak low-curve sensitivity ($1/3$). | "Static scheduling showed a 0.5x lower grid-bounded feasibility envelope in two events." | Do not claim continuous threshold, universal collapse, or strong sensitivity across thermal curves. |
+| **C2** | Capacity and thermal awareness show mixed violation reduction without boundary recovery. | **Partially Supported** | Confirmatory (Secondary) | [`p6_t2_event_feasibility.csv`](../data/results/p6_t2_event_feasibility.csv#L2-L49); boundary recovery is $0.0x$ across both events; exact `capacity_aware` provides zero violation reduction; `full_thermal_aware` reduces violation hours by $1.0\text{h}$ and $0.5\text{h}$ in applicable events; `CONF_3` lacks prerequisite loss. | Evaluated at discrete workloads; power-capped simulated model; no boundary recovery; mixed policy outcomes. | "Under the frozen disjunction, capacity and thermal awareness partially supported H2 through 0.5–1.0h violation reductions under full thermal awareness, but achieved no tested boundary recovery and exact capacity awareness showed no improvement." | Do not claim capacity awareness restores tested feasibility, guarantees safety, or solves heatwave bottlenecks. |
+| **C3** | Full thermal awareness exhibits mixed violation reduction without boundary recovery. | **Secondary Mixed Observation** | Confirmatory (Secondary) | [`p6_t2_event_feasibility.csv`](../data/results/p6_t2_event_feasibility.csv#L6-L45); violation hours at $3.0x$ drop by $1.0\text{h}$ (`CONF_1`) and $0.5\text{h}$ (`CONF_2`), but tested boundary is $-0.5x$ worse in `CONF_1`. | Does not alter discrete tested boundary; inconsistent direction across metrics. | "Full-thermal awareness reduced violation hours by 0.5–1.0h in two events but did not recover the tested boundary." | Do not claim full thermal awareness solves heatwave feasibility or restores SLA. |
+| **C4** | Event-blind windows obscure policy cost and carbon-proxy separations in two events. | **Partially Supported** | Confirmatory (Secondary) | [`p6_t3_equal_service_gaps.csv`](../data/results/p6_t3_equal_service_gaps.csv#L2-L28); $24/36$ non-zero separations in `CONF_1` and `CONF_2` heatwaves vs $0/36$ in blind windows. | Third event is null ($0/36$); control also discriminates in `CONF_1`; zero strict ranking reversals. | "Complete heatwave windows exposed equal-service separations that frozen event-blind windows missed in two events, while the third event was null." | Do not claim event-blind benchmarking selects the wrong scheduler or that heatwaves consistently discriminate. |
+| **C5** | Forecast errors cannot be causally linked to scheduling performance differentials. | **Not Estimable** | Exploratory / Unestimable | [`p6_t4_forecast_evidence.csv`](../data/results/p6_t4_forecast_evidence.csv#L18); confirmation matrix lacks same-scheduler forecast intervention; allocation vectors missing. | No counterfactual trace; associative development metrics only. | "The study cannot attribute observed differences to forecast-caused scheduling regret." | Do not claim forecast inaccuracies caused scheduler degradation or regret. |
+| **C6** | HeatGuard calibrated margin provides no operational advantage over simple baselines. | **Not Supported** | Confirmatory (Comparator) | [`p6_t2_event_feasibility.csv`](../data/results/p6_t2_event_feasibility.csv#L7-L71); calibrated violations equal or exceed fixed margin across all 3 events ($0/3$ improvement). | Tested on power-capped model, medium curve, CAISO cases. | "HeatGuard showed no advantage over fixed-margin or deterministic comparators." | Do not claim algorithmic novelty, safety guarantees, or risk mitigation for HeatGuard. |
+| **C7** | Deployable policies deliver perfect equal service across all tested workloads. | **Supported** | Confirmatory (Quality) | [`p6_analysis_manifest.json`](../data/results/p6_analysis_manifest.json#L3-L12); $530/540$ pairs equal-service eligible; all $10$ rejections restricted to hindsight oracle. | Rejections limited to non-deployable oracle under seed 20261016. | "All deployable-versus-deployable comparisons completed equal work." | Do not use rejected oracle pairs for cost or carbon claims. |
 
 ---
 
@@ -266,25 +269,25 @@ The following claims are strictly contradicted by empirical evidence or protocol
 Existing figures and status descriptors under `data/figures/` were verified against generated data artifacts without file modification:
 
 ### Figure F1: Event-Level Policy Cost and Carbon Contrasts
-- **Artifact:** [`data/figures/p6_f1_event_policy_contrasts.png`](file:///Users/siddharthbhakta/HeatTrace/data/figures/p6_f1_event_policy_contrasts.png)
+- **Artifact:** [`data/figures/p6_f1_event_policy_contrasts.png`](../data/figures/p6_f1_event_policy_contrasts.png)
 - **Status:** **`ESTIMABLE`**
 - **Verified Content:** Displays equal-service cost and production-based carbon-proxy outcomes across all three confirmatory events (`CONF_1`, `CONF_2`, `CONF_3`). Crucially, the null separation in `CONF_3` is fully visible alongside the separations in `CONF_1` and `CONF_2`.
 - **Approved Caption:** *Figure 1: Event-level cost and production-based carbon-proxy contrasts across three CAISO confirmatory events under equal-service conditions. Policy separation appears in CONF_1 (June 2022) and CONF_2 (September 2022), whereas CONF_3 (late September 2022) is completely null.*
 
 ### Figure F2: Normalized Allocation Distance Matrix
-- **Artifact:** [`data/figures/p6_f2_allocation_distance_status.md`](file:///Users/siddharthbhakta/HeatTrace/data/figures/p6_f2_allocation_distance_status.md)
+- **Artifact:** [`data/figures/p6_f2_allocation_distance_status.md`](../data/figures/p6_f2_allocation_distance_status.md)
 - **Status:** **`NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION`**
 - **Verified Content:** Explains that the frozen P8 schema logged scalar `allocation_count` but did not persist hourly job allocation vectors.
 - **Approved Caption:** *Figure 2 (Not Estimable): Allocation distance metrics are unestimable from the frozen confirmation matrix because hourly schedule allocation vectors were not preserved in the confirmatory schema.*
 
 ### Figure F3: Forecast-Sensitive Scheduling Regret
-- **Artifact:** [`data/figures/p6_f3_forecast_regret_status.md`](file:///Users/siddharthbhakta/HeatTrace/data/figures/p6_f3_forecast_regret_status.md)
+- **Artifact:** [`data/figures/p6_f3_forecast_regret_status.md`](../data/figures/p6_f3_forecast_regret_status.md)
 - **Status:** **`NOT_ESTIMABLE_FROM_FROZEN_CONFIRMATION`**
 - **Verified Content:** Explains that estimating causal scheduling regret requires a controlled forecast counterfactual under identical schedulers and workloads, which was not present in the frozen P8 design.
 - **Approved Caption:** *Figure 3 (Not Estimable): Forecast-induced scheduling regret is unestimable from the confirmatory matrix due to the absence of a controlled same-scheduler forecast intervention.*
 
 ### Figure F4: Feasibility Sensitivity and Discriminability Consistency
-- **Artifact:** [`data/figures/p6_f4_h1_sensitivity.png`](file:///Users/siddharthbhakta/HeatTrace/data/figures/p6_f4_h1_sensitivity.png)
+- **Artifact:** [`data/figures/p6_f4_h1_sensitivity.png`](../data/figures/p6_f4_h1_sensitivity.png)
 - **Status:** **`ESTIMABLE`**
 - **Verified Content:** Illustrates H1 static feasibility boundary loss across medium and low thermal curves, alongside H3 event-level policy separation consistency ($2/3$ positive, $1/3$ null) without unsupported population inference.
 - **Approved Caption:** *Figure 4: Event-level static feasibility envelope sensitivity across thermal curves (medium vs. low) and pairwise policy discriminability across the three confirmatory events. Feasibility loss is sensitive to thermal curve assumptions, and discriminability replicates in two of three historical events.*

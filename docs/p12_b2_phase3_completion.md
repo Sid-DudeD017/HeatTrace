@@ -3,7 +3,7 @@
 **Status**: COMPLETE (Frozen Before Downstream Experiments)  
 **Date**: 2026-10-31  
 **Scope**: 5 Primary Stations, 2022–2026 Warm Seasons (June 1 – September 30)  
-**Authoritative Manifest**: [`data/v2/manifests/p12_b2_event_freeze.json`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_event_freeze.json)
+**Authoritative Manifest**: [`data/v2/manifests/p12_b2_event_freeze.json`](../data/v2/manifests/p12_b2_event_freeze.json)
 
 ---
 
@@ -111,13 +111,13 @@ Regional episodes represent connected components over $\pm 24\text{h}$ UTC expan
 
 | Artifact Path | Format | Rows | Bytes | SHA-256 Hash |
 | :--- | :---: | :---: | :---: | :--- |
-| [`data/v2/events/p12_b2_thresholds.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_thresholds.csv) | CSV | 5 | 1,098 | `14647f06ec16b45f9daa729cea22a66e12ebcc89c20e30985353d992e7392b9f` |
-| [`data/v2/events/p12_b2_station_year_screening.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_station_year_screening.csv) | CSV | 30 | 3,549 | `6e5da5567bf48806e4c609f302d4162042f20217d10deebd80644e61e564ed96` |
-| [`data/v2/events/p12_b2_station_events.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_station_events.csv) | CSV | 25 | 12,497 | `3a44a4b13d28b9f160133ecebf822d7798579c6c3983471ab243dea2e909f215` |
-| [`data/v2/events/p12_b2_regional_episodes.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_regional_episodes.csv) | CSV | 15 | 3,165 | `af9a44e3d13036732d5daa6ef37f2d0037c35694611bbcb50b3c7660c55b680d` |
-| [`data/v2/events/p12_b2_hourly_phase_labels.parquet`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_hourly_phase_labels.parquet) | Parquet | 4,320 | 54,468 | `6b2c92a7d20ed8a9c553ac128e10e84e5d5393a7e01f4c78d019ba9378480275` |
-| [`data/v2/events/p12_b2_hourly_phase_labels_preview.csv`](file:///Users/siddharthbhakta/HeatTrace/data/v2/events/p12_b2_hourly_phase_labels_preview.csv) | CSV | 100 | 17,112 | `ae1242510faced474365079f7698fddf6c001bed4dc559208185d78f9dc9bf62` |
-| [`data/v2/manifests/p12_b2_event_freeze.json`](file:///Users/siddharthbhakta/HeatTrace/data/v2/manifests/p12_b2_event_freeze.json) | JSON | 846 lines | 26,939 | `972675ef164cd29628eebdc4e509dce352b62a70a2e7214c9e9083f8d33d91c5` |
+| [`data/v2/events/p12_b2_thresholds.csv`](../data/v2/events/p12_b2_thresholds.csv) | CSV | 5 | 1,098 | `14647f06ec16b45f9daa729cea22a66e12ebcc89c20e30985353d992e7392b9f` |
+| [`data/v2/events/p12_b2_station_year_screening.csv`](../data/v2/events/p12_b2_station_year_screening.csv) | CSV | 30 | 3,549 | `6e5da5567bf48806e4c609f302d4162042f20217d10deebd80644e61e564ed96` |
+| [`data/v2/events/p12_b2_station_events.csv`](../data/v2/events/p12_b2_station_events.csv) | CSV | 25 | 12,497 | `3a44a4b13d28b9f160133ecebf822d7798579c6c3983471ab243dea2e909f215` |
+| [`data/v2/events/p12_b2_regional_episodes.csv`](../data/v2/events/p12_b2_regional_episodes.csv) | CSV | 15 | 3,165 | `af9a44e3d13036732d5daa6ef37f2d0037c35694611bbcb50b3c7660c55b680d` |
+| [`data/v2/events/p12_b2_hourly_phase_labels.parquet`](../data/v2/events/p12_b2_hourly_phase_labels.parquet) | Parquet | 4,320 | 54,468 | `6b2c92a7d20ed8a9c553ac128e10e84e5d5393a7e01f4c78d019ba9378480275` |
+| [`data/v2/events/p12_b2_hourly_phase_labels_preview.csv`](../data/v2/events/p12_b2_hourly_phase_labels_preview.csv) | CSV | 100 | 17,112 | `ae1242510faced474365079f7698fddf6c001bed4dc559208185d78f9dc9bf62` |
+| [`data/v2/manifests/p12_b2_event_freeze.json`](../data/v2/manifests/p12_b2_event_freeze.json) | JSON | 846 lines | 26,939 | `972675ef164cd29628eebdc4e509dce352b62a70a2e7214c9e9083f8d33d91c5` |
 
 ---
 

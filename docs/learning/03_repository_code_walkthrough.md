@@ -63,7 +63,7 @@ There is no important `src/heattrace/process/experiments` folder; experiments ar
 | `evaluation/p12_b2_validity.py` | missingness, equal service, G1–G5 | B2 runs → analysis CSVs | B2 P6 |
 | `evaluation/p12_b2_reporting.py` | four B2 plots and seven tables | P6 DataFrames → figures/tables | B2 P6 |
 
-Original v1 files are the modules without `p12_b2` plus P6 validity code. B2 added the `p12_b2_*` modules, scripts, tests, protocol, and `data/v2`. `workload/scaling.py` is currently modified in the working tree; this guide did not alter it.
+Original v1 files are the modules without `p12_b2` plus P6 validity code. B2 added the `p12_b2_*` modules, scripts, tests, protocol, and `data/v2`. Historically, `workload/scaling.py` was modified during development phase transitions; in the current repository tree it is tracked and unchanged, and this guide describes its role without altering it.
 
 ## 3.3 How to read a scheduler call
 

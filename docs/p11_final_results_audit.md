@@ -168,7 +168,7 @@ Compared with the Day 11 adversarial audit, P11 added a second execution, determ
 
 ### Minor
 
-5. **Archived JSON and report links retain absolute local paths.** Several archived manifests and the canonical report contain `/Users/siddharthbhakta/HeatTrace/...` or `file:///Users/...` references. The verifier itself uses relative inventory paths and passes portably, so these stale display/provenance strings do not break integrity verification, but they reduce usability on another machine.
+5. **Archived JSON and report links retain absolute local paths.** Several archived manifests and the canonical report contain `/Users/siddharthbhakta/HeatTrace/...` or absolute `file://` references. The verifier itself uses relative inventory paths and passes portably, so these stale display/provenance strings do not break integrity verification, but they reduce usability on another machine.
 
 6. **“Immutable/read-only” is logical, not enforced.** Archive files are normal writable files. Git and SHA-256 detect changes; they do not prevent them. A signed tag/release or write-protected external archive would provide stronger assurance.
 
